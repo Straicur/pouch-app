@@ -1,0 +1,6 @@
+.idea
+.DS_Store
+
+# root-level compose env overrides (see .env.example)
+/.env
+/.env.local
