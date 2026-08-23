@@ -1,23 +1,14 @@
-import { useEffect, useState } from 'react'
-import './App.css'
+import { Provider } from "react-redux";
+import { RouterProvider } from "react-router-dom";
+import { router } from "./routes";
+import { store } from "./store/store";
 
 function App() {
-  const [apiStatus, setApiStatus] = useState<'checking' | 'ok' | 'error'>('checking')
-
-  useEffect(() => {
-    fetch('/api/test')
-      .then((res) => setApiStatus(res.ok ? 'ok' : 'error'))
-      .catch(() => setApiStatus('error'))
-  }, [])
-
   return (
-    <>
-      <h1>Pouch</h1>
-      <p className="read-the-docs">
-        Backend status: <strong>{apiStatus}</strong>
-      </p>
-    </>
-  )
+    <Provider store={store}>
+      <RouterProvider router={router} />
+    </Provider>
+  );
 }
 
-export default App
+export default App;

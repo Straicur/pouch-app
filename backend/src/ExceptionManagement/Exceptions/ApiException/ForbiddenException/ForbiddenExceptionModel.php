@@ -18,7 +18,7 @@ final class ForbiddenExceptionModel extends ExceptionModel
             title: 'Forbidden',
             status: $status,
             detail: $detail,
-            context: [self::UUID => ExceptionUuidEnum::FROBIDDEN->value]
+            context: [self::UUID => ExceptionUuidEnum::FORBIDDEN->value]
         );
     }
 }

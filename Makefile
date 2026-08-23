@@ -4,17 +4,10 @@ COMPOSE := docker compose -f docker-compose.yml -f docker-compose.dev.yml
 EXEC_APP := $(COMPOSE) exec app
 EXEC_FRONTEND := $(COMPOSE) exec frontend
 
-# Postgres connection used by the db-* targets below. Override on the command
-# line if you point backend/.env.local at a different db/user, e.g.:
-#   make db-cli DB_NAME=other_db
+# Override e.g. `make db-cli DB_NAME=other_db`.
 DB_CONTAINER := pouch_db
 DB_USER      := app
 DB_NAME      := app
-
-# Targets below that take a trailing word (branch name, console command,
-# email...) read it via `$(filter-out $@,$(MAKECMDGOALS))`. Without the
-# catch-all "%" rule at the bottom of this file, make would otherwise error
-# with "No rule to make target" for that trailing word.
 
 .DEFAULT_GOAL := help
 
@@ -47,8 +40,8 @@ help:
 	@echo '    install         - npm install'
 	@echo '    npm <cmd>       - run an npm command in the frontend container'
 	@echo '    test-frontend   - run frontend tests'
-	@echo '    lint            - eslint'
-	@echo '    lint-fix        - eslint --fix'
+	@echo '    lint            - biome lint'
+	@echo '    lint-fix        - biome lint --write'
 	@echo '  --- both ---'
 	@echo '    test            - run backend + frontend tests'
 	@echo '  --- database (postgres) ---'
@@ -59,9 +52,8 @@ help:
 
 ## --- stack ---
 
-# One command to get from a fresh checkout to a running app.
-# Safe to re-run: env files and the JWT keypair are only created if missing.
-start: env-setup up composer-install jwt-keypair migrate-dev
+# Safe to re-run — env files and the JWT keypair are only created if missing.
+start: env-setup up composer-install jwt-keypair test-env-jwt migrate-dev
 	@echo ""
 	@echo "Pouch is up:"
 	@echo "  frontend:      http://localhost:5173"
@@ -74,12 +66,17 @@ env-setup:
 		cp backend/.env backend/.env.local; \
 		printf '\nPOSTGRES_PASSWORD=app\nDATABASE_URL=postgresql://app:app@db:5432/app?serverVersion=16&charset=utf8\n' >> backend/.env.local; \
 	}
+	@test -f backend/.env.test.local || \
+		printf 'POSTGRES_PASSWORD=app\nDATABASE_URL=postgresql://app:app@db:5432/app?serverVersion=16&charset=utf8\n' > backend/.env.test.local
 
 composer-install:
 	$(EXEC_APP) composer install
 
 jwt-keypair:
 	@test -f backend/config/jwt/private.pem || $(EXEC_APP) php bin/console lexik:jwt:generate-keypair
+
+test-env-jwt:
+	$(EXEC_APP) php bin/generate-test-jwt.php
 
 migrate-dev:
 	$(EXEC_APP) php bin/console doctrine:migrations:migrate -n
@@ -100,9 +97,7 @@ bash:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then echo "Usage: make bash <service>"; exit 1; fi
 	$(COMPOSE) exec -it $(filter-out $@,$(MAKECMDGOALS)) sh -c 'command -v bash >/dev/null 2>&1 && exec bash || exec sh'
 
-# Checkout (or create) a branch, pull, and bring the whole stack back to a
-# working state on it: `make branch feature/uploads`. Safe on the current
-# branch too — every step here is idempotent.
+# make branch feature/uploads
 branch:
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then echo "Usage: make branch <name>"; exit 1; fi
 	git fetch --prune
@@ -139,9 +134,7 @@ cs:
 cs-fix:
 	$(EXEC_APP) composer cs:fix
 phpstan:
-	# phpstan-symfony reads the container dump (see backend/phpstan.neon.dist
-	# containerXmlPath) to know service types — regenerate it first so results
-	# reflect the current container, not a stale one.
+	# regenerate container dump — phpstan-symfony needs it (see phpstan.neon.dist)
 	$(EXEC_APP) bash -c "php bin/console debug:container --format=xml --env=dev > var/cache/dev/App_KernelDevDebugContainer.xml"
 	$(EXEC_APP) composer phpstan
 
@@ -191,8 +184,6 @@ admin:
 
 .PHONY: help start env-setup composer-install jwt-keypair migrate-dev branch up down logs ps bash console composer cc migration migrate entity test-backend fixtures rector rector-fix cs cs-fix phpstan install npm test-frontend lint lint-fix test db-cli db-dump db-restore admin
 
-# Catch-all: lets targets above take a trailing word (branch name, console
-# command, email, filename...) via $(filter-out $@,$(MAKECMDGOALS)) without
-# make complaining "No rule to make target 'that-word'".
+# catch-all so trailing args (branch/email/filename) don't error as unknown targets
 %:
 	@:

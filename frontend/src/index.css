@@ -66,3 +66,40 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+#root {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.login-form,
+.home-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  text-align: left;
+}
+
+.login-form label {
+  font-size: 0.9em;
+  font-weight: 500;
+}
+
+.login-form input {
+  padding: 0.6em 0.8em;
+  border-radius: 8px;
+  border: 1px solid #666;
+  font-size: 1em;
+  font-family: inherit;
+  background-color: inherit;
+  color: inherit;
+}
+
+.field-error,
+.form-error {
+  color: #ff6b6b;
+  font-size: 0.9em;
+  margin: 0;
+}

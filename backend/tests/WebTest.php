@@ -10,7 +10,7 @@ use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
-class WebTest extends WebTestCase
+abstract class WebTest extends WebTestCase
 {
     protected KernelBrowser $webClient;
     protected ?object $entityManager;

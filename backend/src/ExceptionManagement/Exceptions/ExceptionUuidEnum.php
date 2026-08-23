@@ -11,7 +11,7 @@ enum ExceptionUuidEnum: string
 
     case UNAUTHORIZED = 'b3d2f6a1-7c4e-4f6b-8a99-0d1e2c3b4a55';
 
-    case FROBIDDEN = 'c7a1e9d4-2b3c-4d5e-9f01-23456789abcd';
+    case FORBIDDEN = 'c7a1e9d4-2b3c-4d5e-9f01-23456789abcd';
 
     case NOT_FOUND = 'd4e5f6a7-8b9c-4cde-8123-4567890abcde';
 

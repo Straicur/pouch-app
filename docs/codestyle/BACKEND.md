@@ -371,6 +371,12 @@ puste, zarezerwowane katalogi).
 
 ## Testy
 
+- **Nowa funkcjonalność = testy funkcjonalne (kontroler przez `WebTest`,
+  request→response) i integracyjne (współpraca kilku serwisów/repozytorium
+  z realną bazą, przez `SystemKernelTestCase`), nie tylko unit testy pojedynczej
+  klasy.** Łatwo o tym zapomnieć przy dopisywaniu jednej metody do serwisu — sam
+  fakt, że jednostkowo działa, nie znaczy że endpoint faktycznie zwraca to, co
+  ma, albo że migracja/repozytorium/serwis dogadują się ze sobą.
 - Struktura testu **odzwierciedla strukturę `src/`**:
   `src/Controller/Api/LoginController.php` →
   `tests/Controller/LoginController/LoginControllerTest.php`.
@@ -428,3 +434,11 @@ skrót do "zielonego CI".
   pasować do tego, co dostaje kontener `db` w root `docker-compose.yml`
   (`app`/`app` domyślnie) — to jeden z niewielu przypadków, gdzie lokalny
   override musi znać coś o infrastrukturze Dockera, nie tylko o Symfony.
+- Środowisko `test` **nie ma własnego vaulta** (`config/secrets/` ma tylko
+  `dev/`) — `JWT_PASSPHRASE`/`JWT_PRIVATE_TOKEN`/`JWT_PUBLIC_TOKEN` dla testów
+  idą wprost z `backend/.env.test.local` (gitignored), generowane przez
+  `make test-env-jwt` (`backend/bin/generate-test-jwt.php`), nie z vaulta.
+- `config/reference.php` bywa regenerowany przez komendy Symfony
+  (`cache:clear`, `debug:container`) bez `declare(strict_types = 1)` — jeśli
+  `make cs` znów go złapie, to nie regresja, tylko Symfony nadpisujące własny
+  plik. `make cs-fix` i jedziesz dalej.

@@ -1,5 +1,5 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vitest/config";
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -9,12 +9,16 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      // forwards /api/* to the backend so the frontend can call same-origin paths
-      // and JWT auth cookies work without extra CORS config in dev.
-      '/api': {
-        target: process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:8111',
+      // same-origin proxy to the backend, so cookies work without CORS.
+      "/api": {
+        target: process.env.VITE_API_PROXY_TARGET ?? "http://localhost:8111",
         changeOrigin: true,
       },
     },
   },
-})
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/test-setup.ts"],
+    globals: true,
+  },
+});
