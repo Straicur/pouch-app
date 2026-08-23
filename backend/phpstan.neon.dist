@@ -1,0 +1,72 @@
+includes:
+	- phpstan-baseline.php
+
+parameters:
+    level: 10
+    phpVersion:
+        min: 80400
+        max: 80414
+    symfony:
+        containerXmlPath: %rootDir%/../../../var/cache/dev/App_KernelDevDebugContainer.xml
+    doctrine:
+        reportDynamicQueryBuilders: false
+        reportUnknownTypes: true
+        allowNullablePropertyForRequiredField: false
+        allCollectionsSelectable: false
+        literalString: false
+    inferPrivatePropertyTypeFromConstructor: true
+    reportUnmatchedIgnoredErrors: false
+    polluteScopeWithLoopInitialAssignments: false
+    polluteScopeWithAlwaysIterableForeach: false
+    polluteScopeWithBlock: false
+    checkExplicitMixedMissingReturn: true
+    checkFunctionNameCase: true
+    checkInternalClassCaseSensitivity: true
+    reportMaybesInMethodSignatures: true
+    reportMaybesInPropertyPhpDocTypes: true
+    reportStaticMethodSignatures: true
+    checkTooWideReturnTypesInProtectedAndPublicMethods: true
+    checkUninitializedProperties: true
+    checkDynamicProperties: true
+    rememberPossiblyImpureFunctionValues: true
+    checkBenevolentUnionTypes: true
+    reportPossiblyNonexistentGeneralArrayOffset: true
+    reportPossiblyNonexistentConstantArrayOffset: true
+    reportAlwaysTrueInLastCondition: true
+    reportWrongPhpDocTypeInVarTag: true
+    reportAnyTypeWideningInVarTag: true
+    checkMissingOverrideMethodAttribute: true
+    checkMissingCallableSignature: true
+    strictRules:
+        allRules: false
+        disallowedLooseComparison: true
+        booleansInConditions: true
+        booleansInLoopConditions: true
+        uselessCast: true
+        requireParentConstructorCall: true
+        disallowedBacktick: true
+        disallowedEmpty: false
+        disallowedImplicitArrayCreation: true
+        disallowedShortTernary: false
+        overwriteVariablesWithLoop: true
+        closureUsesThis: true
+        matchingInheritedMethodNames: true
+        numericOperandsInArithmeticOperators: true
+        strictFunctionCalls: true
+        dynamicCallOnStaticMethod: true
+        switchConditionsMatchingType: true
+        noVariableVariables: true
+        strictArrayFilter: true
+        illegalConstructorMethodCall: true
+    paths:
+        - src
+    excludePaths:
+        - config/secrets/*
+        - public
+        - config
+    tmpDir: ./var/build/phpstan
+    parallel:
+        minimumNumberOfJobsPerProcess: 2
+        jobSize: 32
+        maximumNumberOfProcesses: 4
+        processTimeout: 300.0

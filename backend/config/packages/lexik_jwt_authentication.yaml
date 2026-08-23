@@ -1,0 +1,35 @@
+lexik_jwt_authentication:
+    secret_key: '%env(resolve:JWT_SECRET_KEY)%'
+    public_key: '%env(resolve:JWT_PUBLIC_KEY)%'
+    pass_phrase: '%env(JWT_PASSPHRASE)%'
+    token_ttl: 300
+    allow_no_expiration: false
+    clock_skew: 0
+    encoder:
+        service: lexik_jwt_authentication.encoder.web_token
+    user_id_claim: username
+    token_extractors:
+        authorization_header: { enabled: false }
+        query_parameter: {enabled: false}
+        cookie:
+            enabled: true
+            name: ACCESS_TOKEN
+        split_cookie:
+            enabled: false
+            cookies: {  }
+    remove_token_from_body_when_cookies_used: true
+    set_cookies: {  }
+    access_token_issuance:
+        enabled: true
+        signature:
+            algorithm: RS256
+            key: '%env(resolve:JWT_PRIVATE_TOKEN)%'
+    access_token_verification:
+        enabled: true
+        signature:
+            allowed_algorithms:
+                - RS256
+            keyset: '%env(resolve:JWT_PUBLIC_TOKEN)%'
+    blocklist_token:
+        enabled: false
+        cache: cache.app
