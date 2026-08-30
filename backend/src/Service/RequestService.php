@@ -39,7 +39,15 @@ class RequestService implements RequestServiceInterface
             throw new BadRequestException();
         }
 
-        $validationErrors = $this->validator->validate($query);
+        $this->validate($query);
+
+        return $query;
+    }
+
+    #[Override]
+    public function validate(object $dto): void
+    {
+        $validationErrors = $this->validator->validate($dto);
         if ($validationErrors->count() > 0) {
             $validationErrorModels = [];
 
@@ -53,7 +61,5 @@ class RequestService implements RequestServiceInterface
 
             throw new UnprocessableContentException(violations: $validationErrorModels);
         }
-
-        return $query;
     }
 }

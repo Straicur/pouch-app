@@ -65,19 +65,27 @@ mechanizm, z którego skorzystają wszystkie kolejne typy, więc lepiej zrobić 
 porządnie raz.
 
 **Zakres:**
-- [ ] Encja `Item` (typ: plik ogólny), upload do S3 z Części 1, walidacja
+- [x] Encja `Item` (typ: plik ogólny), upload do S3 z Części 1, walidacja
       typu/rozmiaru, wykrywanie duplikatów (hash zawartości).
-- [ ] TTL: domyślnie 1 dzień, przełącznik "trzymaj na zawsze", presety (1h/7d/30d),
+- [x] TTL: domyślnie 1 dzień, przełącznik "trzymaj na zawsze", presety (1h/7d/30d),
       własna data.
-- [ ] Cron/scheduler: wygasłe TTL → kosz, kosz → trwałe usunięcie po 7 dniach.
-- [ ] Podpisane, czasowe URL-e do pobierania/streamu (nie bezpośredni dostęp do S3).
+- [x] Cron/scheduler: wygasłe TTL → kosz, kosz → trwałe usunięcie po 7 dniach.
+- [x] Podpisane, czasowe URL-e do pobierania/streamu (nie bezpośredni dostęp do S3).
 
 **Testy kodowe:** integration testy: upload→download przez podpisany URL, TTL→kosz
 (z podstawionym/przesuniętym czasem), kosz→trwałe usunięcie, duplikat wykryty.
+✅ `backend/tests/Controller/ItemController/ItemControllerTest.php` (CRUD, walidacja,
+duplikaty), `ItemDownloadTest.php` (podpisany URL), `backend/tests/Item/
+ItemGarbageCollectorTest.php` (TTL→kosz, kosz→usunięcie, z podstawionym `$now`),
+`backend/tests/Security/SignedUrlServiceTest.php` (HMAC + wygasanie).
 
 **Test ręczny:** wrzucić plik, pobrać go podpisanym linkiem, poczekać (albo ręcznie
 odpalić `make phpstan`... nie — ręcznie odpalić komendę GC) i sprawdzić że wpadł do
 kosza, potem że realnie zniknął po 7 dniach (test na skróconym TTL w dev).
+✅ zrobione ręcznie: upload z 3-sekundowym TTL → `app:item:gc` przeniósł do kosza
+(404 z API, ale plik nadal w MinIO) → `app:item:gc --retention-days=0` trwale usunął
+(zniknął z DB i z MinIO). Duplikat tej samej treści → 409 ze wskazaniem istniejącego
+itemu.
 
 ---
 

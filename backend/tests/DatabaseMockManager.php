@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Tests;
 
+use App\Entity\Category;
 use App\Entity\User;
+use App\Repository\CategoryRepository;
 use App\Repository\UserRepository;
 use App\Security\ConfigService;
 use App\Security\CookieService;
@@ -44,6 +46,19 @@ class DatabaseMockManager
         $userRepository->saveUser($user);
 
         return $user;
+    }
+
+    public function createCategory(string $name, ?Category $parent = null): Category
+    {
+        /**
+         * @var CategoryRepository $categoryRepository
+         */
+        $categoryRepository = $this->getService(CategoryRepository::class);
+
+        $category = new Category($name, $parent);
+        $categoryRepository->save($category);
+
+        return $category;
     }
 
     public function loginUser(User $user): Cookie

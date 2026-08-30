@@ -21,4 +21,14 @@ interface RequestServiceInterface
      * @throws UnprocessableContentException
      */
     public function getRequestBodyContent(Request $request, string $className): object;
+
+    /**
+     * Runs the validator over an already-built DTO and throws the same
+     * UnprocessableContentException shape getRequestBodyContent() does — for
+     * endpoints that can't build their DTO from a JSON body (e.g. multipart
+     * form uploads), but still want a consistent validation error response.
+     *
+     * @throws UnprocessableContentException
+     */
+    public function validate(object $dto): void;
 }
