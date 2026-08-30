@@ -15,6 +15,10 @@ enum ExceptionUuidEnum: string
 
     case NOT_FOUND = 'd4e5f6a7-8b9c-4cde-8123-4567890abcde';
 
+    // Only ever produced by a framework-thrown HttpExceptionInterface (wrong
+    // HTTP method for an otherwise-valid route) — see ExceptionSubscriber.
+    case METHOD_NOT_ALLOWED = '6f5e4d3c-2b1a-4c9d-8e7f-a1b2c3d4e5f6';
+
     case CONFLICT = '1a2b3c4d-5e6f-4789-8abc-def012345678';
 
     case UNPROCESSABLE_CONTENT = 'e1f2a3b4-5c6d-4e7f-8123-abcdef123456';

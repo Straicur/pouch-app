@@ -14,6 +14,7 @@ class ItemUpdateTagsRequestDTO
          */
         #[Assert\Count(max: 20, maxMessage: 'tag.too_many')]
         #[Assert\All([
+            new Assert\Type('string', message: 'tag.invalid_type'),
             new Assert\Length(max: 50, maxMessage: 'tag.too_long'),
         ])]
         private readonly array $tags = [],

@@ -221,9 +221,12 @@ bardziej niż zgadywanie po treści wiadomości:
 ```
 
 `context.uuid` to jedna z wartości `ExceptionUuidEnum` (`BAD_REQUEST`, `UNAUTHORIZED`,
-`FORBIDDEN`, `NOT_FOUND`, `UNPROCESSABLE_CONTENT`, `TOO_MANY_REQUESTS`,
-`INTERNAL_SERVER`) — pattern-matchuj po tym, nie po `status` samym w sobie ani po
-treści `detail` (tekst dla człowieka, może się zmienić bez ostrzeżenia).
+`FORBIDDEN`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `CONFLICT`, `UNPROCESSABLE_CONTENT`,
+`TOO_MANY_REQUESTS`, `INTERNAL_SERVER`) — pattern-matchuj po tym, nie po `status` samym
+w sobie ani po treści `detail` (tekst dla człowieka, może się zmienić bez ostrzeżenia).
+Dotyczy to też błędów, których backend sam nie rzuca (nieznana trasa, zła metoda HTTP)
+— `ExceptionSubscriber` opakowuje je w ten sam kształt, nigdy nie zwraca gołego błędu
+frameworka.
 
 - `AxiosBaseQueryError`/błąd z `httpClient` zawsze niesie `data` w tym kształcie przy
   odpowiedzi z naszego API — warto dodać współdzielony typ tego envelope'u zamiast

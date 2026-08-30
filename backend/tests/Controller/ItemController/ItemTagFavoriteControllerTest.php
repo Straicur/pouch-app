@@ -105,6 +105,22 @@ class ItemTagFavoriteControllerTest extends WebTest
         self::assertResponseStatusCodeSame(Response::HTTP_UNPROCESSABLE_ENTITY);
     }
 
+    // A non-string element ({"tags":[123]}) has to fail validation (422), not
+    // reach TagService::resolveTags() and blow up on trim(123) under
+    // strict_types (500).
+    public function testNonStringTagElementIsRejectedNotA500(): void
+    {
+        $item = $this->createNote('bad tag type');
+
+        $this->webClient->request(
+            method: Request::METHOD_PUT,
+            uri: sprintf('/api/items/%d/tags', $item['id']),
+            content: json_encode(['tags' => [123]]),
+        );
+
+        self::assertResponseStatusCodeSame(Response::HTTP_UNPROCESSABLE_ENTITY);
+    }
+
     public function testTagListEndpointReturnsAssignedTagNames(): void
     {
         $item = $this->createNote('for the tag list');
@@ -121,6 +137,31 @@ class ItemTagFavoriteControllerTest extends WebTest
         $tags = json_decode((string) $this->webClient->getResponse()->getContent(), true);
         self::assertContains('alpha', $tags);
         self::assertContains('beta', $tags);
+    }
+
+    // A tag that lost its last item shouldn't keep haunting the autocomplete
+    // list — see TagRepository::findAllOrderedByName().
+    public function testTagListEndpointOmitsTagsNoLongerUsedByAnyItem(): void
+    {
+        $item = $this->createNote('orphaned tag source');
+        $this->webClient->request(
+            method: Request::METHOD_PUT,
+            uri: sprintf('/api/items/%d/tags', $item['id']),
+            content: json_encode(['tags' => ['soon-orphaned']]),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+
+        $this->webClient->request(
+            method: Request::METHOD_PUT,
+            uri: sprintf('/api/items/%d/tags', $item['id']),
+            content: json_encode(['tags' => []]),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+
+        $this->webClient->request(method: Request::METHOD_GET, uri: '/api/tags');
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+        $tags = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        self::assertNotContains('soon-orphaned', $tags);
     }
 
     public function testMarkAndUnmarkFavorite(): void

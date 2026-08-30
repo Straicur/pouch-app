@@ -21,10 +21,15 @@ jobs:
         env:
           POSTGRES_USER: app
           POSTGRES_PASSWORD: app
-          POSTGRES_DB: app
+          # Doctrine's `when@test: dbal: dbname_suffix: '_test'` (see
+          # config/packages/doctrine.yaml) means every DB access under
+          # APP_ENV=test resolves to "<DATABASE_URL's dbname>_test", never
+          # the plain "app" from the URL below — so this service's actual
+          # database has to be named to match, not "app".
+          POSTGRES_DB: app_test
         ports:
           - 5432:5432
-        options: --health-cmd="pg_isready -U app -d app" --health-interval=5s --health-timeout=5s --health-retries=10
+        options: --health-cmd="pg_isready -U app -d app_test" --health-interval=5s --health-timeout=5s --health-retries=10
 
     defaults:
       run:

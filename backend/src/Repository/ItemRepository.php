@@ -14,6 +14,7 @@ use function array_filter;
 use function array_map;
 use function array_values;
 use function is_numeric;
+use function str_replace;
 
 /**
  * @extends ServiceEntityRepository<Item>
@@ -126,7 +127,7 @@ class ItemRepository extends ServiceEntityRepository
                   OR EXISTS (
                       SELECT 1 FROM item_tag it
                       JOIN tag t ON t.tag_id = it.tag_id
-                      WHERE it.item_id = i.item_id AND t.name ILIKE :likeQuery
+                      WHERE it.item_id = i.item_id AND t.name ILIKE :likeQuery ESCAPE '\'
                   )
               )
             ORDER BY rank DESC, i.created_at DESC
@@ -134,10 +135,21 @@ class ItemRepository extends ServiceEntityRepository
 
         $rows = $this->getEntityManager()->getConnection()->fetchFirstColumn($sql, [
             'query'     => $query,
-            'likeQuery' => '%' . $query . '%',
+            'likeQuery' => '%' . $this->escapeLikeWildcards($query) . '%',
         ]);
 
         return array_map(static fn (mixed $id): int => is_numeric($id) ? (int) $id : 0, $rows);
+    }
+
+    /**
+     * A search term containing a literal "%" or "_" (e.g. "50% off") must
+     * match that literal text, not act as a LIKE/ILIKE wildcard — escape
+     * both (and the escape character itself) before wrapping the term in the
+     * pattern's own "%...%". Paired with the query's `ESCAPE '\'` clause.
+     */
+    private function escapeLikeWildcards(string $value): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Tests\ExceptionManagement;
 
+use App\ExceptionManagement\Exceptions\ExceptionUuidEnum;
 use App\Tests\WebTest;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -24,6 +25,10 @@ class ExceptionSubscriberTest extends WebTest
 
         $content = json_decode((string) $this->webClient->getResponse()->getContent(), true);
         self::assertSame('Nie znaleziono zasobu.', $content['detail']);
+        // FRONTEND.md's contract: every endpoint's error carries
+        // context.uuid, including ones the framework throws before ever
+        // reaching our own exception hierarchy.
+        self::assertSame(ExceptionUuidEnum::NOT_FOUND->value, $content['context']['uuid']);
     }
 
     public function testWrongHttpMethodReturns405WithTranslatedDetail(): void
@@ -35,5 +40,6 @@ class ExceptionSubscriberTest extends WebTest
 
         $content = json_decode((string) $this->webClient->getResponse()->getContent(), true);
         self::assertSame('Ta metoda HTTP nie jest dozwolona dla tego adresu.', $content['detail']);
+        self::assertSame(ExceptionUuidEnum::METHOD_NOT_ALLOWED->value, $content['context']['uuid']);
     }
 }

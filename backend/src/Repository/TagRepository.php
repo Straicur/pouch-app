@@ -4,13 +4,13 @@ declare(strict_types = 1);
 
 namespace App\Repository;
 
+use App\Entity\Item;
 use App\Entity\Tag;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
 use function array_diff;
 use function array_map;
-use function array_values;
 
 /**
  * @extends ServiceEntityRepository<Tag>
@@ -23,11 +23,31 @@ class TagRepository extends ServiceEntityRepository
     }
 
     /**
+     * Only tags actually attached to a live (non-trashed) item — a name that
+     * lost its last item (replaced away, or the item trashed/deleted) isn't
+     * "in use" any more, even though the Tag row itself lingers (tags have no
+     * delete-on-orphan cleanup; a row is cheap to keep, a stale autocomplete
+     * suggestion isn't).
+     *
+     * `SELECT t FROM Item i JOIN i.tags t` reads naturally but DQL rejects
+     * it outright — a query's root alias (`i`, from Item's FROM) must be
+     * among the selected identification variables, a joined-only alias like
+     * `t` isn't enough (Doctrine\ORM\Query\Parser::processRootEntityAliasSelected).
+     * Making Tag the root and using MEMBER OF in a WHERE EXISTS sidesteps
+     * that restriction rather than selecting `i, t` and discarding `i`.
+     *
      * @return list<Tag>
      */
     public function findAllOrderedByName(): array
     {
-        return array_values($this->findBy([], ['name' => 'ASC']));
+        /** @var list<Tag> $result */
+        $result = $this->createQueryBuilder('t')
+            ->where('EXISTS (SELECT i.id FROM ' . Item::class . ' i WHERE t MEMBER OF i.tags AND i.trashedAt IS NULL)')
+            ->orderBy('t.name', 'ASC')
+            ->getQuery()
+            ->getResult();
+
+        return $result;
     }
 
     /**

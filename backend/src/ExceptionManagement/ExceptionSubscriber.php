@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace App\ExceptionManagement;
 
 use App\ExceptionManagement\Exceptions\ApiException;
+use App\ExceptionManagement\Exceptions\ExceptionUuidEnum;
 use App\ExceptionManagement\Exceptions\Model\ExceptionModel;
 use App\ExceptionManagement\Exceptions\ServerException;
 use App\ExceptionManagement\Exceptions\ServerException\InternalServerException\InternalServerException;
@@ -36,17 +37,19 @@ class ExceptionSubscriber implements EventSubscriberInterface
      * Framework-thrown HttpExceptionInterface exceptions (unmatched route ->
      * 404, wrong method -> 405, etc.) never go through our own hierarchy, so
      * without this map they'd fall into the catch-all below and come back as
-     * a misleading 500.
+     * a misleading 500. Every entry also needs an ExceptionUuidEnum case —
+     * FRONTEND.md guarantees `context.uuid` is always one of those, on every
+     * endpoint, not just our own ApiException hierarchy.
      *
-     * @var array<int, string>
+     * @var array<int, array{key: string, uuid: ExceptionUuidEnum}>
      */
-    private const array STATUS_TRANSLATION_KEYS = [
-        Response::HTTP_BAD_REQUEST        => 'bad_request',
-        Response::HTTP_UNAUTHORIZED       => 'unauthorized',
-        Response::HTTP_FORBIDDEN          => 'forbidden',
-        Response::HTTP_NOT_FOUND          => 'not_found',
-        Response::HTTP_METHOD_NOT_ALLOWED => 'method_not_allowed',
-        Response::HTTP_TOO_MANY_REQUESTS  => 'too_many_requests',
+    private const array HTTP_EXCEPTION_MAP = [
+        Response::HTTP_BAD_REQUEST        => ['key' => 'bad_request', 'uuid' => ExceptionUuidEnum::BAD_REQUEST],
+        Response::HTTP_UNAUTHORIZED       => ['key' => 'unauthorized', 'uuid' => ExceptionUuidEnum::UNAUTHORIZED],
+        Response::HTTP_FORBIDDEN          => ['key' => 'forbidden', 'uuid' => ExceptionUuidEnum::FORBIDDEN],
+        Response::HTTP_NOT_FOUND          => ['key' => 'not_found', 'uuid' => ExceptionUuidEnum::NOT_FOUND],
+        Response::HTTP_METHOD_NOT_ALLOWED => ['key' => 'method_not_allowed', 'uuid' => ExceptionUuidEnum::METHOD_NOT_ALLOWED],
+        Response::HTTP_TOO_MANY_REQUESTS  => ['key' => 'too_many_requests', 'uuid' => ExceptionUuidEnum::TOO_MANY_REQUESTS],
     ];
 
     public function __construct(
@@ -81,11 +84,12 @@ class ExceptionSubscriber implements EventSubscriberInterface
 
         if ($exception instanceof HttpExceptionInterface) {
             $status = $exception->getStatusCode();
-            $key = self::STATUS_TRANSLATION_KEYS[$status] ?? 'bad_request';
+            $mapped = self::HTTP_EXCEPTION_MAP[$status] ?? self::HTTP_EXCEPTION_MAP[Response::HTTP_BAD_REQUEST];
             $model = new ExceptionModel(
                 title: Response::$statusTexts[$status] ?? 'Error',
                 status: $status,
-                detail: $this->translator->trans($key, domain: self::DOMAIN),
+                detail: $this->translator->trans($mapped['key'], domain: self::DOMAIN),
+                context: [ExceptionModel::UUID => $mapped['uuid']->value],
             );
 
             return new Response(

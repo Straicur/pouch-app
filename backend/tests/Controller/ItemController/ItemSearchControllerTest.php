@@ -91,6 +91,47 @@ class ItemSearchControllerTest extends WebTest
         self::assertSame($item['id'], $items[0]['id']);
     }
 
+    // "%" in a search term must match a literal "%", not act as an ILIKE
+    // wildcard — otherwise searching for a tag literally named "50%off"
+    // would also match an unrelated "50xoff" tag (any single character where
+    // the "%" sits). See ItemRepository::escapeLikeWildcards().
+    public function testSearchTreatsPercentInQueryAsALiteralCharacter(): void
+    {
+        $this->authAsUser();
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/notes',
+            content: json_encode(['categoryId' => $this->category->getId(), 'content' => 'literal percent item']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+        $literalItem = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        $this->webClient->request(
+            method: Request::METHOD_PUT,
+            uri: sprintf('/api/items/%d/tags', $literalItem['id']),
+            content: json_encode(['tags' => ['50%off']]),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/notes',
+            content: json_encode(['categoryId' => $this->category->getId(), 'content' => 'unrelated wildcard-shaped item']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+        $wildcardShapedItem = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        $this->webClient->request(
+            method: Request::METHOD_PUT,
+            uri: sprintf('/api/items/%d/tags', $wildcardShapedItem['id']),
+            content: json_encode(['tags' => ['50xoff']]),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+
+        $items = $this->search('50%off');
+        $ids = array_column($items, 'id');
+        self::assertContains($literalItem['id'], $ids);
+        self::assertNotContains($wildcardShapedItem['id'], $ids);
+    }
+
     public function testSearchMatchesByNoteContent(): void
     {
         $this->authAsUser();

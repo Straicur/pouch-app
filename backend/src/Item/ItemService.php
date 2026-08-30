@@ -8,6 +8,7 @@ use App\Category\CategoryServiceInterface;
 use App\Entity\Item;
 use App\Enum\ItemProcessingStatus;
 use App\Enum\ItemType;
+use App\Exception\StorageException;
 use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadRequestException;
 use App\ExceptionManagement\Exceptions\ApiException\ConflictException\ConflictException;
 use App\ExceptionManagement\Exceptions\ApiException\NotFoundException\NotFoundException;
@@ -21,6 +22,7 @@ use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Override;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Uid\Uuid;
 use Symfony\Contracts\Translation\TranslatorInterface;
@@ -58,6 +60,7 @@ class ItemService implements ItemServiceInterface
         private readonly MessageBusInterface $messageBus,
         private readonly TranslatorInterface $translator,
         private readonly Connection $connection,
+        private readonly LoggerInterface $logger,
     ) {}
 
     #[Override]
@@ -279,6 +282,10 @@ class ItemService implements ItemServiceInterface
      * operations, so the follow-up lookup goes through the raw DBAL
      * connection ($this->connection) instead of the (now unusable) repository.
      *
+     * The file itself is already sitting in storage by the time this runs
+     * (uploadToStorage() happens before this is called) — a rejected save
+     * must not leave it there orphaned with nothing in the DB pointing at it.
+     *
      * @throws ConflictException
      */
     private function saveNewItemOrConflict(Item $item): void
@@ -286,6 +293,18 @@ class ItemService implements ItemServiceInterface
         try {
             $this->itemRepository->save($item);
         } catch (UniqueConstraintViolationException) {
+            $storageKey = $item->getStorageKey();
+            if (null !== $storageKey) {
+                try {
+                    $this->storageService->delete($storageKey);
+                } catch (StorageException $exception) {
+                    // Losing this race is already the unlikely case; failing
+                    // to clean up after it besides is logged, not fatal —
+                    // the 409 below still needs to reach the client either way.
+                    $this->logger->error(sprintf('Storage cleanup failed for orphaned key "%s": %s', $storageKey, $exception->getMessage()));
+                }
+            }
+
             $row = $this->connection->fetchAssociative(
                 'SELECT item_id, name FROM item WHERE content_hash = :hash AND trashed_at IS NULL',
                 ['hash' => $item->getContentHash()],
