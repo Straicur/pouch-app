@@ -9,6 +9,7 @@ use App\DTO\Request\ItemCreateNoteRequestDTO;
 use App\DTO\Request\ItemCreateRequestDTO;
 use App\DTO\Request\ItemCreateUrlRequestDTO;
 use App\DTO\Request\ItemUpdateNoteRequestDTO;
+use App\DTO\Request\ItemUpdateTagsRequestDTO;
 use App\DTO\Response\DownloadLinkResponseDTO;
 use App\DTO\Response\ItemResponseDTO;
 use App\Entity\Item;
@@ -26,6 +27,7 @@ use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\Unauth
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentException;
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentExceptionModel;
 use App\Item\ItemLifecycleOptions;
+use App\Item\ItemListFilter;
 use App\Item\ItemServiceInterface;
 use App\Security\AuthServiceInterface;
 use App\Security\SignedUrlServiceInterface;
@@ -50,11 +52,17 @@ use Symfony\Component\Serializer\Encoder\JsonEncoder;
 use Symfony\Component\Serializer\Exception\ExceptionInterface as SerializerExceptionInterface;
 use Symfony\Component\Serializer\SerializerInterface;
 
+use function array_filter;
+use function array_map;
+use function array_values;
+use function explode;
 use function fclose;
 use function fopen;
 use function is_resource;
 use function is_scalar;
+use function mb_strtolower;
 use function stream_copy_to_stream;
+use function trim;
 
 /**
  * Every mutating/metadata action checks auth first (401), then ItemVoter (403)
@@ -94,9 +102,13 @@ final class ItemController extends AbstractController
      */
     #[Route('/api/items', name: 'item_list', methods: [Request::METHOD_GET])]
     #[OA\Get(
-        description: 'List active (non-trashed) items, optionally filtered by category',
+        description: 'List active (non-trashed) items, optionally filtered by category/favorite/tags, or full-text '
+            . 'searched across name, tags, note content, OCR text and OpenGraph title/description',
         parameters: [
             new OA\Parameter(name: 'categoryId', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
+            new OA\Parameter(name: 'favorite', in: 'query', required: false, schema: new OA\Schema(type: 'boolean')),
+            new OA\Parameter(name: 'tags', description: 'Comma-separated tag names, matches any', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'q', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(
@@ -118,7 +130,22 @@ final class ItemController extends AbstractController
         }
 
         $categoryId = $request->query->get('categoryId');
-        $items = ItemMapper::toResponseDTOList($this->itemService->list(null !== $categoryId ? (int) $categoryId : null));
+        $tags = $request->query->get('tags');
+        $query = $request->query->get('q');
+
+        $filter = new ItemListFilter(
+            categoryId: null !== $categoryId ? (int) $categoryId : null,
+            favoriteOnly: $request->query->getBoolean('favorite'),
+            tags: null !== $tags && '' !== $tags
+                ? array_values(array_filter(
+                    array_map(static fn (string $tag): string => mb_strtolower(trim($tag)), explode(',', $tags)),
+                    static fn (string $tag): bool => '' !== $tag,
+                ))
+                : [],
+            query: null !== $query && '' !== trim($query) ? trim($query) : null,
+        );
+
+        $items = ItemMapper::toResponseDTOList($this->itemService->list($filter));
 
         return new Response($this->serializer->serialize(data: $items, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
     }
@@ -131,7 +158,7 @@ final class ItemController extends AbstractController
      */
     #[Route('/api/items/{id}', name: 'item_get', requirements: ['id' => '\d+'], methods: [Request::METHOD_GET])]
     #[OA\Get(
-        description: 'Get one item\'s metadata',
+        description: "Get one item's metadata",
         responses: [
             new OA\Response(
                 response: 200,
@@ -179,7 +206,7 @@ final class ItemController extends AbstractController
                     new OA\Property(property: 'categoryId', type: 'integer'),
                     new OA\Property(property: 'name', type: 'string', nullable: true),
                     new OA\Property(property: 'keepForever', type: 'boolean'),
-                    new OA\Property(property: 'ttlPreset', type: 'string', nullable: true, enum: ['1h', '7d', '30d']),
+                    new OA\Property(property: 'ttlPreset', type: 'string', enum: ['1h', '7d', '30d'], nullable: true),
                     new OA\Property(property: 'expiresAt', type: 'string', format: 'date-time', nullable: true),
                 ],
             ),
@@ -240,7 +267,7 @@ final class ItemController extends AbstractController
                     new OA\Property(property: 'categoryId', type: 'integer'),
                     new OA\Property(property: 'name', type: 'string', nullable: true),
                     new OA\Property(property: 'keepForever', type: 'boolean'),
-                    new OA\Property(property: 'ttlPreset', type: 'string', nullable: true, enum: ['1h', '7d', '30d']),
+                    new OA\Property(property: 'ttlPreset', type: 'string', enum: ['1h', '7d', '30d'], nullable: true),
                     new OA\Property(property: 'expiresAt', type: 'string', format: 'date-time', nullable: true),
                 ],
             ),
@@ -392,7 +419,7 @@ final class ItemController extends AbstractController
      */
     #[Route('/api/items/{id}/note', name: 'item_update_note', requirements: ['id' => '\d+'], methods: [Request::METHOD_PATCH])]
     #[OA\Patch(
-        description: 'Edit a note\'s content',
+        description: "Edit a note's content",
         requestBody: new OA\RequestBody(
             required: true,
             content: new OA\JsonContent(ref: new Model(type: ItemUpdateNoteRequestDTO::class), type: 'object'),
@@ -405,7 +432,7 @@ final class ItemController extends AbstractController
             ),
         ]
     )]
-    #[OA\Response(response: 400, description: 'Item isn\'t a note, or blank/too-long content', content: new Model(type: BadRequestExceptionModel::class))]
+    #[OA\Response(response: 400, description: "Item isn't a note, or blank/too-long content", content: new Model(type: BadRequestExceptionModel::class))]
     #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
     #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
     public function updateNote(Request $request, int $id): Response
@@ -419,6 +446,114 @@ final class ItemController extends AbstractController
         $updateRequestDTO = $this->requestService->getRequestBodyContent($request, ItemUpdateNoteRequestDTO::class);
 
         $item = $this->itemService->updateNoteContent($id, $updateRequestDTO->getContent());
+
+        $responseDTO = ItemMapper::toResponseDTO($item);
+
+        return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
+    }
+
+    /**
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
+     * @throws NotFoundException
+     * @throws SerializerExceptionInterface
+     */
+    #[Route('/api/items/{id}/tags', name: 'item_update_tags', requirements: ['id' => '\d+'], methods: [Request::METHOD_PUT])]
+    #[OA\Put(
+        description: "Replace an item's full tag set (unknown tag names are created on the fly)",
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(ref: new Model(type: ItemUpdateTagsRequestDTO::class), type: 'object'),
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Success',
+                content: new Model(type: ItemResponseDTO::class),
+            ),
+        ]
+    )]
+    #[OA\Response(response: 400, description: 'A tag name is too long, or too many were given', content: new Model(type: BadRequestExceptionModel::class))]
+    #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
+    #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
+    public function updateTags(Request $request, int $id): Response
+    {
+        $this->authService->getUserFromAccessToken();
+
+        if (false === $this->isGranted(ItemVoter::EDIT)) {
+            throw new ForbiddenException();
+        }
+
+        $updateRequestDTO = $this->requestService->getRequestBodyContent($request, ItemUpdateTagsRequestDTO::class);
+
+        $item = $this->itemService->replaceTags($id, $updateRequestDTO->getTags());
+
+        $responseDTO = ItemMapper::toResponseDTO($item);
+
+        return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
+    }
+
+    /**
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
+     * @throws NotFoundException
+     * @throws SerializerExceptionInterface
+     */
+    #[Route('/api/items/{id}/favorite', name: 'item_mark_favorite', requirements: ['id' => '\d+'], methods: [Request::METHOD_PUT])]
+    #[OA\Put(
+        description: 'Mark an item as favorite',
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Success',
+                content: new Model(type: ItemResponseDTO::class),
+            ),
+        ]
+    )]
+    #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
+    public function markFavorite(int $id): Response
+    {
+        return $this->setFavoriteResponse($id, true);
+    }
+
+    /**
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
+     * @throws NotFoundException
+     * @throws SerializerExceptionInterface
+     */
+    #[Route('/api/items/{id}/favorite', name: 'item_unmark_favorite', requirements: ['id' => '\d+'], methods: [Request::METHOD_DELETE])]
+    #[OA\Delete(
+        description: 'Unmark an item as favorite',
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Success',
+                content: new Model(type: ItemResponseDTO::class),
+            ),
+        ]
+    )]
+    #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
+    public function unmarkFavorite(int $id): Response
+    {
+        return $this->setFavoriteResponse($id, false);
+    }
+
+    /**
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
+     * @throws NotFoundException
+     * @throws SerializerExceptionInterface
+     */
+    private function setFavoriteResponse(int $id, bool $favorite): Response
+    {
+        $this->authService->getUserFromAccessToken();
+
+        if (false === $this->isGranted(ItemVoter::EDIT)) {
+            throw new ForbiddenException();
+        }
+
+        $item = $this->itemService->setFavorite($id, $favorite);
 
         $responseDTO = ItemMapper::toResponseDTO($item);
 
@@ -695,6 +830,7 @@ final class ItemController extends AbstractController
         if (null !== $size) {
             $response->headers->set('Content-Length', (string) $size);
         }
+
         if (null !== $downloadFilename) {
             $response->headers->set('Content-Disposition', HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_ATTACHMENT, $downloadFilename));
         }

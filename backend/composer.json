@@ -55,7 +55,6 @@
     },
     "require-dev": {
         "dama/doctrine-test-bundle": "^8.6",
-        "ext-xdebug": "*",
         "doctrine/doctrine-fixtures-bundle": "^4.3",
         "friendsofphp/php-cs-fixer": "^3.93",
         "kubawerlos/php-cs-fixer-custom-fixers": "^3.35",

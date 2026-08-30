@@ -80,8 +80,21 @@ interface ItemServiceInterface
     /**
      * @return list<Item>
      */
-    public function list(?int $categoryId): array;
+    public function list(ItemListFilter $filter): array;
 
     /** @throws NotFoundException */
     public function delete(int $id): void;
+
+    /** @throws NotFoundException */
+    public function setFavorite(int $id, bool $favorite): Item;
+
+    /**
+     * Replaces the item's full tag set — see Item::setTags().
+     *
+     * @param list<string> $tagNames
+     *
+     * @throws NotFoundException
+     * @throws BadRequestException if a tag name is too long or too many are given
+     */
+    public function replaceTags(int $id, array $tagNames): Item;
 }

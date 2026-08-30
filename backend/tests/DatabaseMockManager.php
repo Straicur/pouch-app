@@ -84,4 +84,14 @@ class DatabaseMockManager
             expire: $configService->getAccessTokenTimeToLive(),
         );
     }
+
+    public function createRefreshToken(User $user): string
+    {
+        /**
+         * @var TokenService $tokenService
+         */
+        $tokenService = $this->getService(TokenService::class);
+
+        return $tokenService->createRefreshToken($user)->getRefreshToken();
+    }
 }

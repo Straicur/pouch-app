@@ -50,6 +50,7 @@ class CategoryService implements CategoryServiceInterface
     {
         $category = $this->getById($id);
         $category->setName($name);
+
         $this->categoryRepository->save($category);
 
         return $category;

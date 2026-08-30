@@ -31,13 +31,13 @@ final class OcrService implements OcrServiceInterface
         } catch (TesseractNotFoundException $exception) {
             // A missing binary is a real infra problem — worth surfacing/retrying,
             // unlike a photo that simply has no text in it.
-            throw new RuntimeException(sprintf('OCR failed for "%s": %s', $imagePath, $exception->getMessage()), previous: $exception);
+            throw new RuntimeException(sprintf('OCR failed for "%s": %s', $imagePath, $exception->getMessage()), $exception->getCode(), previous: $exception);
         } catch (UnsuccessfulCommandException) {
             // Tesseract exits this way (no output file at all) on images with no
             // detectable text — a blank photo isn't an OCR failure.
             return '';
         } catch (TesseractOcrException $exception) {
-            throw new RuntimeException(sprintf('OCR failed for "%s": %s', $imagePath, $exception->getMessage()), previous: $exception);
+            throw new RuntimeException(sprintf('OCR failed for "%s": %s', $imagePath, $exception->getMessage()), $exception->getCode(), previous: $exception);
         }
     }
 }

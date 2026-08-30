@@ -6,6 +6,7 @@ namespace App\Controller\Api;
 
 use App\Security\CookieService;
 use App\Security\CookieServiceInterface;
+use App\Security\TokenServiceInterface;
 use OpenApi\Attributes as OA;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
@@ -19,6 +20,7 @@ final class LogoutController extends AbstractController
     public function __construct(
         private readonly CookieServiceInterface $cookieService,
         private readonly TokenStorageInterface $tokenStorage,
+        private readonly TokenServiceInterface $tokenService,
     ) {}
 
     #[Route('/api/logout', name: 'logout', methods: [Request::METHOD_POST])]
@@ -38,6 +40,13 @@ final class LogoutController extends AbstractController
         $session = $request->getSession();
         if ($session->isStarted()) {
             $session->invalidate();
+        }
+
+        $refreshToken = $request->cookies->get(CookieService::REFRESH_TOKEN);
+        if (null !== $refreshToken) {
+            // Otherwise the DB row outlives the cookie: a copy of the token
+            // captured before logout would still be accepted at /api/refresh.
+            $this->tokenService->revokeRefreshToken($refreshToken);
         }
 
         $this->tokenStorage->setToken(null);

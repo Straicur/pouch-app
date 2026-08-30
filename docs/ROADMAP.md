@@ -159,16 +159,27 @@ karcie (zweryfikowane zrzutem ekranu z prawdziwej przeglądarki).
 Spina wszystkie 4 typy w jedno.
 
 **Zakres:**
-- [ ] Encja `Tag` (M:N do Item), przypisywanie/filtrowanie.
-- [ ] Ulubione + widok "ostatnio dodane".
-- [ ] Indeks `tsvector` łączący: nazwę, tagi, treść notatki, tekst OCR, tytuł/opis
+- [x] Encja `Tag` (M:N do Item), przypisywanie/filtrowanie.
+- [x] Ulubione + widok "ostatnio dodane".
+- [x] Indeks `tsvector` łączący: nazwę, tagi, treść notatki, tekst OCR, tytuł/opis
       OpenGraph — jedno zapytanie po wszystkim.
 
 **Testy kodowe:** integration test wyszukiwarki — zapytanie trafiające przez każdy
 z kanałów (nazwa/tag/notatka/OCR/OpenGraph) osobno.
+✅ `backend/tests/Controller/ItemController/ItemSearchControllerTest.php` (po jednym
+teście na kanał: nazwa/tag/notatka/OCR/OpenGraph, plus test łączenia `q` z filtrem
+kategorii), `backend/tests/Controller/ItemController/ItemTagFavoriteControllerTest.php`
+(CRUD tagów, normalizacja wielkości liter, limit 20 tagów, ulubione, filtrowanie po
+tagu/ulubionych, macierz uprawnień gość/user).
 
 **Test ręczny:** poszukać czegoś po fragmencie tekstu z OCR-owanego zrzutu ekranu i
 po tagu, sprawdzić czy trafia.
+✅ zweryfikowane w prawdziwej przeglądarce (Playwright): dodanie notatki → oznaczenie
+jako ulubione (★) → przypisanie tagów ("demo", "part6") → wyszukanie po unikalnym
+słowie z treści notatki (trafia) → filtr "Tylko ulubione" (trafia, zwraca tylko
+oznaczony item). Kanały OCR i OpenGraph zweryfikowane w testach integracyjnych
+(rzeczywisty tesseract / bezpośrednio wstawiony item z metadanymi OG, bez zależności
+od sieci — patrz komentarz w teście).
 
 ---
 
@@ -242,3 +253,29 @@ kodu, albo osobno gdy będzie chwila:
 - [ ] **Brak prod stage dla backendu** — `backend/Dockerfile` ma tylko `base`+`dev`
       (frontend ma `prod` z nginx, backend nie). Potrzebne przed pierwszym realnym
       wdrożeniem, nie wcześniej.
+- [ ] **Usunięcie kategorii z itemami w środku kasuje je z bazy na twardo, z
+      pominięciem kosza** — `CategoryService::delete()` po prostu usuwa rekord i
+      liczy na `ON DELETE CASCADE`; `ItemGarbageCollector::purgeTrash()` (jedyne
+      miejsce, które faktycznie kasuje pliki z S3/MinIO) nigdy nie dostaje szansy
+      zobaczyć te itemy — ich storage key przepada bezpowrotnie, plik zostaje
+      osierocony w buckecie. Do wyboru: (a) zablokować usuwanie kategorii, dopóki
+      są w niej aktywne itemy (najprostsze), albo (b) przed usunięciem kategorii
+      rekurencyjnie otrasz-ować wszystkie itemy w niej i jej podkategoriach, a
+      dopiero po realnym opróżnieniu (przez GC albo synchronicznie) skasować samą
+      kategorię. Wymaga świadomej decyzji UX, nie tylko poprawki kodu — stąd na
+      liście do zrobienia, a nie zrobione od razu.
+- [ ] **`GET /api/items` zwraca całą treść każdego itemu, bez paginacji** —
+      `ItemRepository::findActive()` ładuje wszystkie aktywne itemy naraz, a
+      `ItemMapper` dokleja do każdego pełny `extractedText`/`noteContent`. Przy
+      większej kolekcji jeden request to potencjalnie kilka-kilkanaście MB JSON-a —
+      kłóci się z założeniem mobile-first. Potrzebny osobny DTO "podsumowania" (bez
+      pełnej treści) + paginacja na liście; pełna treść tylko na endpoincie
+      szczegółów pojedynczego itemu. Naturalnie pasuje do Części 6 (wyszukiwarka i
+      tak potrzebuje paginacji).
+- [ ] **`UrlValidator` świadomie nie chroni przed SSRF** (prywatne/localne IP,
+      metadata endpoints w chmurze) — udokumentowana decyzja z Części 3 ("self-hosted,
+      single/few-user, pełne hardening zostawione poza MVP"), nie przeoczenie.
+      Do rewizji, jeśli/gdy Pouch ma być kiedyś wystawiony publicznie z rejestracją
+      dla wielu niezaufanych użytkowników — wtedy dorobić rozwiązywanie DNS i
+      blokadę adresów prywatnych/loopback/link-local na każdym przekierowaniu, nie
+      tylko na wejściowym URL-u.

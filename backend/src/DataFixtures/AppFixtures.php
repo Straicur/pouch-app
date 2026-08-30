@@ -32,10 +32,12 @@ class AppFixtures extends Fixture implements FixtureGroupInterface
         // against Swagger (/api/doc) — same password for all three, for convenience.
         $admin = new User('admin@pouch.test', PasswordHasher::hash('zaq1@WSX'));
         $admin->setRoles(['ROLE_ADMIN']);
+
         $this->userRepository->saveUser(user: $admin);
 
         $guest = new User('guest@pouch.test', PasswordHasher::hash('zaq1@WSX'));
         $guest->setRoles(['ROLE_GUEST']);
+
         $this->userRepository->saveUser(user: $guest);
 
         $manager->flush();

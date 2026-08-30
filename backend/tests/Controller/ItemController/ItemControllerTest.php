@@ -103,6 +103,26 @@ class ItemControllerTest extends WebTest
         $this->responseTool->testBadRequestResponseData($this->webClient);
     }
 
+    // Extension alone is trivial to fake (rename anything to .txt) — the
+    // real content's MIME (sniffed server-side, not the client-declared one)
+    // has to be checked too (product doc: explicit allow-list of extensions
+    // *and* MIME types). "text/html" isn't in the allow-list, unlike plain
+    // text — this .txt actually contains an HTML document.
+    public function testUploadRejectsDisallowedMimeType(): void
+    {
+        $this->authAsUser();
+
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/files',
+            parameters: ['categoryId' => (string) $this->category->getId()],
+            files: ['file' => $this->createUploadedFile('<html><body>hi</body></html>', 'looks-like.txt', 'text/html')],
+        );
+
+        self::assertResponseStatusCodeSame(Response::HTTP_BAD_REQUEST);
+        $this->responseTool->testBadRequestResponseData($this->webClient);
+    }
+
     public function testUploadWithMissingCategoryReturnsNotFound(): void
     {
         $this->authAsUser();

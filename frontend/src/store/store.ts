@@ -3,6 +3,7 @@ import { authApi } from "./api/authApi";
 import { categoryApi } from "./api/categoryApi";
 import { itemApi } from "./api/itemApi";
 import { sessionApi } from "./api/sessionApi";
+import { tagApi } from "./api/tagApi";
 
 export const store = configureStore({
   reducer: {
@@ -10,6 +11,7 @@ export const store = configureStore({
     [sessionApi.reducerPath]: sessionApi.reducer,
     [itemApi.reducerPath]: itemApi.reducer,
     [categoryApi.reducerPath]: categoryApi.reducer,
+    [tagApi.reducerPath]: tagApi.reducer,
   },
   devTools: import.meta.env.MODE !== "production",
   middleware: (getDefaultMiddleware) =>
@@ -18,6 +20,7 @@ export const store = configureStore({
       sessionApi.middleware,
       itemApi.middleware,
       categoryApi.middleware,
+      tagApi.middleware,
     ),
 });
 

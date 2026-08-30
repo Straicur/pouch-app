@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
-import { type Item, useGetItemThumbnailLinkMutation, useUpdateNoteMutation } from "../store/api/itemApi";
+import {
+  type Item,
+  useGetItemThumbnailLinkMutation,
+  useMarkFavoriteMutation,
+  useUnmarkFavoriteMutation,
+  useUpdateNoteMutation,
+  useUpdateTagsMutation,
+} from "../store/api/itemApi";
 
 interface ItemCardProps {
   item: Item;
@@ -95,6 +102,105 @@ function NoteCardBody({ item }: NoteCardBodyProps) {
   );
 }
 
+interface FavoriteButtonProps {
+  item: Item;
+}
+
+function FavoriteButton({ item }: FavoriteButtonProps) {
+  const { t } = useTranslation();
+  const [markFavorite] = useMarkFavoriteMutation();
+  const [unmarkFavorite] = useUnmarkFavoriteMutation();
+
+  const toggle = () => {
+    void (item.favorite ? unmarkFavorite(item.id) : markFavorite(item.id));
+  };
+
+  return (
+    <button
+      type="button"
+      className="item-card-favorite"
+      onClick={toggle}
+      aria-label={item.favorite ? t("tags.unmarkFavorite") : t("tags.markFavorite")}
+      aria-pressed={item.favorite}
+    >
+      {item.favorite ? "★" : "☆"}
+    </button>
+  );
+}
+
+interface TagEditorProps {
+  item: Item;
+}
+
+function TagEditor({ item }: TagEditorProps) {
+  const { t } = useTranslation();
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(item.tags.join(", "));
+  const [updateTags, { isLoading }] = useUpdateTagsMutation();
+  const [error, setError] = useState<string | null>(null);
+
+  const startEditing = () => {
+    setDraft(item.tags.join(", "));
+    setError(null);
+    setIsEditing(true);
+  };
+
+  const handleSave = async () => {
+    setError(null);
+
+    const tags = draft
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter((tag) => "" !== tag);
+
+    try {
+      await updateTags({ id: item.id, tags }).unwrap();
+      setIsEditing(false);
+    } catch {
+      setError(t("tags.updateError"));
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <div className="item-card-tags-edit">
+        <input
+          type="text"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder={t("tags.tagsPlaceholder")}
+        />
+        {null !== error && <p className="form-error">{error}</p>}
+        <div className="item-card-tags-actions">
+          <button type="button" onClick={handleSave} disabled={isLoading}>
+            {isLoading ? t("tags.saving") : t("tags.save")}
+          </button>
+          <button type="button" onClick={() => setIsEditing(false)} disabled={isLoading}>
+            {t("tags.cancel")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="item-card-tags">
+      {item.tags.length > 0 ? (
+        item.tags.map((tag) => (
+          <span key={tag} className="item-card-tag-chip">
+            {tag}
+          </span>
+        ))
+      ) : (
+        <span className="item-card-tag-chip item-card-tag-chip-empty">{t("tags.noTags")}</span>
+      )}
+      <button type="button" className="item-card-tags-edit-button" onClick={startEditing}>
+        {t("tags.editTags")}
+      </button>
+    </div>
+  );
+}
+
 export function ItemCard({ item }: ItemCardProps) {
   const { t } = useTranslation();
   const thumbnailUrl = useItemThumbnailUrl(item);
@@ -105,7 +211,10 @@ export function ItemCard({ item }: ItemCardProps) {
     <article className="item-card">
       {null !== thumbnailUrl && <img src={thumbnailUrl} alt="" className="item-card-thumbnail" />}
       <div className="item-card-body">
-        <p className="item-card-type">{t(`items.type.${item.type}`)}</p>
+        <div className="item-card-header">
+          <p className="item-card-type">{t(`items.type.${item.type}`)}</p>
+          <FavoriteButton item={item} />
+        </div>
         <h3 className="item-card-title">
           {"url" === item.type && null !== item.url ? (
             <a href={item.url} target="_blank" rel="noreferrer">
@@ -117,6 +226,7 @@ export function ItemCard({ item }: ItemCardProps) {
         </h3>
         {null !== description && <p className="item-card-description">{description}</p>}
         {"note" === item.type && <NoteCardBody item={item} />}
+        <TagEditor item={item} />
         {"pending" === item.processingStatus && <p className="item-card-status">{t("items.processing")}</p>}
         {"failed" === item.processingStatus && (
           <p className="item-card-status item-card-status-error">

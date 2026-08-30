@@ -22,6 +22,11 @@ class ItemResponseDTO
         private readonly ?string $pageDescription,
         private readonly ?string $extractedText,
         private readonly ?string $noteContent,
+        private readonly bool $favorite,
+        /**
+         * @var list<string>
+         */
+        private readonly array $tags,
         private readonly bool $keepForever,
         private readonly ?string $expiresAt,
         private readonly ?string $trashedAt,
@@ -101,6 +106,19 @@ class ItemResponseDTO
     public function getNoteContent(): ?string
     {
         return $this->noteContent;
+    }
+
+    public function isFavorite(): bool
+    {
+        return $this->favorite;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getTags(): array
+    {
+        return $this->tags;
     }
 
     public function isKeepForever(): bool

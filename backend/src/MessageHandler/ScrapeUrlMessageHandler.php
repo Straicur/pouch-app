@@ -23,6 +23,7 @@ use function is_resource;
 use function is_string;
 use function sprintf;
 use function str_starts_with;
+use function strlen;
 use function sys_get_temp_dir;
 use function tempnam;
 use function unlink;
@@ -34,17 +35,22 @@ use function unlink;
  * that created the item (see ItemService::createUrl()).
  */
 #[AsMessageHandler]
-final class ScrapeUrlMessageHandler
+final readonly class ScrapeUrlMessageHandler
 {
     private const string THUMBNAIL_STORAGE_PREFIX = 'thumbnails';
 
+    // Guards against a malicious/misbehaving OG image URL streaming
+    // unbounded data at the worker and filling its disk — a normal page
+    // thumbnail is nowhere near this size.
+    private const int MAX_THUMBNAIL_DOWNLOAD_BYTES = 15 * 1024 * 1024;
+
     public function __construct(
-        private readonly ItemRepository $itemRepository,
-        private readonly OpenGraphScraperInterface $scraper,
-        private readonly ThumbnailServiceInterface $thumbnailService,
-        private readonly StorageServiceInterface $storageService,
-        private readonly HttpClientInterface $httpClient,
-        private readonly LoggerInterface $logger,
+        private ItemRepository $itemRepository,
+        private OpenGraphScraperInterface $scraper,
+        private ThumbnailServiceInterface $thumbnailService,
+        private StorageServiceInterface $storageService,
+        private HttpClientInterface $httpClient,
+        private LoggerInterface $logger,
     ) {}
 
     public function __invoke(ScrapeUrlMessage $message): void
@@ -97,6 +103,11 @@ final class ScrapeUrlMessageHandler
                 return null;
             }
 
+            $declaredLength = $response->getHeaders()['content-length'][0] ?? null;
+            if (null !== $declaredLength && self::MAX_THUMBNAIL_DOWNLOAD_BYTES < (int) $declaredLength) {
+                return null;
+            }
+
             $downloadedPath = tempnam(sys_get_temp_dir(), 'pouch-og-image-');
             if (false === $downloadedPath) {
                 return null;
@@ -107,9 +118,24 @@ final class ScrapeUrlMessageHandler
                 return null;
             }
 
+            $downloadedBytes = 0;
+
             foreach ($this->httpClient->stream($response, 10) as $chunk) {
-                fwrite($output, $chunk->getContent());
+                $content = $chunk->getContent();
+                $downloadedBytes += strlen($content);
+
+                // A server can lie about (or omit) Content-Length, so the
+                // actual byte count read is the real guard, not just the
+                // declared-length check above.
+                if (self::MAX_THUMBNAIL_DOWNLOAD_BYTES < $downloadedBytes) {
+                    fclose($output);
+
+                    return null;
+                }
+
+                fwrite($output, $content);
             }
+
             fclose($output);
 
             $thumbnailPath = $this->thumbnailService->generate($downloadedPath, $mimeType);
@@ -130,6 +156,7 @@ final class ScrapeUrlMessageHandler
             if (is_string($downloadedPath)) {
                 @unlink($downloadedPath);
             }
+
             if (is_string($thumbnailPath)) {
                 @unlink($thumbnailPath);
             }

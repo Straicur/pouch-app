@@ -59,6 +59,7 @@ final class ThumbnailService implements ThumbnailServiceInterface
 
             throw new RuntimeException('Could not allocate color for thumbnail background');
         }
+
         imagefill($flattened, 0, 0, $white);
         imagecopyresampled($flattened, $resized, 0, 0, 0, 0, $targetWidth, $targetHeight, $targetWidth, $targetHeight);
         imagedestroy($resized);

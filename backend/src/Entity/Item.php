@@ -8,6 +8,8 @@ use App\Enum\ItemProcessingStatus;
 use App\Enum\ItemType;
 use App\Repository\ItemRepository;
 use DateTimeImmutable;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -23,9 +25,11 @@ use Doctrine\ORM\Mapping as ORM;
  */
 #[ORM\Entity(repositoryClass: ItemRepository::class)]
 #[ORM\Table(name: 'item')]
-#[ORM\Index(fields: ['contentHash'], name: 'idx_item_content_hash')]
-#[ORM\Index(fields: ['expiresAt'], name: 'idx_item_expires_at')]
-#[ORM\Index(fields: ['trashedAt'], name: 'idx_item_trashed_at')]
+// content_hash's index is a hand-written partial unique index (active items
+// only — see Version20260830190000), which Doctrine's attributes can't
+// express, so it's intentionally not declared here.
+#[ORM\Index(name: 'idx_item_expires_at', fields: ['expiresAt'])]
+#[ORM\Index(name: 'idx_item_trashed_at', fields: ['trashedAt'])]
 class Item
 {
     #[ORM\Id]
@@ -96,6 +100,29 @@ class Item
     #[ORM\Column(name: 'note_content', type: Types::TEXT, nullable: true)]
     private ?string $noteContent = null;
 
+    // --- tags / favorites (Part 6) ---
+    //
+    // search_vector (name + note_content + extracted_text + page_title +
+    // page_description, GIN-indexed) isn't mapped here at all: it's a
+    // Postgres GENERATED STORED column with no Doctrine DBAL type, kept
+    // automatically in sync by the database itself — see the Part 6
+    // migration. ItemRepository queries it with raw SQL.
+
+    #[ORM\Column(name: 'is_favorite', type: Types::BOOLEAN, nullable: false, options: ['default' => false])]
+    private bool $isFavorite = false;
+
+    /**
+     * Unidirectional (see Tag) — Item is the owning side, and the only side
+     * that exists at all.
+     *
+     * @var Collection<int, Tag>
+     */
+    #[ORM\ManyToMany(targetEntity: Tag::class)]
+    #[ORM\JoinTable(name: 'item_tag')]
+    #[ORM\JoinColumn(name: 'item_id', referencedColumnName: 'item_id', onDelete: 'CASCADE')]
+    #[ORM\InverseJoinColumn(name: 'tag_id', referencedColumnName: 'tag_id', onDelete: 'CASCADE')]
+    private Collection $tags;
+
     // --- lifecycle (Part 3) ---
 
     #[ORM\Column(name: 'keep_forever', type: Types::BOOLEAN, nullable: false)]
@@ -125,6 +152,7 @@ class Item
         $this->expiresAt = $expiresAt;
         $this->processingStatus = $processingStatus;
         $this->createdAt = new DateTimeImmutable();
+        $this->tags = new ArrayCollection();
     }
 
     public function getId(): int
@@ -285,6 +313,40 @@ class Item
     public function getNoteContent(): ?string
     {
         return $this->noteContent;
+    }
+
+    public function isFavorite(): bool
+    {
+        return $this->isFavorite;
+    }
+
+    public function setFavorite(bool $favorite): static
+    {
+        $this->isFavorite = $favorite;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Tag>
+     */
+    public function getTags(): Collection
+    {
+        return $this->tags;
+    }
+
+    /**
+     * Replaces the full set at once — simpler for callers than diffing
+     * add/remove, and matches how the UI edits tags (one free-text field,
+     * not incremental add/remove buttons).
+     *
+     * @param list<Tag> $tags
+     */
+    public function setTags(array $tags): static
+    {
+        $this->tags = new ArrayCollection($tags);
+
+        return $this;
     }
 
     public function isKeepForever(): bool

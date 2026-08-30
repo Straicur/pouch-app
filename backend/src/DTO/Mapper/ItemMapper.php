@@ -6,7 +6,12 @@ namespace App\DTO\Mapper;
 
 use App\DTO\Response\ItemResponseDTO;
 use App\Entity\Item;
+use App\Entity\Tag;
 use DateTimeInterface;
+
+use function array_map;
+use function array_values;
+use function iterator_to_array;
 
 final class ItemMapper
 {
@@ -28,6 +33,11 @@ final class ItemMapper
             pageDescription: $item->getPageDescription(),
             extractedText: $item->getExtractedText(),
             noteContent: $item->getNoteContent(),
+            favorite: $item->isFavorite(),
+            tags: array_values(array_map(
+                static fn (Tag $tag): string => $tag->getName(),
+                iterator_to_array($item->getTags()),
+            )),
             keepForever: $item->isKeepForever(),
             expiresAt: $item->getExpiresAt()?->format(DateTimeInterface::ATOM),
             trashedAt: $item->getTrashedAt()?->format(DateTimeInterface::ATOM),
@@ -43,7 +53,7 @@ final class ItemMapper
     public static function toResponseDTOList(array $items): array
     {
         return array_map(
-            static fn (Item $item): ItemResponseDTO => self::toResponseDTO($item),
+            self::toResponseDTO(...),
             $items,
         );
     }

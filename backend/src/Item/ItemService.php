@@ -15,8 +15,11 @@ use App\Message\ProcessPhotoMessage;
 use App\Message\ScrapeUrlMessage;
 use App\Repository\ItemRepository;
 use App\Storage\StorageServiceInterface;
+use App\Tag\TagServiceInterface;
 use DateInterval;
 use DateTimeImmutable;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Override;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Uid\Uuid;
@@ -25,6 +28,8 @@ use Symfony\Contracts\Translation\TranslatorInterface;
 use function fclose;
 use function fopen;
 use function hash_file;
+use function is_array;
+use function is_numeric;
 use function is_resource;
 use function ltrim;
 use function mb_strlen;
@@ -49,8 +54,10 @@ class ItemService implements ItemServiceInterface
         private readonly ImageValidator $imageValidator,
         private readonly UrlValidator $urlValidator,
         private readonly NoteValidator $noteValidator,
+        private readonly TagServiceInterface $tagService,
         private readonly MessageBusInterface $messageBus,
         private readonly TranslatorInterface $translator,
+        private readonly Connection $connection,
     ) {}
 
     #[Override]
@@ -63,7 +70,7 @@ class ItemService implements ItemServiceInterface
         ItemLifecycleOptions $options,
     ): Item {
         $category = $this->categoryService->getById($categoryId);
-        $this->fileValidator->assertValid($originalFilename, $size);
+        $this->fileValidator->assertValid($originalFilename, $mimeType, $size);
         $contentHash = $this->assertNotDuplicate($tmpPath);
 
         $item = new Item(
@@ -78,7 +85,7 @@ class ItemService implements ItemServiceInterface
         $storageKey = $this->uploadToStorage($tmpPath, $originalFilename);
         $item->setFileData($originalFilename, $mimeType, $size, $storageKey, $contentHash);
 
-        $this->itemRepository->save($item);
+        $this->saveNewItemOrConflict($item);
 
         return $item;
     }
@@ -101,6 +108,7 @@ class ItemService implements ItemServiceInterface
             processingStatus: ItemProcessingStatus::PENDING,
         );
         $item->setUrl($url);
+
         $this->itemRepository->save($item);
 
         $this->messageBus->dispatch(new ScrapeUrlMessage($item->getId()));
@@ -118,7 +126,7 @@ class ItemService implements ItemServiceInterface
         ItemLifecycleOptions $options,
     ): Item {
         $category = $this->categoryService->getById($categoryId);
-        $this->imageValidator->assertValid($originalFilename, $size);
+        $this->imageValidator->assertValid($originalFilename, $mimeType, $size);
         $contentHash = $this->assertNotDuplicate($tmpPath);
 
         $item = new Item(
@@ -133,7 +141,7 @@ class ItemService implements ItemServiceInterface
         $storageKey = $this->uploadToStorage($tmpPath, $originalFilename);
         $item->setFileData($originalFilename, $mimeType, $size, $storageKey, $contentHash);
 
-        $this->itemRepository->save($item);
+        $this->saveNewItemOrConflict($item);
 
         $this->messageBus->dispatch(new ProcessPhotoMessage($item->getId()));
 
@@ -192,9 +200,9 @@ class ItemService implements ItemServiceInterface
     }
 
     #[Override]
-    public function list(?int $categoryId): array
+    public function list(ItemListFilter $filter): array
     {
-        return $this->itemRepository->findActive($categoryId);
+        return $this->itemRepository->findFiltered($filter);
     }
 
     #[Override]
@@ -202,7 +210,30 @@ class ItemService implements ItemServiceInterface
     {
         $item = $this->getById($id);
         $item->trash(new DateTimeImmutable());
+
         $this->itemRepository->save($item);
+    }
+
+    #[Override]
+    public function setFavorite(int $id, bool $favorite): Item
+    {
+        $item = $this->getById($id);
+        $item->setFavorite($favorite);
+
+        $this->itemRepository->save($item);
+
+        return $item;
+    }
+
+    #[Override]
+    public function replaceTags(int $id, array $tagNames): Item
+    {
+        $item = $this->getById($id);
+        $item->setTags($this->tagService->resolveTags($tagNames));
+
+        $this->itemRepository->save($item);
+
+        return $item;
     }
 
     /**
@@ -218,16 +249,58 @@ class ItemService implements ItemServiceInterface
 
         $duplicate = $this->itemRepository->findByContentHash($contentHash);
         if (null !== $duplicate) {
-            throw new ConflictException(
-                message: $this->translator->trans('item.duplicate_content', [
-                    '%id%'   => $duplicate->getId(),
-                    '%name%' => $duplicate->getName(),
-                ], domain: 'exceptions'),
-                conflictingItemId: $duplicate->getId(),
-            );
+            $this->throwDuplicateConflict($duplicate);
         }
 
         return $contentHash;
+    }
+
+    /**
+     * @throws ConflictException
+     */
+    private function throwDuplicateConflict(Item $duplicate): never
+    {
+        throw new ConflictException(
+            message: $this->translator->trans('item.duplicate_content', [
+                '%id%'   => $duplicate->getId(),
+                '%name%' => $duplicate->getName(),
+            ], domain: 'exceptions'),
+            conflictingItemId: $duplicate->getId(),
+        );
+    }
+
+    /**
+     * Persists a freshly-uploaded item, turning the DB's partial unique index
+     * on content_hash into the same ConflictException the pre-check above
+     * throws — closing the race where two uploads of the same content both
+     * pass that SELECT before either flushes.
+     *
+     * A failed flush leaves Doctrine's EntityManager closed for further ORM
+     * operations, so the follow-up lookup goes through the raw DBAL
+     * connection ($this->connection) instead of the (now unusable) repository.
+     *
+     * @throws ConflictException
+     */
+    private function saveNewItemOrConflict(Item $item): void
+    {
+        try {
+            $this->itemRepository->save($item);
+        } catch (UniqueConstraintViolationException) {
+            $row = $this->connection->fetchAssociative(
+                'SELECT item_id, name FROM item WHERE content_hash = :hash AND trashed_at IS NULL',
+                ['hash' => $item->getContentHash()],
+            );
+
+            $conflictingItemId = is_array($row) && is_numeric($row['item_id'] ?? null) ? (int) $row['item_id'] : null;
+
+            throw new ConflictException(
+                message: $this->translator->trans('item.duplicate_content', [
+                    '%id%'   => $conflictingItemId ?? '?',
+                    '%name%' => is_array($row) ? ($row['name'] ?? '?') : '?',
+                ], domain: 'exceptions'),
+                conflictingItemId: $conflictingItemId,
+            );
+        }
     }
 
     /**

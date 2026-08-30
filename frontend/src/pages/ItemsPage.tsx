@@ -1,12 +1,15 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { ItemCard } from "../components/ItemCard";
+import { ItemFilters } from "../components/ItemFilters";
 import { NoteForm } from "../components/NoteForm";
-import { useListItemsQuery } from "../store/api/itemApi";
+import { type ItemListParams, useListItemsQuery } from "../store/api/itemApi";
 
 export function ItemsPage() {
   const { t } = useTranslation();
-  const { data: items, isLoading, error } = useListItemsQuery(undefined);
+  const [filters, setFilters] = useState<ItemListParams>({});
+  const { data: items, isLoading, error } = useListItemsQuery(filters);
 
   return (
     <main className="items-page">
@@ -14,6 +17,8 @@ export function ItemsPage() {
       <Link to="/">{t("items.homeLink")}</Link>
 
       <NoteForm />
+
+      <ItemFilters filters={filters} onChange={setFilters} />
 
       {isLoading && <p>{t("common.loading")}</p>}
       {undefined !== error && <p className="form-error">{t("items.fetchError")}</p>}

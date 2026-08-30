@@ -20,16 +20,16 @@ use function tempnam;
 use function unlink;
 
 #[AsMessageHandler]
-final class ProcessPhotoMessageHandler
+final readonly class ProcessPhotoMessageHandler
 {
     private const string THUMBNAIL_STORAGE_PREFIX = 'thumbnails';
 
     public function __construct(
-        private readonly ItemRepository $itemRepository,
-        private readonly StorageServiceInterface $storageService,
-        private readonly ThumbnailServiceInterface $thumbnailService,
-        private readonly OcrServiceInterface $ocrService,
-        private readonly LoggerInterface $logger,
+        private ItemRepository $itemRepository,
+        private StorageServiceInterface $storageService,
+        private ThumbnailServiceInterface $thumbnailService,
+        private OcrServiceInterface $ocrService,
+        private LoggerInterface $logger,
     ) {}
 
     public function __invoke(ProcessPhotoMessage $message): void

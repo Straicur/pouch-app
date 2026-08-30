@@ -30,7 +30,7 @@ final class CategoryMapper
     public static function toResponseDTOList(array $categories): array
     {
         return array_map(
-            static fn (Category $category): CategoryResponseDTO => self::toResponseDTO($category),
+            self::toResponseDTO(...),
             $categories,
         );
     }

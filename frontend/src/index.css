@@ -153,12 +153,100 @@ button:focus-visible {
   gap: 0.35rem;
 }
 
+.item-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
 .item-card-type {
   margin: 0;
   font-size: 0.75em;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   opacity: 0.7;
+}
+
+.item-card-favorite {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 1.2em;
+  line-height: 1;
+  cursor: pointer;
+  color: inherit;
+}
+
+.item-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.item-card-tag-chip {
+  font-size: 0.75em;
+  padding: 0.15em 0.6em;
+  border-radius: 999px;
+  border: 1px solid #666;
+  opacity: 0.85;
+}
+
+.item-card-tag-chip-empty {
+  border-style: dashed;
+  opacity: 0.5;
+}
+
+.item-card-tags-edit-button {
+  font-size: 0.75em;
+  padding: 0.15em 0.6em;
+}
+
+.item-card-tags-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.item-card-tags-edit input {
+  padding: 0.5em 0.7em;
+  border-radius: 8px;
+  border: 1px solid #666;
+  font-size: 0.9em;
+  font-family: inherit;
+  background-color: inherit;
+  color: inherit;
+}
+
+.item-card-tags-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.item-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.item-filters input[type="search"],
+.item-filters input[type="text"] {
+  padding: 0.5em 0.7em;
+  border-radius: 8px;
+  border: 1px solid #666;
+  font-size: 0.9em;
+  font-family: inherit;
+  background-color: inherit;
+  color: inherit;
+}
+
+.item-filters-favorite {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9em;
 }
 
 .item-card-title {

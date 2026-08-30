@@ -86,6 +86,27 @@ class ItemCreatePhotoControllerTest extends WebTest
         $this->responseTool->testBadRequestResponseData($this->webClient);
     }
 
+    // A disallowed extension is caught first regardless of MIME (see the
+    // test above) — this one keeps a valid extension so the MIME check
+    // itself, not the extension one, is what has to reject it.
+    public function testUploadPhotoRejectsMismatchedMimeType(): void
+    {
+        $this->authAsUser();
+
+        $path = tempnam(sys_get_temp_dir(), 'pouch-photo-controller-test-') . '.png';
+        file_put_contents($path, 'not actually a png');
+
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/photos',
+            parameters: ['categoryId' => (string) $this->category->getId()],
+            files: ['file' => new UploadedFile($path, 'fake.png', 'text/plain', null, true)],
+        );
+
+        self::assertResponseStatusCodeSame(Response::HTTP_BAD_REQUEST);
+        $this->responseTool->testBadRequestResponseData($this->webClient);
+    }
+
     public function testThumbnailLinkStreamsBackAJpeg(): void
     {
         $this->authAsUser();

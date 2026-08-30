@@ -52,4 +52,13 @@ final readonly class TokenService implements TokenServiceInterface
 
         return $refreshToken;
     }
+
+    #[Override]
+    public function revokeRefreshToken(string $refreshToken): void
+    {
+        $token = $this->refreshTokenManager->get($refreshToken);
+        if (null !== $token) {
+            $this->refreshTokenManager->delete($token);
+        }
+    }
 }

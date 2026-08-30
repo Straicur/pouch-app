@@ -69,7 +69,7 @@ final readonly class OpenGraphScraper implements OpenGraphScraperInterface
                 }
             }
         } catch (Throwable $exception) {
-            throw new RuntimeException(sprintf('Could not fetch "%s": %s', $url, $exception->getMessage()), previous: $exception);
+            throw new RuntimeException(sprintf('Could not fetch "%s": %s', $url, $exception->getMessage()), (int) $exception->getCode(), previous: $exception);
         }
 
         return $html;

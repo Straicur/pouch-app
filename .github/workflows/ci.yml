@@ -36,10 +36,8 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: "8.4"
-          # xdebug: composer.json's require-dev lists ext-xdebug, so composer
-          # install needs it present even though nothing here uses it for coverage.
           # gd: Part 4 photo thumbnails.
-          extensions: ctype, iconv, intl, pdo_pgsql, pgsql, zip, curl, gmp, gd, xdebug
+          extensions: ctype, iconv, intl, pdo_pgsql, pgsql, zip, curl, gmp, gd
           coverage: none
           tools: composer:v2
 
@@ -99,6 +97,9 @@ jobs:
           php bin/console debug:container --format=xml --env=dev > var/cache/dev/App_KernelDevDebugContainer.xml
           composer phpstan
 
+      - name: rector (dry-run)
+        run: composer rector
+
       - name: phpunit
         run: php bin/phpunit
 
@@ -122,5 +123,7 @@ jobs:
       - run: npm ci
 
       - run: npm run check
+
+      - run: npm run build
 
       - run: npm test

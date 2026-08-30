@@ -9,7 +9,10 @@ export const ApiEndpoints = {
   ITEM_NOTE: (id: number) => `/api/items/${id}/note`,
   ITEM_THUMBNAIL_LINK: (id: number) => `/api/items/${id}/thumbnail-link`,
   ITEM_DOWNLOAD_LINK: (id: number) => `/api/items/${id}/download-link`,
+  ITEM_TAGS: (id: number) => `/api/items/${id}/tags`,
+  ITEM_FAVORITE: (id: number) => `/api/items/${id}/favorite`,
   CATEGORIES: "/api/categories",
+  TAGS: "/api/tags",
 } as const;
 
 // A 401 here must not trigger a refresh-and-retry (wrong credentials / dead refresh token).

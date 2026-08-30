@@ -21,10 +21,19 @@ export interface Item {
   pageDescription: string | null;
   extractedText: string | null;
   noteContent: string | null;
+  favorite: boolean;
+  tags: string[];
   keepForever: boolean;
   expiresAt: string | null;
   trashedAt: string | null;
   createdAt: string;
+}
+
+export interface ItemListParams {
+  categoryId?: number;
+  favorite?: boolean;
+  tags?: string[];
+  q?: string;
 }
 
 export interface SignedLink {
@@ -43,16 +52,26 @@ export interface UpdateNoteRequest {
   content: string;
 }
 
+export interface UpdateTagsRequest {
+  id: number;
+  tags: string[];
+}
+
 export const itemApi = createApi({
   reducerPath: "itemApi",
   baseQuery: axiosBaseQuery(),
   tagTypes: ["Item"],
   endpoints: (builder) => ({
-    listItems: builder.query<Item[], { categoryId?: number } | undefined>({
+    listItems: builder.query<Item[], ItemListParams | undefined>({
       query: (args) => ({
         url: ApiEndpoints.ITEMS,
         method: "GET",
-        params: undefined !== args?.categoryId ? { categoryId: args.categoryId } : undefined,
+        params: {
+          categoryId: args?.categoryId,
+          favorite: true === args?.favorite ? true : undefined,
+          tags: args?.tags && args.tags.length > 0 ? args.tags.join(",") : undefined,
+          q: args?.q && "" !== args.q ? args.q : undefined,
+        },
       }),
       providesTags: ["Item"],
     }),
@@ -70,6 +89,18 @@ export const itemApi = createApi({
       query: ({ id, content }) => ({ url: ApiEndpoints.ITEM_NOTE(id), method: "PATCH", data: { content } }),
       invalidatesTags: ["Item"],
     }),
+    updateTags: builder.mutation<Item, UpdateTagsRequest>({
+      query: ({ id, tags }) => ({ url: ApiEndpoints.ITEM_TAGS(id), method: "PUT", data: { tags } }),
+      invalidatesTags: ["Item"],
+    }),
+    markFavorite: builder.mutation<Item, number>({
+      query: (id) => ({ url: ApiEndpoints.ITEM_FAVORITE(id), method: "PUT" }),
+      invalidatesTags: ["Item"],
+    }),
+    unmarkFavorite: builder.mutation<Item, number>({
+      query: (id) => ({ url: ApiEndpoints.ITEM_FAVORITE(id), method: "DELETE" }),
+      invalidatesTags: ["Item"],
+    }),
   }),
 });
 
@@ -79,4 +110,7 @@ export const {
   useGetItemDownloadLinkMutation,
   useCreateNoteMutation,
   useUpdateNoteMutation,
+  useUpdateTagsMutation,
+  useMarkFavoriteMutation,
+  useUnmarkFavoriteMutation,
 } = itemApi;

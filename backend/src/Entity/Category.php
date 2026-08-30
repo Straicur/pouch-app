@@ -33,7 +33,7 @@ class Category
     /**
      * @var Collection<int, self>
      */
-    #[ORM\OneToMany(mappedBy: 'parent', targetEntity: self::class)]
+    #[ORM\OneToMany(targetEntity: self::class, mappedBy: 'parent')]
     private Collection $children;
 
     public function __construct(string $name, ?self $parent = null)
