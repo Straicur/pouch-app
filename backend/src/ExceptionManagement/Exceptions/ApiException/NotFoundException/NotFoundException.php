@@ -11,7 +11,7 @@ use Throwable;
 class NotFoundException extends ApiException
 {
     public function __construct(
-        string $message = 'Not Found',
+        string $message = 'not_found',
         int $code = Response::HTTP_NOT_FOUND,
         ?Throwable $previous = null,
         ?NotFoundExceptionModel $model = null,

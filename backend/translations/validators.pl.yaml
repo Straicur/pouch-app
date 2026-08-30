@@ -1,0 +1,10 @@
+# Symfony's validator translates a ConstraintViolation's message automatically
+# (via the injected translator, domain "validators") — the `message: '...'` values
+# on Assert attributes in src/DTO/Request/*.php are keys into this file, not text
+# shown to anyone. Nothing in PHP needs to change to add a language here.
+not_blank: "To pole nie może być puste."
+positive: "Wartość musi być liczbą dodatnią."
+invalid_choice: "Nieprawidłowa wartość."
+url: "Nieprawidłowy adres URL."
+email: "Nieprawidłowy adres e-mail."
+max_length: "Maksymalna dopuszczalna długość to {{ limit }} znaków."

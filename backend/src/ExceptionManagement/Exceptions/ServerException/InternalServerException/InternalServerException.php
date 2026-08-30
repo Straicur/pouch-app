@@ -11,7 +11,7 @@ use Throwable;
 class InternalServerException extends ServerException
 {
     public function __construct(
-        string $message = 'Internal Server',
+        string $message = 'internal_server_error',
         int $code = Response::HTTP_INTERNAL_SERVER_ERROR,
         ?Throwable $previous = null,
         ?InternalServerExceptionModel $model = null,

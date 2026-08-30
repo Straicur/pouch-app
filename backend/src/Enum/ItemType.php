@@ -16,4 +16,6 @@ enum ItemType: string
     case URL = 'url';
 
     case PHOTO = 'photo';
+
+    case NOTE = 'note';
 }

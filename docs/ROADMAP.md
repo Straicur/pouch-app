@@ -118,18 +118,39 @@ poprawnie.
 
 ---
 
-## Część 5 — Item: Notatka
+## Część 5 — Item: Notatka + warstwa tłumaczeń (i18n)
 
-Najprostszy typ z całej czwórki — celowo na końcu, jako odpoczynek po Części 4.
+Najprostszy typ z całej czwórki — celowo na końcu, jako odpoczynek po Części 4. Przy
+okazji: zanim przybędzie więcej user-facing tekstu, warto przestać wpisywać go na
+sztywno w kodzie.
 
 **Zakres:**
-- [ ] CRUD notatek (tekst/markdown), edycja po fakcie.
-- [ ] Frontend: edytor + podgląd renderowanego markdownu.
+- [x] Backend: paczka tłumaczeń (Symfony Translation), polskie stringi w
+      `translations/*.pl.yaml` (osobne domeny: komunikaty walidacji, komunikaty
+      wyjątków), serwis tłumaczeń wstrzykiwany wszędzie, gdzie dziś są sztywne
+      stringi (wyjątki API, walidatory) — pobierane po kluczu, nie zwracane wprost.
+- [x] Frontend: analogicznie — biblioteka i18n (i18next/react-i18next), jeden katalog
+      polskich stringów, komponenty pobierają teksty przez `t('klucz')` zamiast
+      wpisanych na sztywno w JSX.
+- [x] CRUD notatek (tekst/markdown), edycja po fakcie.
+- [x] Frontend: edytor + podgląd renderowanego markdownu.
 
-**Testy kodowe:** functional testy CRUD notatki.
+**Testy kodowe:** test że serwis tłumaczeń zwraca oczekiwany polski tekst po kluczu
+(backend), functional test że odpowiedź API faktycznie zawiera przetłumaczony (nie
+sztywny angielski) komunikat, functional testy CRUD notatki.
+✅ `backend/tests/ExceptionManagement/TranslationTest.php`, assercja w
+`CategoryControllerTest` na przetłumaczony `detail`,
+`backend/tests/Controller/ItemController/ItemCreateNoteControllerTest.php` (CRUD +
+walidacja + macierz uprawnień notatek).
 
-**Test ręczny:** napisać notatkę z formatowaniem markdown, sprawdzić że podgląd się
-zgadza.
+**Test ręczny:** wywołać endpoint kończący się błędem (np. 404 na nieistniejącej
+kategorii) i sprawdzić że komunikat jest po polsku; napisać notatkę z formatowaniem
+markdown, sprawdzić że podgląd się zgadza.
+✅ zrobione ręcznie: 401/403/404/409/400 z rzeczywistych requestów — wszystkie po
+polsku, w tym komunikaty z podstawionymi wartościami (rozszerzenie pliku, nazwa/ID
+konfliktującego itemu). Notatka z nagłówkiem/pogrubieniem/listą dodana przez
+`/items` → podgląd markdown poprawny → edycja "po fakcie" zapisana i odświeżona w
+karcie (zweryfikowane zrzutem ekranu z prawdziwej przeglądarki).
 
 ---
 

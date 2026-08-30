@@ -5,10 +5,10 @@ declare(strict_types = 1);
 namespace App\Item;
 
 use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadRequestException;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 use function in_array;
 use function pathinfo;
-use function sprintf;
 use function strtolower;
 
 use const PATHINFO_EXTENSION;
@@ -33,25 +33,27 @@ final class FileValidator
 
     private const int MAX_SIZE_BYTES = 100 * 1024 * 1024;
 
+    public function __construct(
+        private readonly TranslatorInterface $translator,
+    ) {}
+
     /**
      * @throws BadRequestException
      */
     public function assertValid(string $originalFilename, int $size): void
     {
         if (0 >= $size) {
-            throw new BadRequestException(message: 'Uploaded file is empty');
+            throw new BadRequestException(message: 'item.file_empty');
         }
 
         if (self::MAX_SIZE_BYTES < $size) {
-            throw new BadRequestException(
-                message: sprintf('File exceeds the maximum allowed size of %d bytes', self::MAX_SIZE_BYTES)
-            );
+            throw new BadRequestException(message: 'item.file_too_large');
         }
 
         $extension = strtolower(pathinfo($originalFilename, PATHINFO_EXTENSION));
         if (false === in_array($extension, self::ALLOWED_EXTENSIONS, true)) {
             throw new BadRequestException(
-                message: sprintf('File extension ".%s" is not allowed for general files', $extension)
+                message: $this->translator->trans('item.extension_not_allowed', ['%extension%' => $extension], domain: 'exceptions'),
             );
         }
     }

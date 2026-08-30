@@ -116,6 +116,28 @@ Both are best-effort: a failed scrape/OCR marks the item `"failed"` with
 `processingError` set, it doesn't throw past the handler (Messenger would otherwise
 retry-then-dead-letter it into the `failed` transport).
 
+## Translations (i18n)
+
+No hardcoded user-facing strings — everything an API response can show goes through
+`Symfony\Contracts\Translation\TranslatorInterface` and a key, resolved against
+`translations/*.pl.yaml`:
+
+- `translations/validators.pl.yaml` — the `message: '...'` values on `Assert`
+  attributes in `src/DTO/Request/*.php` (e.g. `not_blank`, `positive`) are keys into
+  this file. Symfony's validator translates them automatically (domain `validators`)
+  before the message ever reaches `RequestService` — no PHP code involved.
+- `translations/exceptions.pl.yaml` — every `ApiException`/`ServerException`'s
+  `message:` is either one of these keys, or (for the few with per-request data, e.g.
+  `ItemService`'s duplicate-content conflict) a string already built by calling
+  `$translator->trans(...)` with parameters at the throw site. `ExceptionSubscriber`
+  runs whatever ends up in the model's `detail` through the translator (domain
+  `exceptions`) right before serializing the response — a string that isn't a known
+  key (i.e. one already translated at the throw site) just passes through unchanged,
+  so both cases work uniformly.
+
+`config/packages/translation.yaml` sets `default_locale: pl` (and `pl` as the sole
+fallback) — this is a single-locale app for now, not a language switcher.
+
 ## Testing
 
 Tests use `dama/doctrine-test-bundle` to wrap each test in a transaction that's rolled back

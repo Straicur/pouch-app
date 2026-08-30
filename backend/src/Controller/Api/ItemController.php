@@ -5,8 +5,10 @@ declare(strict_types = 1);
 namespace App\Controller\Api;
 
 use App\DTO\Mapper\ItemMapper;
+use App\DTO\Request\ItemCreateNoteRequestDTO;
 use App\DTO\Request\ItemCreateRequestDTO;
 use App\DTO\Request\ItemCreateUrlRequestDTO;
+use App\DTO\Request\ItemUpdateNoteRequestDTO;
 use App\DTO\Response\DownloadLinkResponseDTO;
 use App\DTO\Response\ItemResponseDTO;
 use App\Entity\Item;
@@ -331,6 +333,101 @@ final class ItemController extends AbstractController
     /**
      * @throws UnauthorizedException
      * @throws ForbiddenException
+     * @throws NotFoundException             if categoryId doesn't exist
+     * @throws BadRequestException           blank/too-long content or TTL input
+     * @throws UnprocessableContentException
+     * @throws SerializerExceptionInterface
+     */
+    #[Route('/api/items/notes', name: 'item_create_note', methods: [Request::METHOD_POST])]
+    #[OA\Post(
+        description: 'Create a note (markdown text) in a category',
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(ref: new Model(type: ItemCreateNoteRequestDTO::class), type: 'object'),
+        ),
+        responses: [
+            new OA\Response(
+                response: 201,
+                description: 'Created',
+                content: new Model(type: ItemResponseDTO::class),
+            ),
+        ]
+    )]
+    #[OA\Response(response: 400, description: 'Blank/too-long content or TTL input', content: new Model(type: BadRequestExceptionModel::class))]
+    #[OA\Response(response: 404, description: 'Category not found', content: new Model(type: NotFoundExceptionModel::class))]
+    #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
+    public function createNote(Request $request): Response
+    {
+        $this->authService->getUserFromAccessToken();
+
+        if (false === $this->isGranted(ItemVoter::CREATE)) {
+            throw new ForbiddenException();
+        }
+
+        $createRequestDTO = $this->requestService->getRequestBodyContent($request, ItemCreateNoteRequestDTO::class);
+
+        $item = $this->itemService->createNote(
+            categoryId: $createRequestDTO->getCategoryId(),
+            content: $createRequestDTO->getContent(),
+            options: new ItemLifecycleOptions(
+                name: $createRequestDTO->getName(),
+                keepForever: $createRequestDTO->isKeepForever(),
+                ttlPreset: null !== $createRequestDTO->getTtlPreset() ? TtlPreset::from($createRequestDTO->getTtlPreset()) : null,
+                customExpiresAt: $this->parseCustomExpiresAt($createRequestDTO->getExpiresAt()),
+            ),
+        );
+
+        return $this->createdResponse($item);
+    }
+
+    /**
+     * "Edycja po fakcie" — the one thing a note can do that no other item type can.
+     *
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
+     * @throws NotFoundException
+     * @throws BadRequestException           item isn't a note, or blank/too-long content
+     * @throws UnprocessableContentException
+     * @throws SerializerExceptionInterface
+     */
+    #[Route('/api/items/{id}/note', name: 'item_update_note', requirements: ['id' => '\d+'], methods: [Request::METHOD_PATCH])]
+    #[OA\Patch(
+        description: 'Edit a note\'s content',
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(ref: new Model(type: ItemUpdateNoteRequestDTO::class), type: 'object'),
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Success',
+                content: new Model(type: ItemResponseDTO::class),
+            ),
+        ]
+    )]
+    #[OA\Response(response: 400, description: 'Item isn\'t a note, or blank/too-long content', content: new Model(type: BadRequestExceptionModel::class))]
+    #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
+    #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
+    public function updateNote(Request $request, int $id): Response
+    {
+        $this->authService->getUserFromAccessToken();
+
+        if (false === $this->isGranted(ItemVoter::EDIT)) {
+            throw new ForbiddenException();
+        }
+
+        $updateRequestDTO = $this->requestService->getRequestBodyContent($request, ItemUpdateNoteRequestDTO::class);
+
+        $item = $this->itemService->updateNoteContent($id, $updateRequestDTO->getContent());
+
+        $responseDTO = ItemMapper::toResponseDTO($item);
+
+        return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
+    }
+
+    /**
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
      * @throws NotFoundException
      */
     #[Route('/api/items/{id}', name: 'item_delete', requirements: ['id' => '\d+'], methods: [Request::METHOD_DELETE])]
@@ -378,7 +475,7 @@ final class ItemController extends AbstractController
 
         $item = $this->itemService->getById($id);
         if (null === $item->getStorageKey()) {
-            throw new NotFoundException(message: 'This item has no downloadable file');
+            throw new NotFoundException(message: 'item.no_downloadable_file');
         }
 
         return $this->signedLinkResponse('item_download', $this->downloadSignatureResource($id), $id);
@@ -408,7 +505,7 @@ final class ItemController extends AbstractController
         $item = $this->itemService->getById($id);
         $storageKey = $item->getStorageKey();
         if (null === $storageKey) {
-            throw new NotFoundException(message: 'This item has no downloadable file');
+            throw new NotFoundException(message: 'item.no_downloadable_file');
         }
 
         return $this->streamedStorageResponse(
@@ -443,7 +540,7 @@ final class ItemController extends AbstractController
 
         $item = $this->itemService->getById($id);
         if (null === $item->getThumbnailStorageKey()) {
-            throw new NotFoundException(message: 'This item has no thumbnail');
+            throw new NotFoundException(message: 'item.no_thumbnail');
         }
 
         return $this->signedLinkResponse('item_thumbnail', $this->thumbnailSignatureResource($id), $id);
@@ -473,7 +570,7 @@ final class ItemController extends AbstractController
         $item = $this->itemService->getById($id);
         $thumbnailKey = $item->getThumbnailStorageKey();
         if (null === $thumbnailKey) {
-            throw new NotFoundException(message: 'This item has no thumbnail');
+            throw new NotFoundException(message: 'item.no_thumbnail');
         }
 
         return $this->streamedStorageResponse(storageKey: $thumbnailKey, mimeType: 'image/jpeg', size: null, downloadFilename: null);
@@ -493,7 +590,7 @@ final class ItemController extends AbstractController
     {
         $file = $request->files->get('file');
         if (false === $file instanceof UploadedFile || false === $file->isValid()) {
-            throw new BadRequestException(message: 'Missing or invalid "file" upload');
+            throw new BadRequestException(message: 'item.file_upload_missing');
         }
 
         return $file;
@@ -506,7 +603,7 @@ final class ItemController extends AbstractController
     {
         $size = $file->getSize();
         if (false === $size) {
-            throw new BadRequestException(message: 'Could not determine the uploaded file\'s size');
+            throw new BadRequestException(message: 'item.file_size_unknown');
         }
 
         return $size;
@@ -576,7 +673,7 @@ final class ItemController extends AbstractController
         $signature = $request->query->getString('signature');
 
         if (false === $this->signedUrlService->isValid($signatureResource, $expires, $signature)) {
-            throw new ForbiddenException(message: 'Invalid or expired link');
+            throw new ForbiddenException(message: 'item.link_invalid');
         }
     }
 
@@ -636,7 +733,7 @@ final class ItemController extends AbstractController
         try {
             return new DateTimeImmutable($expiresAt);
         } catch (Exception $exception) {
-            throw new BadRequestException(message: 'expiresAt is not a valid date', previous: $exception);
+            throw new BadRequestException(message: 'item.expires_at_invalid', previous: $exception);
         }
     }
 }

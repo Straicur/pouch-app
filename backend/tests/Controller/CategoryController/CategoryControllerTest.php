@@ -87,6 +87,11 @@ class CategoryControllerTest extends WebTest
 
         self::assertResponseStatusCodeSame(Response::HTTP_NOT_FOUND);
         $this->responseTool->testNotFoundRequestResponseData($this->webClient);
+
+        // The API response carries the actual translated text, not the
+        // "category.not_found" key or a hardcoded English string.
+        $content = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        self::assertSame('Nie znaleziono kategorii.', $content['detail']);
     }
 
     public function testCreateWithBlankNameReturnsUnprocessable(): void

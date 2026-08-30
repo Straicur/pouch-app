@@ -11,7 +11,7 @@ use Throwable;
 class BadRequestException extends ApiException
 {
     public function __construct(
-        string $message = 'Bad Request',
+        string $message = 'bad_request',
         int $code = Response::HTTP_BAD_REQUEST,
         ?Throwable $previous = null,
         ?BadRequestExceptionModel $model = null,

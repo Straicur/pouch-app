@@ -186,6 +186,23 @@ routera, `navigationUtil.setNavigate` podpina go raz w `RootLayout`.
 Minimum. Tylko tam, gdzie logika jest nieoczywista albo niesie kontekst biznesowy,
 którego nie widać z kodu — nie przy każdej funkcji "na wszelki wypadek".
 
+### Teksty (i18n)
+
+Żadnych tekstów wpisanych na sztywno w JSX. Wszystko idzie przez `useTranslation()`
+(`react-i18next`) i klucz — `t("sekcja.klucz")` — nigdy `<p>Jakiś tekst</p>`. Katalog
+tekstów: `src/locales/pl.ts`, inicjalizacja: `src/lib/i18n.ts` (importowane raz w
+`main.tsx`, i osobno w `test-setup.ts` pod testy). Kod spoza drzewa komponentów (np.
+`toastUtil.ts`) woła `i18n.t(...)` bezpośrednio na zaimportowanej instancji zamiast
+przez hook.
+
+Wyjątek: schematy walidacji `zod` (np. w `LoginPage.tsx`) są definiowane na poziomie
+modułu, poza komponentem — `useTranslation()` tam nie zadziała — więc ich komunikaty
+zostają wpisane wprost, ze świadomym komentarzem tłumaczącym dlaczego.
+
+Analogiczny mechanizm istnieje po stronie backendu (Symfony Translator,
+`backend/translations/*.pl.yaml`, patrz `backend/README.md`) — API też nie zwraca
+sztywnych stringów, tylko przetłumaczone teksty po kluczu.
+
 ---
 
 ## Error handling

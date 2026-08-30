@@ -20,14 +20,20 @@ use DateTimeImmutable;
 use Override;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Uid\Uuid;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 use function fclose;
 use function fopen;
 use function hash_file;
 use function is_resource;
+use function ltrim;
+use function mb_strlen;
+use function mb_substr;
 use function pathinfo;
 use function sprintf;
+use function strtok;
 use function strtolower;
+use function trim;
 
 use const PATHINFO_EXTENSION;
 
@@ -42,7 +48,9 @@ class ItemService implements ItemServiceInterface
         private readonly FileValidator $fileValidator,
         private readonly ImageValidator $imageValidator,
         private readonly UrlValidator $urlValidator,
+        private readonly NoteValidator $noteValidator,
         private readonly MessageBusInterface $messageBus,
+        private readonly TranslatorInterface $translator,
     ) {}
 
     #[Override]
@@ -133,12 +141,51 @@ class ItemService implements ItemServiceInterface
     }
 
     #[Override]
+    public function createNote(
+        int $categoryId,
+        string $content,
+        ItemLifecycleOptions $options,
+    ): Item {
+        $category = $this->categoryService->getById($categoryId);
+        $this->noteValidator->assertValid($content);
+
+        $item = new Item(
+            category: $category,
+            type: ItemType::NOTE,
+            name: $options->name ?? $this->deriveNoteName($content),
+            keepForever: $options->keepForever,
+            expiresAt: $this->resolveExpiresAt($options),
+            processingStatus: ItemProcessingStatus::COMPLETED,
+        );
+        $item->setNoteContent($content);
+
+        $this->itemRepository->save($item);
+
+        return $item;
+    }
+
+    #[Override]
+    public function updateNoteContent(int $id, string $content): Item
+    {
+        $item = $this->getById($id);
+        if (ItemType::NOTE !== $item->getType()) {
+            throw new BadRequestException(message: 'item.not_a_note');
+        }
+
+        $this->noteValidator->assertValid($content);
+        $item->setNoteContent($content);
+        $this->itemRepository->save($item);
+
+        return $item;
+    }
+
+    #[Override]
     public function getById(int $id): Item
     {
         $item = $this->itemRepository->find($id);
 
         if (null === $item || $item->isTrashed()) {
-            throw new NotFoundException(message: 'Item not found');
+            throw new NotFoundException(message: 'item.not_found');
         }
 
         return $item;
@@ -166,13 +213,16 @@ class ItemService implements ItemServiceInterface
     {
         $contentHash = hash_file('sha256', $tmpPath);
         if (false === $contentHash) {
-            throw new BadRequestException(message: 'Could not read the uploaded file');
+            throw new BadRequestException(message: 'item.upload_unreadable');
         }
 
         $duplicate = $this->itemRepository->findByContentHash($contentHash);
         if (null !== $duplicate) {
             throw new ConflictException(
-                message: sprintf('Identical content already exists as item #%d ("%s")', $duplicate->getId(), $duplicate->getName()),
+                message: $this->translator->trans('item.duplicate_content', [
+                    '%id%'   => $duplicate->getId(),
+                    '%name%' => $duplicate->getName(),
+                ], domain: 'exceptions'),
                 conflictingItemId: $duplicate->getId(),
             );
         }
@@ -188,7 +238,7 @@ class ItemService implements ItemServiceInterface
         $storageKey = $this->generateStorageKey($originalFilename);
         $stream = fopen($tmpPath, 'r');
         if (false === is_resource($stream)) {
-            throw new BadRequestException(message: 'Could not read the uploaded file');
+            throw new BadRequestException(message: 'item.upload_unreadable');
         }
 
         try {
@@ -215,7 +265,7 @@ class ItemService implements ItemServiceInterface
 
         if (null !== $options->customExpiresAt) {
             if ($options->customExpiresAt <= $now) {
-                throw new BadRequestException(message: 'expiresAt must be in the future');
+                throw new BadRequestException(message: 'item.expires_at_future');
             }
 
             return $options->customExpiresAt;
@@ -227,6 +277,26 @@ class ItemService implements ItemServiceInterface
 
         // Product doc: default TTL is 1 day when nothing else is specified.
         return $now->add(new DateInterval('P1D'));
+    }
+
+    private const int DERIVED_NOTE_NAME_MAX_LENGTH = 80;
+
+    /**
+     * No name given for a note → use its first line (trimmed of markdown
+     * heading markers), same idea as how most note apps title an untitled note.
+     */
+    private function deriveNoteName(string $content): string
+    {
+        $firstLine = trim(strtok(trim($content), "\n") ?: '');
+        $firstLine = ltrim($firstLine, "# \t");
+
+        if ('' === $firstLine) {
+            return 'Notatka';
+        }
+
+        return mb_strlen($firstLine) > self::DERIVED_NOTE_NAME_MAX_LENGTH
+            ? mb_substr($firstLine, 0, self::DERIVED_NOTE_NAME_MAX_LENGTH) . '…'
+            : $firstLine;
     }
 
     private function generateStorageKey(string $originalFilename): string

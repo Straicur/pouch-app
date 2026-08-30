@@ -28,7 +28,7 @@ class CategoryService implements CategoryServiceInterface
         $category = $this->categoryRepository->find($id);
 
         if (null === $category) {
-            throw new NotFoundException(message: 'Category not found');
+            throw new NotFoundException(message: 'category.not_found');
         }
 
         return $category;
@@ -92,7 +92,7 @@ class CategoryService implements CategoryServiceInterface
 
         while (null !== $ancestor) {
             if ($ancestor->getId() === $category->getId()) {
-                throw new BadRequestException(message: 'Cannot move a category into itself or one of its own descendants');
+                throw new BadRequestException(message: 'category.move_cycle');
             }
 
             $ancestor = $ancestor->getParent();

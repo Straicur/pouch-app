@@ -55,6 +55,25 @@ interface ItemServiceInterface
         ItemLifecycleOptions $options,
     ): Item;
 
+    /**
+     * @throws NotFoundException   if the category doesn't exist
+     * @throws BadRequestException if the content is blank/too long
+     */
+    public function createNote(
+        int $categoryId,
+        string $content,
+        ItemLifecycleOptions $options,
+    ): Item;
+
+    /**
+     * "Edycja po fakcie" — the one thing a note can do that no other item type
+     * can: change its own content after creation.
+     *
+     * @throws NotFoundException   if the item doesn't exist
+     * @throws BadRequestException if the item isn't a note, or the content is blank/too long
+     */
+    public function updateNoteContent(int $id, string $content): Item;
+
     /** @throws NotFoundException */
     public function getById(int $id): Item;
 

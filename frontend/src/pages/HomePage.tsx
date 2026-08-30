@@ -1,9 +1,11 @@
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
 import { useLogoutMutation } from "../store/api/authApi";
 import { useWhoAmIQuery } from "../store/api/sessionApi";
 
 export function HomePage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { data, error, isLoading } = useWhoAmIQuery();
   const [logout] = useLogoutMutation();
@@ -27,12 +29,12 @@ export function HomePage() {
 
   return (
     <main className="home-page">
-      <h1>Pouch</h1>
-      {undefined !== data && <p>Zalogowano jako: {data.email}</p>}
-      {undefined !== error && 401 !== status && <p className="form-error">Nie udało się połączyć z backendem.</p>}
-      <Link to="/items">Zobacz itemy</Link>
+      <h1>{t("common.appName")}</h1>
+      {undefined !== data && <p>{t("home.loggedInAs", { email: data.email })}</p>}
+      {undefined !== error && 401 !== status && <p className="form-error">{t("home.connectionError")}</p>}
+      <Link to="/items">{t("home.viewItemsLink")}</Link>
       <button type="button" onClick={handleLogout}>
-        Wyloguj się
+        {t("auth.logoutButton")}
       </button>
     </main>
   );

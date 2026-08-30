@@ -11,7 +11,7 @@ use Throwable;
 class ForbiddenException extends ApiException
 {
     public function __construct(
-        string $message = 'Forbidden',
+        string $message = 'forbidden',
         int $code = Response::HTTP_FORBIDDEN,
         ?Throwable $previous = null,
         ?ForbiddenExceptionModel $model = null,

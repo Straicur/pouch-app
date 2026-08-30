@@ -1,0 +1,45 @@
+# Every ApiException/ServerException's `detail` goes through the translator with
+# this domain before being sent to the client (see ExceptionSubscriber). Most
+# throw sites just pass one of these keys as `message:`; the few with
+# per-request data (e.g. item.duplicate_content) translate inline at the throw
+# site instead, with %placeholders% substituted there — see ItemService,
+# FileValidator, ImageValidator.
+
+# Generic HTTP-status defaults (used when a throw site doesn't override the message).
+bad_request: "Nieprawidłowe żądanie."
+unauthorized: "Wymagane jest zalogowanie."
+forbidden: "Brak uprawnień do wykonania tej operacji."
+not_found: "Nie znaleziono zasobu."
+conflict: "Konflikt z istniejącymi danymi."
+unprocessable_content: "Przesłane dane są nieprawidłowe."
+too_many_requests: "Zbyt wiele prób. Spróbuj ponownie później."
+internal_server_error: "Wystąpił błąd wewnętrzny serwera."
+
+# Category
+category.not_found: "Nie znaleziono kategorii."
+category.move_cycle: "Nie można przenieść kategorii do niej samej ani do jednej z jej podkategorii."
+
+# Item (all types)
+item.not_found: "Nie znaleziono itemu."
+item.upload_unreadable: "Nie udało się odczytać przesłanego pliku."
+item.expires_at_future: "Data wygaśnięcia musi być w przyszłości."
+item.file_empty: "Przesłany plik jest pusty."
+item.file_too_large: "Plik przekracza maksymalny dozwolony rozmiar."
+item.extension_not_allowed: "Rozszerzenie pliku \".%extension%\" nie jest dozwolone dla tego typu itemu."
+item.duplicate_content: "Identyczna zawartość już istnieje jako item #%id% (\"%name%\")."
+item.no_downloadable_file: "Ten item nie ma pliku do pobrania."
+item.no_thumbnail: "Ten item nie ma miniatury."
+item.file_upload_missing: "Brak pliku lub przesłany plik jest nieprawidłowy."
+item.file_size_unknown: "Nie udało się ustalić rozmiaru przesłanego pliku."
+item.link_invalid: "Link jest nieprawidłowy lub wygasł."
+item.expires_at_invalid: "Data wygaśnięcia jest nieprawidłowa."
+item.not_a_note: "Ten item nie jest notatką."
+
+# Note items
+note.content_empty: "Treść notatki nie może być pusta."
+note.content_too_long: "Treść notatki jest za długa."
+
+# URL items
+url.too_long: "Adres URL jest za długi."
+url.invalid: "Nieprawidłowy adres URL."
+url.scheme_not_allowed: "Dozwolone są tylko adresy zaczynające się od http:// lub https://."

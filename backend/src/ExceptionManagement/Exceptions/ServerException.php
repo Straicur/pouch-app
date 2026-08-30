@@ -12,7 +12,7 @@ class ServerException extends Exception
 {
     public function __construct(
         private readonly ExceptionModelInterface $model,
-        string $message = 'Internal system error',
+        string $message = 'internal_server_error',
         int $code = 500,
         ?Throwable $previous = null,
     ) {

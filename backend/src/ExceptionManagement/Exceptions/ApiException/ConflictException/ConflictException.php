@@ -11,7 +11,7 @@ use Throwable;
 class ConflictException extends ApiException
 {
     public function __construct(
-        string $message = 'Conflict',
+        string $message = 'conflict',
         int $code = Response::HTTP_CONFLICT,
         ?Throwable $previous = null,
         ?ConflictExceptionModel $model = null,

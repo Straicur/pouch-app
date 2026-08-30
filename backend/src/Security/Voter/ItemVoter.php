@@ -27,9 +27,11 @@ final class ItemVoter extends Voter
 
     public const string CREATE = 'ITEM_CREATE';
 
+    public const string EDIT = 'ITEM_EDIT';
+
     public const string DELETE = 'ITEM_DELETE';
 
-    private const array ATTRIBUTES = [self::VIEW, self::DOWNLOAD, self::CREATE, self::DELETE];
+    private const array ATTRIBUTES = [self::VIEW, self::DOWNLOAD, self::CREATE, self::EDIT, self::DELETE];
 
     public function __construct(
         private readonly Security $security,
@@ -50,7 +52,7 @@ final class ItemVoter extends Voter
     {
         return match ($attribute) {
             self::VIEW, self::DOWNLOAD => $this->security->isGranted('ROLE_GUEST'),
-            self::CREATE, self::DELETE => $this->security->isGranted('ROLE_USER'),
+            self::CREATE, self::EDIT, self::DELETE => $this->security->isGranted('ROLE_USER'),
             default => false,
         };
     }

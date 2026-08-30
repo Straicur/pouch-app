@@ -1,5 +1,6 @@
 import { createElement } from "react";
 import { type ToastOptions, toast } from "react-toastify";
+import i18n from "./i18n";
 import { logger } from "./logger";
 import { navigationUtil } from "./navigationUtil";
 
@@ -21,11 +22,13 @@ interface PendingToast {
   timestamp: number;
 }
 
-const TOAST_TITLES: Record<ToastType, string> = {
-  success: "Sukces",
-  error: "Błąd",
-  warning: "Ostrzeżenie",
-  info: "Informacja",
+// Not a component, so no useTranslation() — the module-level `i18n` instance
+// exposes the same t() directly.
+const TOAST_TITLE_KEYS: Record<ToastType, string> = {
+  success: "toast.success",
+  error: "toast.error",
+  warning: "toast.warning",
+  info: "toast.info",
 };
 
 const TOAST_FN: Record<ToastType, typeof toast.success> = {
@@ -47,7 +50,7 @@ export const toastUtil = {
     const payload = createElement(
       "div",
       null,
-      createElement("p", { style: { fontWeight: 600, margin: 0 } }, TOAST_TITLES[type]),
+      createElement("p", { style: { fontWeight: 600, margin: 0 } }, i18n.t(TOAST_TITLE_KEYS[type])),
       createElement("p", { style: { margin: 0 } }, message),
     );
 

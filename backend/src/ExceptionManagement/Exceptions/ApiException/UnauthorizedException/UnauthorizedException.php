@@ -11,7 +11,7 @@ use Throwable;
 class UnauthorizedException extends ApiException
 {
     public function __construct(
-        string $message = 'Unauthorized',
+        string $message = 'unauthorized',
         int $code = Response::HTTP_UNAUTHORIZED,
         ?Throwable $previous = null,
         ?UnauthorizedExceptionModel $model = null,

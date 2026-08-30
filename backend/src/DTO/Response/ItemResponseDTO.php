@@ -21,6 +21,7 @@ class ItemResponseDTO
         private readonly ?string $pageTitle,
         private readonly ?string $pageDescription,
         private readonly ?string $extractedText,
+        private readonly ?string $noteContent,
         private readonly bool $keepForever,
         private readonly ?string $expiresAt,
         private readonly ?string $trashedAt,
@@ -95,6 +96,11 @@ class ItemResponseDTO
     public function getExtractedText(): ?string
     {
         return $this->extractedText;
+    }
+
+    public function getNoteContent(): ?string
+    {
+        return $this->noteContent;
     }
 
     public function isKeepForever(): bool

@@ -14,7 +14,7 @@ class UnprocessableContentException extends ApiException
      * @param array<int, ViolationModel> $violations
      */
     public function __construct(
-        string $message = 'Unprocessable Content',
+        string $message = 'unprocessable_content',
         int $code = Response::HTTP_UNPROCESSABLE_ENTITY,
         ?Throwable $previous = null,
         ?UnprocessableContentExceptionModel $model = null,

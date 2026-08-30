@@ -9,7 +9,6 @@ use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadReque
 use function filter_var;
 use function in_array;
 use function parse_url;
-use function sprintf;
 use function strlen;
 
 use const FILTER_VALIDATE_URL;
@@ -36,16 +35,16 @@ final class UrlValidator
     public function assertValid(string $url): void
     {
         if (strlen($url) > self::MAX_LENGTH) {
-            throw new BadRequestException(message: sprintf('URL exceeds the maximum length of %d characters', self::MAX_LENGTH));
+            throw new BadRequestException(message: 'url.too_long');
         }
 
         if (false === filter_var($url, FILTER_VALIDATE_URL)) {
-            throw new BadRequestException(message: 'Not a valid URL');
+            throw new BadRequestException(message: 'url.invalid');
         }
 
         $scheme = parse_url($url, PHP_URL_SCHEME);
         if (false === in_array($scheme, self::ALLOWED_SCHEMES, true)) {
-            throw new BadRequestException(message: 'Only http:// and https:// URLs are allowed');
+            throw new BadRequestException(message: 'url.scheme_not_allowed');
         }
     }
 }

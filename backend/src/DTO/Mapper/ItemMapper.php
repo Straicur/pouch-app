@@ -27,6 +27,7 @@ final class ItemMapper
             pageTitle: $item->getPageTitle(),
             pageDescription: $item->getPageDescription(),
             extractedText: $item->getExtractedText(),
+            noteContent: $item->getNoteContent(),
             keepForever: $item->isKeepForever(),
             expiresAt: $item->getExpiresAt()?->format(DateTimeInterface::ATOM),
             trashedAt: $item->getTrashedAt()?->format(DateTimeInterface::ATOM),

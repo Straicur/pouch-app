@@ -88,6 +88,14 @@ class Item
     #[ORM\Column(name: 'extracted_text', type: Types::TEXT, nullable: true)]
     private ?string $extractedText = null;
 
+    /**
+     * Note items only — the raw markdown source, user-writable and editable
+     * after the fact (product doc). Its own field, not $extractedText: this is
+     * the note's actual content, not text derived *from* something else.
+     */
+    #[ORM\Column(name: 'note_content', type: Types::TEXT, nullable: true)]
+    private ?string $noteContent = null;
+
     // --- lifecycle (Part 3) ---
 
     #[ORM\Column(name: 'keep_forever', type: Types::BOOLEAN, nullable: false)]
@@ -265,6 +273,18 @@ class Item
     public function getExtractedText(): ?string
     {
         return $this->extractedText;
+    }
+
+    public function setNoteContent(string $noteContent): static
+    {
+        $this->noteContent = $noteContent;
+
+        return $this;
+    }
+
+    public function getNoteContent(): ?string
+    {
+        return $this->noteContent;
     }
 
     public function isKeepForever(): bool

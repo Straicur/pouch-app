@@ -12,7 +12,7 @@ class TooManyRequestsException extends ApiException
 {
     public function __construct(
         int $retryAfter,
-        string $message = 'Too Many Requests',
+        string $message = 'too_many_requests',
         int $code = Response::HTTP_TOO_MANY_REQUESTS,
         ?Throwable $previous = null,
         ?TooManyRequestsExceptionModel $model = null,

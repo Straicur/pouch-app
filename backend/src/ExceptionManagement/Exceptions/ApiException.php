@@ -12,7 +12,7 @@ class ApiException extends Exception
 {
     public function __construct(
         private readonly ExceptionModelInterface $model,
-        string $message = 'Bad Request',
+        string $message = 'bad_request',
         int $code = 400,
         ?Throwable $previous = null,
     ) {
