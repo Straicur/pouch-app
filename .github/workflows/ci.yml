@@ -38,9 +38,15 @@ jobs:
           php-version: "8.4"
           # xdebug: composer.json's require-dev lists ext-xdebug, so composer
           # install needs it present even though nothing here uses it for coverage.
-          extensions: ctype, iconv, intl, pdo_pgsql, pgsql, zip, curl, gmp, xdebug
+          # gd: Part 4 photo thumbnails.
+          extensions: ctype, iconv, intl, pdo_pgsql, pgsql, zip, curl, gmp, gd, xdebug
           coverage: none
           tools: composer:v2
+
+      - name: Install tesseract-ocr
+        # Part 4 photo OCR shells out to the tesseract binary (thiagoalessio/tesseract_ocr)
+        # — not a PHP extension, so setup-php's `extensions` list doesn't cover it.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-pol
 
       - name: Start MinIO
         run: |

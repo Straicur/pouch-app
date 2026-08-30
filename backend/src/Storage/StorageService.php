@@ -10,7 +10,11 @@ use League\Flysystem\FilesystemOperator;
 use Override;
 use Psr\Log\LoggerInterface;
 
+use function fclose;
+use function fopen;
+use function is_resource;
 use function sprintf;
+use function stream_copy_to_stream;
 
 class StorageService implements StorageServiceInterface
 {
@@ -60,6 +64,43 @@ class StorageService implements StorageServiceInterface
         } catch (FilesystemException $exception) {
             $this->logger->error($exception->getMessage());
             throw new StorageException(message: sprintf('Unable to check existence of "%s"', $key), previous: $exception);
+        }
+    }
+
+    #[Override]
+    public function uploadFromPath(string $key, string $localPath): void
+    {
+        $stream = fopen($localPath, 'r');
+        if (false === is_resource($stream)) {
+            throw new StorageException(message: sprintf('Could not open "%s" for reading', $localPath));
+        }
+
+        try {
+            $this->upload($key, $stream);
+        } finally {
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+        }
+    }
+
+    #[Override]
+    public function downloadToPath(string $key, string $localPath): void
+    {
+        $target = fopen($localPath, 'wb');
+        if (false === is_resource($target)) {
+            throw new StorageException(message: sprintf('Could not open "%s" for writing', $localPath));
+        }
+
+        $source = $this->download($key);
+
+        try {
+            if (false === stream_copy_to_stream($source, $target)) {
+                throw new StorageException(message: sprintf('Failed to copy "%s" to "%s"', $key, $localPath));
+            }
+        } finally {
+            fclose($source);
+            fclose($target);
         }
     }
 }

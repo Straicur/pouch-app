@@ -16,6 +16,27 @@ services:
             db:
                 condition: service_healthy
 
+    # Consumes the `async` Messenger transport (Part 4: OCR/thumbnails/URL
+    # scraping) — same image as `app`, just a different command. Without this
+    # running, ScrapeUrlMessage/ProcessPhotoMessage pile up in
+    # messenger_messages and items stay stuck at processingStatus "pending".
+    messenger-worker:
+        build:
+            target: dev
+            context: ./backend
+            dockerfile: Dockerfile
+        image: pouch-app-php-fpm
+        container_name: pouch_messenger_worker
+        restart: unless-stopped
+        command: php bin/console messenger:consume async --time-limit=3600 --memory-limit=256M -vv
+        environment:
+            SERVER_NAME: ${SERVER_NAME:-localhost}
+        depends_on:
+            db:
+                condition: service_healthy
+            minio:
+                condition: service_healthy
+
     nginx:
         image: nginx:stable-alpine
         container_name: pouch_nginx

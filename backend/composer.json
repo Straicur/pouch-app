@@ -26,12 +26,15 @@
         "symfony/cache": "7.4.*",
         "symfony/console": "7.4.*",
         "symfony/dependency-injection": "7.4.*",
+        "symfony/doctrine-messenger": "7.4.*",
+        "symfony/dom-crawler": "7.4.*",
         "symfony/dotenv": "7.4.*",
         "symfony/flex": "^2",
         "symfony/framework-bundle": "7.4.*",
         "symfony/http-client": "7.4.*",
         "symfony/http-foundation": "7.4.*",
         "symfony/http-kernel": "7.4.*",
+        "symfony/messenger": "7.4.*",
         "symfony/mime": "7.4.*",
         "symfony/monolog-bundle": "^4.0",
         "symfony/password-hasher": "7.4.*",
@@ -46,6 +49,7 @@
         "symfony/uid": "7.4.*",
         "symfony/validator": "7.4.*",
         "symfony/yaml": "7.4.*",
+        "thiagoalessio/tesseract_ocr": "^2.13",
         "web-token/jwt-framework": "^4.1"
     },
     "require-dev": {

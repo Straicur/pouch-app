@@ -1,0 +1,24 @@
+framework:
+    messenger:
+        failure_transport: failed
+
+        transports:
+            # https://symfony.com/doc/current/messenger.html#transport-configuration
+            # auto_setup=0: the messenger_messages table is migration-tracked (see
+            # migrations/), not created ad hoc on first use.
+            async: '%env(MESSENGER_TRANSPORT_DSN)%'
+            failed: 'doctrine://default?queue_name=failed&auto_setup=0'
+
+        routing:
+            # Part 4: OCR/scraping/thumbnails must not block the request — see
+            # ScrapeUrlMessageHandler (the "one handler as a pattern" from the
+            # roadmap) and ProcessPhotoMessageHandler.
+            App\Message\ScrapeUrlMessage: async
+            App\Message\ProcessPhotoMessage: async
+
+when@test:
+    framework:
+        messenger:
+            transports:
+                # Synchronous in tests — handlers run inline, no worker needed.
+                async: 'sync://'

@@ -93,6 +93,29 @@ make console app:storage:delete <bucket-key>
 Watch the object appear/disappear in the MinIO console at `http://localhost:9001`
 (credentials: root `.env`'s `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`).
 
+## Async processing (Messenger)
+
+URL scraping (OpenGraph + page text snapshot) and photo processing (thumbnail + OCR)
+run off the request via Symfony Messenger, so uploading a photo or saving a URL returns
+immediately with `processingStatus: "pending"` — poll `GET /api/items/{id}` (or the list)
+until it flips to `"completed"`/`"failed"`.
+
+The `messenger-worker` service in `docker-compose.yml` consumes the `async` (Doctrine)
+transport automatically as part of the normal dev stack — no extra step needed. To watch
+it work: `docker compose logs -f messenger-worker`. If you ever need to run it by hand
+instead: `make console messenger:consume async -vv`.
+
+- `App\MessageHandler\ScrapeUrlMessageHandler` — fetches the page (`symfony/http-client`),
+  parses OpenGraph tags + visible text (`symfony/dom-crawler`), downloads/resizes the
+  `og:image` as the item's thumbnail.
+- `App\MessageHandler\ProcessPhotoMessageHandler` — generates a thumbnail (GD,
+  `App\Item\ThumbnailService`) and runs OCR (`tesseract-ocr` binary via
+  `thiagoalessio/tesseract_ocr`, `App\Item\OcrService`) on the uploaded photo.
+
+Both are best-effort: a failed scrape/OCR marks the item `"failed"` with
+`processingError` set, it doesn't throw past the handler (Messenger would otherwise
+retry-then-dead-letter it into the `failed` transport).
+
 ## Testing
 
 Tests use `dama/doctrine-test-bundle` to wrap each test in a transaction that's rolled back

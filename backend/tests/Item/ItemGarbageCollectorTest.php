@@ -6,6 +6,7 @@ namespace App\Tests\Item;
 
 use App\Entity\Category;
 use App\Entity\Item;
+use App\Enum\ItemProcessingStatus;
 use App\Enum\ItemType;
 use App\Item\ItemGarbageCollector;
 use App\Repository\ItemRepository;
@@ -49,13 +50,16 @@ class ItemGarbageCollectorTest extends SystemKernelTestCase
             category: $this->category,
             type: ItemType::FILE,
             name: 'gc-test',
+            keepForever: $keepForever,
+            expiresAt: $expiresAt,
+            processingStatus: ItemProcessingStatus::COMPLETED,
+        );
+        $item->setFileData(
             originalFilename: 'gc-test.txt',
             mimeType: 'text/plain',
             size: strlen($content),
             storageKey: $storageKey,
             contentHash: hash('sha256', $content),
-            keepForever: $keepForever,
-            expiresAt: $expiresAt,
         );
         $this->itemRepository->save($item);
 

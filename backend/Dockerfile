@@ -6,9 +6,14 @@ ARG MAIN_DIR
 WORKDIR /var/www/html
 
 # Instalacja rozszerzeń
+# gd: thumbnails (Part 4 photo items). tesseract-ocr(-eng/-pol): OCR on photo items —
+# a real binary, not a PHP extension, shelled out to via thiagoalessio/tesseract_ocr.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git unzip libzip-dev libicu-dev libcurl4-openssl-dev libgmp-dev libpq-dev make \
-    && docker-php-ext-install -j$(nproc) intl pdo_mysql pdo_pgsql pgsql zip curl gmp \
+    libpng-dev libjpeg62-turbo-dev libwebp-dev \
+    tesseract-ocr tesseract-ocr-eng tesseract-ocr-pol \
+    && docker-php-ext-configure gd --with-jpeg --with-webp \
+    && docker-php-ext-install -j$(nproc) intl pdo_mysql pdo_pgsql pgsql zip curl gmp gd \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN echo "date.timezone = UTC" > /usr/local/etc/php/conf.d/timezone.ini

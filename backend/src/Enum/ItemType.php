@@ -12,4 +12,8 @@ namespace App\Enum;
 enum ItemType: string
 {
     case FILE = 'file';
+
+    case URL = 'url';
+
+    case PHOTO = 'photo';
 }

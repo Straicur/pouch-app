@@ -36,7 +36,7 @@ class ItemDownloadTest extends WebTest
         $this->authAsUser();
         $this->webClient->request(
             method: Request::METHOD_POST,
-            uri: '/api/items',
+            uri: '/api/items/files',
             parameters: ['categoryId' => (string) $this->category->getId()],
             files: ['file' => $uploadedFile],
         );

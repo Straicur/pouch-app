@@ -4,6 +4,9 @@ export const ApiEndpoints = {
   LOGOUT: "/api/logout",
   REFRESH_TOKEN: "/api/auth/token/refresh",
   TEST: "/api/test",
+  ITEMS: "/api/items",
+  ITEM_THUMBNAIL_LINK: (id: number) => `/api/items/${id}/thumbnail-link`,
+  ITEM_DOWNLOAD_LINK: (id: number) => `/api/items/${id}/download-link`,
 } as const;
 
 // A 401 here must not trigger a refresh-and-retry (wrong credentials / dead refresh token).

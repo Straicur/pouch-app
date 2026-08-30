@@ -94,18 +94,27 @@ itemu.
 Tu wchodzi Messenger (kolejka) — OCR i scraping OpenGraph nie mogą blokować requestu.
 
 **Zakres:**
-- [ ] Symfony Messenger: transport (Doctrine), jeden handler jako wzorzec.
-- [ ] URL: scraping OpenGraph (tytuł/opis/miniatura) + snapshot treści strony,
+- [x] Symfony Messenger: transport (Doctrine), jeden handler jako wzorzec.
+- [x] URL: scraping OpenGraph (tytuł/opis/miniatura) + snapshot treści strony,
       asynchronicznie.
-- [ ] Zdjęcie: upload + generowanie miniatur, OCR (asynchronicznie), tekst z OCR
+- [x] Zdjęcie: upload + generowanie miniatur, OCR (asynchronicznie), tekst z OCR
       zapisany pod wyszukiwarkę.
-- [ ] Frontend: podgląd zdjęć i URL-i (karta z miniaturą/tytułem/opisem).
+- [x] Frontend: podgląd zdjęć i URL-i (karta z miniaturą/tytułem/opisem).
 
 **Testy kodowe:** test handlera scrapera (zamockowany HTTP), test generowania
 miniatur, test OCR na przykładowym obrazku (jeśli wynik da się sensownie assertować).
+✅ `backend/tests/MessageHandler/ScrapeUrlMessageHandlerTest.php` (+ `OpenGraphScraperTest.php`),
+`backend/tests/Item/ThumbnailServiceTest.php`, `backend/tests/Item/OcrServiceTest.php`,
+`backend/tests/MessageHandler/ProcessPhotoMessageHandlerTest.php`.
 
 **Test ręczny:** dodać prawdziwy URL i zobaczyć czy się scrapnie, wrzucić zrzut
 ekranu z tekstem i sprawdzić że tekst trafia do wyszukiwarki.
+✅ zrobione ręcznie: dodano `https://symfony.com/` → `app:messenger:consume` (worker
+w `docker-compose.yml`) w kilka sekund uzupełnił tytuł/opis/miniaturę/snapshot
+tekstu strony. Wrzucono wygenerowany zrzut z tekstem "Sekretne haslo: pouch2026" →
+OCR poprawnie odczytał treść do `extractedText`. Karty URL/zdjęcia zweryfikowane
+wizualnie w przeglądarce (login → `/items`) — miniatury, tytuł i opis renderują się
+poprawnie.
 
 ---
 

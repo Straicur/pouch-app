@@ -47,7 +47,7 @@ class ItemControllerTest extends WebTest
 
         $this->webClient->request(
             method: Request::METHOD_POST,
-            uri: '/api/items',
+            uri: '/api/items/files',
             parameters: ['categoryId' => (string) $this->category->getId(), ...$extraFields],
             files: ['file' => $this->createUploadedFile($content, $filename)],
         );
@@ -109,7 +109,7 @@ class ItemControllerTest extends WebTest
 
         $this->webClient->request(
             method: Request::METHOD_POST,
-            uri: '/api/items',
+            uri: '/api/items/files',
             parameters: ['categoryId' => '999999'],
             files: ['file' => $this->createUploadedFile('content', 'file.txt')],
         );
@@ -124,7 +124,7 @@ class ItemControllerTest extends WebTest
 
         $this->webClient->request(
             method: Request::METHOD_POST,
-            uri: '/api/items',
+            uri: '/api/items/files',
             parameters: ['categoryId' => (string) $this->category->getId()],
         );
 
@@ -199,7 +199,7 @@ class ItemControllerTest extends WebTest
 
         $this->webClient->request(
             method: Request::METHOD_POST,
-            uri: '/api/items',
+            uri: '/api/items/files',
             parameters: ['categoryId' => (string) $this->category->getId()],
             files: ['file' => $this->createUploadedFile('content', 'file.txt')],
         );

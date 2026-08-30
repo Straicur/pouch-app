@@ -49,6 +49,8 @@ Makefile    orchestrates both, wrapping docker compose
 
 ## Status
 
-Early-stage skeleton. The backend currently only has auth (login/logout/refresh) — the
-actual domain (storing/organizing links, photos and files) isn't built yet. The frontend
-is a bare Vite scaffold.
+Following `docs/ROADMAP.md`. So far: auth (login/logout/refresh), category tree with
+role-based ACL, and items — general files, URLs (async OpenGraph scrape + page text
+snapshot) and photos (async thumbnail + OCR) — with TTL/trash/GC and signed download
+links. The frontend has login and a first items browsing view (`/items`); most of the UI
+(category navigation, uploads, notes, search, tags) still isn't built.

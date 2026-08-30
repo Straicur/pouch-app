@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useLogoutMutation } from "../store/api/authApi";
 import { useWhoAmIQuery } from "../store/api/sessionApi";
 
@@ -30,6 +30,7 @@ export function HomePage() {
       <h1>Pouch</h1>
       {undefined !== data && <p>Zalogowano jako: {data.email}</p>}
       {undefined !== error && 401 !== status && <p className="form-error">Nie udało się połączyć z backendem.</p>}
+      <Link to="/items">Zobacz itemy</Link>
       <button type="button" onClick={handleLogout}>
         Wyloguj się
       </button>

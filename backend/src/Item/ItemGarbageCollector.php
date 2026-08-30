@@ -59,7 +59,13 @@ class ItemGarbageCollector implements ItemGarbageCollectorInterface
             $itemId = $item->getId();
 
             try {
-                $this->storageService->delete($item->getStorageKey());
+                // Not every type has both (URL items have no primary file,
+                // FILE items have no thumbnail) — delete whichever exist.
+                foreach ([$item->getStorageKey(), $item->getThumbnailStorageKey()] as $storageKey) {
+                    if (null !== $storageKey) {
+                        $this->storageService->delete($storageKey);
+                    }
+                }
             } catch (StorageException $exception) {
                 // Leave the DB row in the trash so the next run retries the storage
                 // delete too — better a lingering trash row than an orphaned blob

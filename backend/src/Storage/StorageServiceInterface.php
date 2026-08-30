@@ -33,4 +33,20 @@ interface StorageServiceInterface
 
     /** @throws StorageException */
     public function exists(string $key): bool;
+
+    /**
+     * Convenience wrapper around upload() for callers that already have a
+     * local file (e.g. a generated thumbnail) instead of an open stream.
+     *
+     * @throws StorageException
+     */
+    public function uploadFromPath(string $key, string $localPath): void;
+
+    /**
+     * Convenience wrapper around download() that writes straight to a local
+     * file — still streamed, never buffered whole in memory.
+     *
+     * @throws StorageException
+     */
+    public function downloadToPath(string $key, string $localPath): void;
 }
