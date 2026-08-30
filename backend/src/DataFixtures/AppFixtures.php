@@ -21,11 +21,23 @@ class AppFixtures extends Fixture implements FixtureGroupInterface
     #[Override]
     public function load(ObjectManager $manager): void
     {
+        // Existing dev account — kept as a plain ROLE_USER (its default).
         $user = new User(
             'mosinskidamian11@gmail.com',
             PasswordHasher::hash('zaq1@WSX')
         );
         $this->userRepository->saveUser(user: $user);
+
+        // One account per role (Part 2 of the roadmap), for manual ACL checks
+        // against Swagger (/api/doc) — same password for all three, for convenience.
+        $admin = new User('admin@pouch.test', PasswordHasher::hash('zaq1@WSX'));
+        $admin->setRoles(['ROLE_ADMIN']);
+        $this->userRepository->saveUser(user: $admin);
+
+        $guest = new User('guest@pouch.test', PasswordHasher::hash('zaq1@WSX'));
+        $guest->setRoles(['ROLE_GUEST']);
+        $this->userRepository->saveUser(user: $guest);
+
         $manager->flush();
     }
 

@@ -6,9 +6,11 @@ namespace App\Tests;
 
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\BrowserKit\Cookie as BrowserKitCookie;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Component\HttpFoundation\Cookie;
 
 abstract class WebTest extends WebTestCase
 {
@@ -61,5 +63,18 @@ abstract class WebTest extends WebTestCase
     protected function getCookieValueFromJar(string $name): ?string
     {
         return $this->webClient->getCookieJar()->get($name)?->getValue();
+    }
+
+    /**
+     * Puts a cookie minted via DatabaseMockManager::loginUser() into the client's
+     * cookie jar, so it's resent automatically on every subsequent request — the
+     * `server: [CookieService::ACCESS_TOKEN => ...]` one-off trick only survives a
+     * single request.
+     */
+    protected function setAuthCookie(Cookie $cookie): void
+    {
+        $this->webClient->getCookieJar()->set(
+            new BrowserKitCookie($cookie->getName(), $cookie->getValue())
+        );
     }
 }

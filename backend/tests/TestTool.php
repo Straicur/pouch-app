@@ -30,7 +30,7 @@ class TestTool extends TestCase
 
         $this->assertResponseContentHasRequiredKeys($responseContent);
         $this->assertSame(Response::HTTP_FORBIDDEN, $responseContent['status']);
-        $this->assertSame($responseContent['context']['uuid'], ExceptionUuidEnum::FROBIDDEN->value);
+        $this->assertSame($responseContent['context']['uuid'], ExceptionUuidEnum::FORBIDDEN->value);
     }
 
     public function testNotFoundRequestResponseData(KernelBrowser $webClient): void

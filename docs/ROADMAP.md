@@ -39,17 +39,22 @@ go w konsoli MinIO (`:9001`), pobrać z powrotem i porównać zawartość.
 Szkielet drzewa i uprawnień, zanim pojawi się cokolwiek do trzymania w środku.
 
 **Zakres:**
-- [ ] Encja `Category` (drzewo, self-referencing), CRUD: dodaj / zmień nazwę /
+- [x] Encja `Category` (drzewo, self-referencing), CRUD: dodaj / zmień nazwę /
       przenieś / usuń.
-- [ ] Role `ROLE_ADMIN` / `ROLE_USER` / `ROLE_GUEST` na `User.roles`, voter/guard per
+- [x] Role `ROLE_ADMIN` / `ROLE_USER` / `ROLE_GUEST` na `User.roles`, voter/guard per
       endpoint.
-- [ ] Fixtures z jednym kontem na każdą rolę.
+- [x] Fixtures z jednym kontem na każdą rolę.
 
 **Testy kodowe:** functional testy kontrolera kategorii (CRUD), testy macierzy
 uprawnień (guest nie tworzy/nie usuwa, user tworzy, admin wszystko).
+✅ `backend/tests/Controller/CategoryController/CategoryControllerTest.php` +
+`CategoryPermissionsTest.php`.
 
 **Test ręczny:** zalogować się jako user/guest z fixtures, sprawdzić w Swaggerze
 (`/api/doc`) że guest dostaje 403 tam, gdzie powinien.
+✅ zrobione ręcznie przez `/api/login` + `/api/categories` z fixtures (guest/user/
+admin z `AppFixtures`) — guest: 200 na GET, 403 na POST/DELETE; user: 201 na POST,
+403 na DELETE; `/api/doc.json` renderuje się bez błędu.
 
 ---
 

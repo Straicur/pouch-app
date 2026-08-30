@@ -1,4 +1,10 @@
 security:
+    # ROLE_ADMIN can do everything ROLE_USER can, which can do everything
+    # ROLE_GUEST can — checked via Security::isGranted() in CategoryVoter.
+    role_hierarchy:
+        ROLE_ADMIN: ROLE_USER
+        ROLE_USER: ROLE_GUEST
+
     # https://symfony.com/doc/current/security.html#registering-the-user-hashing-passwords
     password_hashers:
         Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface: 'auto'

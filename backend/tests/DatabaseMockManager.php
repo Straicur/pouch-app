@@ -39,6 +39,7 @@ class DatabaseMockManager
             $userTestDTO->getEmail(),
             PasswordHasher::hash($userTestDTO->getPassword()),
         );
+        $user->setRoles($userTestDTO->getRoles());
 
         $userRepository->saveUser($user);
 
