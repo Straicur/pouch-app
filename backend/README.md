@@ -67,6 +67,31 @@ All `make`/`composer` targets below assume they run inside the `app` container
 - `src/Security` — auth, cookie and config services backing JWT login/logout/refresh.
 - `src/ExceptionManagement` — typed API/server exceptions mapped to JSON error responses by
   `ExceptionSubscriber`.
+- `src/Storage` — `StorageService`, a thin streaming wrapper (`league/flysystem` +
+  `async-aws/s3`) around the S3-compatible bucket (MinIO in dev/test). See below.
+
+## Storage (S3 / MinIO)
+
+`App\Storage\StorageServiceInterface` uploads/downloads/deletes bucket objects by streaming
+(`writeStream`/`readStream` under the hood) — files are never buffered whole in PHP memory.
+It's backed by the `item.storage` Flysystem storage in `config/packages/flysystem.yaml`,
+pointed at the S3 client defined in `config/services.yaml`.
+
+Configuration comes from `STORAGE_ENDPOINT` / `STORAGE_REGION` / `STORAGE_BUCKET` /
+`STORAGE_KEY` / `STORAGE_SECRET` (see `.env` for defaults). Real dev/test values (MinIO's
+`pouch`/`pouch-dev-secret` credentials, matching the root `docker-compose.yml`) are written into
+`.env.local` / `.env.test.local` by `make env-setup` (part of `make start`) — not committed.
+
+For a manual round-trip check, use the `app:storage:*` console commands:
+
+```
+make console app:storage:upload <local-path> <bucket-key>
+make console app:storage:download <bucket-key> <local-path>
+make console app:storage:delete <bucket-key>
+```
+
+Watch the object appear/disappear in the MinIO console at `http://localhost:9001`
+(credentials: root `.env`'s `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`).
 
 ## Testing
 

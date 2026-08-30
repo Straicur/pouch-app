@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same branch/PR.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (cs, phpstan, phpunit)
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: --health-cmd="pg_isready -U app -d app" --health-interval=5s --health-timeout=5s --health-retries=10
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          # xdebug: composer.json's require-dev lists ext-xdebug, so composer
+          # install needs it present even though nothing here uses it for coverage.
+          extensions: ctype, iconv, intl, pdo_pgsql, pgsql, zip, curl, gmp, xdebug
+          coverage: none
+          tools: composer:v2
+
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio -p 9000:9000 -p 9001:9001 \
+            -e MINIO_ROOT_USER=pouch -e MINIO_ROOT_PASSWORD=pouch-dev-secret \
+            minio/minio server /data --console-address ":9001"
+          timeout 30 bash -c 'until curl -sf http://127.0.0.1:9000/minio/health/live; do sleep 1; done'
+
+      - name: Create MinIO bucket
+        run: |
+          docker run --rm --network host --entrypoint /bin/sh minio/mc -c "
+            mc alias set local http://127.0.0.1:9000 pouch pouch-dev-secret &&
+            mc mb -p local/pouch
+          "
+
+      - name: Write env files
+        # Before composer install: its post-install cache:clear boots the dev
+        # kernel, which needs a real DATABASE_URL to resolve (same ordering as
+        # `make start`'s env-setup -> composer-install).
+        run: |
+          {
+            echo "POSTGRES_PASSWORD=app"
+            echo "DATABASE_URL=postgresql://app:app@127.0.0.1:5432/app?serverVersion=16&charset=utf8"
+            echo "STORAGE_ENDPOINT=http://127.0.0.1:9000"
+            echo "STORAGE_BUCKET=pouch"
+            echo "STORAGE_KEY=pouch"
+            echo "STORAGE_SECRET=pouch-dev-secret"
+          } | tee .env.local .env.test.local >/dev/null
+
+      - name: Composer install
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Generate JWT keypair and test JWK
+        env:
+          JWT_PASSPHRASE: test
+        run: |
+          php bin/console lexik:jwt:generate-keypair --no-interaction
+          php bin/generate-test-jwt.php
+
+      - name: Migrate test database
+        run: APP_ENV=test php bin/console doctrine:migrations:migrate -n
+
+      - name: cs
+        run: composer cs
+
+      - name: phpstan
+        run: |
+          rm -rf var/cache/dev
+          mkdir -p var/cache/dev
+          php bin/console debug:container --format=xml --env=dev > var/cache/dev/App_KernelDevDebugContainer.xml
+          composer phpstan
+
+      - name: phpunit
+        run: php bin/phpunit
+
+  frontend:
+    name: Frontend (check, test)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run check
+
+      - run: npm test

@@ -65,9 +65,12 @@ env-setup:
 	@test -f backend/.env.local || { \
 		cp backend/.env backend/.env.local; \
 		printf '\nPOSTGRES_PASSWORD=app\nDATABASE_URL=postgresql://app:app@db:5432/app?serverVersion=16&charset=utf8\n' >> backend/.env.local; \
+		printf 'STORAGE_ENDPOINT=http://minio:9000\nSTORAGE_BUCKET=pouch\nSTORAGE_KEY=pouch\nSTORAGE_SECRET=pouch-dev-secret\n' >> backend/.env.local; \
 	}
-	@test -f backend/.env.test.local || \
-		printf 'POSTGRES_PASSWORD=app\nDATABASE_URL=postgresql://app:app@db:5432/app?serverVersion=16&charset=utf8\n' > backend/.env.test.local
+	@test -f backend/.env.test.local || { \
+		printf 'POSTGRES_PASSWORD=app\nDATABASE_URL=postgresql://app:app@db:5432/app?serverVersion=16&charset=utf8\n' > backend/.env.test.local; \
+		printf 'STORAGE_ENDPOINT=http://minio:9000\nSTORAGE_BUCKET=pouch\nSTORAGE_KEY=pouch\nSTORAGE_SECRET=pouch-dev-secret\n' >> backend/.env.test.local; \
+	}
 
 composer-install:
 	$(EXEC_APP) composer install
@@ -134,7 +137,13 @@ cs:
 cs-fix:
 	$(EXEC_APP) composer cs:fix
 phpstan:
-	# regenerate container dump — phpstan-symfony needs it (see phpstan.neon.dist)
+	# Full wipe, not cache:clear: a dev container warmed via cache:clear can leave
+	# debug:container's XML dump missing bundle parameters (e.g.
+	# lexik_jwt_authentication.token_ttl), which makes phpstan-symfony fall back to
+	# a generic ParameterBagInterface::get() return type and misfire on ConfigService.
+	# Only a dump from a fully cold cache has reliably included them.
+	$(EXEC_APP) rm -rf var/cache/dev
+	$(EXEC_APP) mkdir -p var/cache/dev
 	$(EXEC_APP) bash -c "php bin/console debug:container --format=xml --env=dev > var/cache/dev/App_KernelDevDebugContainer.xml"
 	$(EXEC_APP) composer phpstan
 

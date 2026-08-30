@@ -29,3 +29,16 @@ services:
     # add more service definition
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones
+
+    # S3-compatible client (MinIO in dev/test) backing config/packages/flysystem.yaml's
+    # "item.storage". path-style addressing is required for MinIO (it doesn't support
+    # the virtual-hosted-style bucket.endpoint URLs the AWS SDK defaults to).
+    app.storage.s3_client:
+        class: AsyncAws\S3\S3Client
+        arguments:
+            -
+                endpoint: '%env(STORAGE_ENDPOINT)%'
+                pathStyleEndpoint: true
+                region: '%env(STORAGE_REGION)%'
+                accessKeyId: '%env(STORAGE_KEY)%'
+                accessKeySecret: '%env(STORAGE_SECRET)%'

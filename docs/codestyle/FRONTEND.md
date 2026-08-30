@@ -164,6 +164,23 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
   równie dobrze mogłoby być zwykłym importem na górze pliku".
 - Kolizja nazw → alias (`import { User as ApiUser }`), nie zgadywanie z kontekstu.
 
+### Logi (`console.*`)
+
+Nie wołaj `console.log`/`.info`/`.warn`/`.error` bezpośrednio — zawsze przez `logger` z
+`src/lib/logger.ts`. Sterowane zmiennymi środowiskowymi (`VITE_ENABLE_DEBUG_LOGS`,
+`VITE_LOG_LEVEL`, patrz `.env.example`): domyślnie logi widać w dev, na buildzie
+produkcyjnym są wyciszone. Patrz też sekcja "Error handling" niżej.
+
+### Toasty
+
+Powiadomienia (`react-toastify`) idą przez `toastUtil` (`src/lib/toastUtil.ts`), nie
+bezpośrednio przez `toast.success(...)` z biblioteki — ujednolica wygląd (tytuł per typ,
+`theme: "colored"`) i obsługuje `sessionStorage`-owy "pending toast" po
+reload/nawigacji (`showToastAndReload`, `showToastAndNavigateToLogin`). Nawigacja poza
+komponentem Reacta (np. w interceptorze `httpClient`) idzie przez `navigationUtil`
+(`src/lib/navigationUtil.ts`) — `useNavigate` jest dostępny tylko wewnątrz drzewa
+routera, `navigationUtil.setNavigate` podpina go raz w `RootLayout`.
+
 ### Komentarze
 
 Minimum. Tylko tam, gdzie logika jest nieoczywista albo niesie kontekst biznesowy,
@@ -200,8 +217,12 @@ treści `detail` (tekst dla człowieka, może się zmienić bez ostrzeżenia).
   formularzy: po 422 przejdź po `violations` i ustaw błąd na każdym polu z osobna,
   zamiast jednego ogólnego komunikatu (tak jak dziś robi to `LoginPage` dla 401 —
   tam wystarczy jeden komunikat, bo to nie błąd walidacji pola).
-- `console.error` w `catch` jest OK na tym etapie (nie mamy jeszcze serwisu do
-  zbierania błędów) — ale nie połykaj błędu bez żadnego śladu.
+- Nigdy nie wołaj `console.log`/`console.info`/`console.warn`/`console.error` wprost —
+  używaj `logger` z `src/lib/logger.ts` (`logger.error(...)` zamiast `console.error(...)`
+  itd.). Wrapper wycisza logi na produkcji (domyślnie logi lecą tylko w dev, patrz
+  `VITE_ENABLE_DEBUG_LOGS`/`VITE_LOG_LEVEL` w `.env.example`) — gołe `console.*`
+  ominęłoby to wyciszenie. `logger.error` w `catch` jest OK na tym etapie (nie mamy
+  jeszcze serwisu do zbierania błędów) — ale nie połykaj błędu bez żadnego śladu.
 - Każda funkcja `async`, która woła API, obsługuje błąd — nie zostawiaj
   nieobsłużonego rejection.
 - Warto rozważyć wygenerowanie typów tego envelope'u i `ExceptionUuidEnum` wprost z
@@ -209,33 +230,6 @@ treści `detail` (tekst dla człowieka, może się zmienić bez ostrzeżenia).
   ręcznie przepisywać je po stronie frontendu i pilnować zgodności ręcznie.
 
 ---
-
-## Reguły z innego projektu, których świadomie nie przyjęto
-
-Podesłany materiał wyjściowy dla tego dokumentu pochodził z innego, większego
-projektu (Node 22/React 18/TS 5.8 ale też SASS, Redux z ręcznie typowanym
-`ReduxState.ts`, `componentsReusable/AppTable`) i część jego konwencji nie pasuje do
-tego, co już mamy w kodzie:
-
-- **`export default` + jawny `JSX.Element` na każdym komponencie** — u nas named
-  exports bez jawnego zwracanego typu (patrz "Komponenty" wyżej) — świadomy wybór,
-  nie przeoczenie.
-- **Podwójnie otypowana zmienna-funkcja** (`const f: (x: T) => R = (x: T): R => {}`)
-  — redundantne, TS wywnioskuje jedno z drugiego. Nie stosujemy.
-- **Argument propsów zawsze jako `props`, destrukturyzowany w ciele funkcji** — u nas
-  destrukturyzacja wprost w sygnaturze, krócej i tak samo czytelnie.
-- **Ręcznie pisany `types/ReduxState.ts`** — u nas `RootState` to
-  `ReturnType<typeof store.getState>` (`store/store.ts`), wywnioskowany automatycznie
-  przez RTK. Bezpieczniejsze niż ręczny plik, który może się rozjechać z realnym
-  kształtem store'u.
-- **SASS/SCSS + zmienne CSS pod `[data-bs-theme]`** — u nas na razie zwykły CSS, bez
-  SASS (patrz "Wersje kluczowych komponentów"). Sam pomysł zmiennych CSS pod dark
-  mode jest dobry niezależnie od SASS — wrócimy do niego, jeśli/gdy dark mode
-  faktycznie wejdzie w zakres.
-- **`componentsReusable/AppTable` i cała sekcja "typów komponentów wielokrotnego
-  użytku"** — nie mamy takiej biblioteki komponentów. Ogólna zasada ("sprawdź, czy
-  komponent nie eksportuje już własnych typów, zanim zdefiniujesz swoje") zostaje,
-  konkretny przykład nie ma zastosowania.
 
 ## Do ustalenia
 

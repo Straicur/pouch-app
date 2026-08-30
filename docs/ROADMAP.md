@@ -15,19 +15,22 @@ Zanim ruszy jakakolwiek domena — bez tego każda kolejna część robi się na
 gruncie.
 
 **Zakres:**
-- [ ] CI (GitHub Actions albo równoważnik) odpalające na push/PR to, co już mamy w
+- [x] CI (GitHub Actions albo równoważnik) odpalające na push/PR to, co już mamy w
       Makefile: `make cs`, `make phpstan`, `make test-backend`, `npm run check`,
       `npm test`.
-- [ ] Klient S3 do MinIO po stronie backendu (Flysystem + adapter S3, albo
+- [x] Klient S3 do MinIO po stronie backendu (Flysystem + adapter S3, albo
       bezpośrednio SDK) — realny upload/download/delete na bucket, nie tylko
       skonfigurowany, ale użyty.
-- [ ] Streaming upload i download (bez buforowania całego pliku w pamięci PHP).
+- [x] Streaming upload i download (bez buforowania całego pliku w pamięci PHP).
 
 **Testy kodowe:** integration test klienta storage — upload pliku testowego → sprawdź
 że istnieje w buckecie → pobierz → sprawdź zawartość → usuń → sprawdź że zniknął.
+✅ `backend/tests/Storage/StorageServiceTest.php`.
 
 **Test ręczny:** wrzucić plik przez tymczasowy endpoint/komendę konsolową, zobaczyć
 go w konsoli MinIO (`:9001`), pobrać z powrotem i porównać zawartość.
+✅ zrobione ręcznie przez `app:storage:upload` / `:download` / `:delete` — patrz
+`backend/README.md`.
 
 ---
 

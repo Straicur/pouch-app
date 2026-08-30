@@ -1,0 +1,12 @@
+# Read the documentation at https://github.com/thephpleague/flysystem-bundle/blob/master/docs/1-getting-started.md
+#
+# Backs onto the S3-compatible bucket configured via STORAGE_* (MinIO in dev/test,
+# see backend/.env for the vars and backend/README.md for where real values live).
+# Injects App\Storage\StorageService::$storage — see config/services.yaml.
+flysystem:
+    storages:
+        item.storage:
+            adapter: 'asyncaws'
+            options:
+                client: 'app.storage.s3_client'
+                bucket: '%env(STORAGE_BUCKET)%'
