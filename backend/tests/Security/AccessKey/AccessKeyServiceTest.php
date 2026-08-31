@@ -14,6 +14,7 @@ use App\Security\AccessKey\AccessKeyService;
 use App\Security\AccessKeyRateLimiterInterface;
 use App\Security\SignedUrlServiceInterface;
 use PHPUnit\Framework\TestCase;
+use Symfony\Bundle\SecurityBundle\Security;
 
 /**
  * findEffectiveKeyHolder() only ever walks the entity graph (Category::getParent()),
@@ -32,6 +33,7 @@ final class AccessKeyServiceTest extends TestCase
             accessKeyHasher: new AccessKeyHasher(),
             signedUrlService: $this->createStub(SignedUrlServiceInterface::class),
             accessKeyRateLimiter: $this->createStub(AccessKeyRateLimiterInterface::class),
+            security: $this->createStub(Security::class),
         );
     }
 

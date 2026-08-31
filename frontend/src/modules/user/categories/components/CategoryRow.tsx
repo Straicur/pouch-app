@@ -1,7 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { ApiEndpoints } from "../../../../lib/apiEndpoints";
-import { downloadBlob } from "../../../../lib/downloadBlob";
-import { toastUtil } from "../../../../lib/toastUtil";
+import { triggerDownload } from "../../../../lib/triggerDownload";
 import { useSetCategoryKeyMutation, useUnlockCategoryMutation } from "../../../../store/api/accessKeyApi";
 import type { Category } from "../../../../store/api/categoryApi";
 import { AccessKeyPanel } from "../../shared/AccessKeyPanel";
@@ -17,12 +16,8 @@ export function CategoryRow({ category, categoriesById }: CategoryRowProps) {
   const [setCategoryKey] = useSetCategoryKeyMutation();
   const parentName = null !== category.parentId ? (categoriesById.get(category.parentId)?.name ?? null) : null;
 
-  const handleExport = async () => {
-    try {
-      await downloadBlob(ApiEndpoints.CATEGORY_EXPORT(category.id), `${category.name}.zip`);
-    } catch {
-      toastUtil.showToast(t("categories.exportError"), "error");
-    }
+  const handleExport = () => {
+    triggerDownload(ApiEndpoints.CATEGORY_EXPORT(category.id));
   };
 
   return (

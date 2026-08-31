@@ -190,7 +190,8 @@ class ItemTagFavoriteControllerTest extends WebTest
         $this->webClient->request(method: Request::METHOD_GET, uri: '/api/items?favorite=1');
 
         self::assertResponseStatusCodeSame(Response::HTTP_OK);
-        $items = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        $body = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        $items = $body['items'];
         $ids = array_column($items, 'id');
         self::assertContains($favorite['id'], $ids);
         self::assertCount(1, $items);
@@ -211,7 +212,8 @@ class ItemTagFavoriteControllerTest extends WebTest
         $this->webClient->request(method: Request::METHOD_GET, uri: '/api/items?tags=important');
 
         self::assertResponseStatusCodeSame(Response::HTTP_OK);
-        $items = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        $body = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        $items = $body['items'];
         self::assertCount(1, $items);
         self::assertSame($tagged['id'], $items[0]['id']);
     }

@@ -20,6 +20,7 @@ internal_server_error: "Wystąpił błąd wewnętrzny serwera."
 category.not_found: "Nie znaleziono kategorii."
 category.move_cycle: "Nie można przenieść kategorii do niej samej ani do jednej z jej podkategorii."
 category.locked: "Ta kategoria jest chroniona kluczem dostępu."
+category.not_empty: "Ta kategoria (albo jedna z jej podkategorii) zawiera aktywne itemy — usuń lub przenieś je najpierw."
 
 # Item (all types)
 item.not_found: "Nie znaleziono itemu."
@@ -60,3 +61,5 @@ note.content_too_long: "Treść notatki jest za długa."
 url.too_long: "Adres URL jest za długi."
 url.invalid: "Nieprawidłowy adres URL."
 url.scheme_not_allowed: "Dozwolone są tylko adresy zaczynające się od http:// lub https://."
+url.host_unresolvable: "Nie udało się rozwiązać adresu hosta."
+url.host_not_allowed: "Ten adres wskazuje na prywatną/wewnętrzną sieć i nie może zostać pobrany."

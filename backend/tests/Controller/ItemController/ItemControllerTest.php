@@ -172,8 +172,8 @@ class ItemControllerTest extends WebTest
         $this->webClient->request(method: Request::METHOD_GET, uri: '/api/items');
 
         self::assertResponseStatusCodeSame(Response::HTTP_OK);
-        $list = json_decode((string) $this->webClient->getResponse()->getContent(), true);
-        self::assertContains($item['id'], array_column($list, 'id'));
+        $body = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        self::assertContains($item['id'], array_column($body['items'], 'id'));
     }
 
     public function testGetMissingItemReturnsNotFound(): void
@@ -200,8 +200,8 @@ class ItemControllerTest extends WebTest
 
         $this->authAsUser();
         $this->webClient->request(method: Request::METHOD_GET, uri: '/api/items');
-        $list = json_decode((string) $this->webClient->getResponse()->getContent(), true);
-        self::assertNotContains($item['id'], array_column($list, 'id'));
+        $body = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        self::assertNotContains($item['id'], array_column($body['items'], 'id'));
     }
 
     public function testUnauthenticatedRequestReturnsUnauthorized(): void

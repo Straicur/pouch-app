@@ -235,6 +235,56 @@ class CategoryControllerTest extends WebTest
         self::assertNotContains($category['id'], array_column($list, 'id'));
     }
 
+    /**
+     * Post-review fix: a category with an active item used to be deleted
+     * outright (DB cascade), orphaning the item's storage object — see
+     * ROADMAP's "Opcjonalne do naprawy" / CategoryService::delete().
+     */
+    public function testDeletingCategoryWithAnActiveItemFails(): void
+    {
+        $category = $this->createCategory('Has an item');
+        $this->createNote($category['id']);
+
+        $this->authAsAdmin();
+        $this->webClient->request(method: Request::METHOD_DELETE, uri: sprintf('/api/categories/%d', $category['id']));
+
+        self::assertResponseStatusCodeSame(Response::HTTP_CONFLICT);
+
+        $this->webClient->request(method: Request::METHOD_GET, uri: '/api/categories');
+        $list = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        self::assertContains($category['id'], array_column($list, 'id'));
+    }
+
+    /**
+     * Same as above, but the item sits in a descendant, not the category
+     * being deleted directly — CategoryService::delete() walks the whole
+     * subtree, not just the one row.
+     */
+    public function testDeletingCategoryWithAnActiveItemInADescendantFails(): void
+    {
+        $parent = $this->createCategory('Parent');
+        $child = $this->createCategory('Child', $parent['id']);
+        $this->createNote($child['id']);
+
+        $this->authAsAdmin();
+        $this->webClient->request(method: Request::METHOD_DELETE, uri: sprintf('/api/categories/%d', $parent['id']));
+
+        self::assertResponseStatusCodeSame(Response::HTTP_CONFLICT);
+    }
+
+    private function createNote(int $categoryId): void
+    {
+        $this->authAsUser();
+
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/notes',
+            content: json_encode(['categoryId' => $categoryId, 'content' => 'note content', 'keepForever' => true]),
+        );
+
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+    }
+
     public function testDeleteMissingCategoryReturnsNotFound(): void
     {
         $this->authAsAdmin();

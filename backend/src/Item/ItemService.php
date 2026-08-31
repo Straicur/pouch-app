@@ -214,6 +214,12 @@ class ItemService implements ItemServiceInterface
     }
 
     #[Override]
+    public function listPage(ItemListFilter $filter, int $offset, int $limit): array
+    {
+        return $this->itemRepository->findFilteredPage($filter, $offset, $limit);
+    }
+
+    #[Override]
     public function delete(int $id): void
     {
         $item = $this->getById($id);

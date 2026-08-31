@@ -39,6 +39,16 @@ class Category
     private ?string $accessKeyHash = null;
 
     /**
+     * Bumped every time setAccessKeyHash() runs — folded into the signed
+     * resource string a Part 7 access grant is issued for (AccessKeyResource),
+     * so resetting/removing/changing the key invalidates every grant already
+     * handed out for the old one, without needing a revocation list. See
+     * AccessKeyGuard/AccessKeyService.
+     */
+    #[ORM\Column(name: 'access_key_version', type: Types::INTEGER, nullable: false, options: ['default' => 0])]
+    private int $accessKeyVersion = 0;
+
+    /**
      * @var Collection<int, self>
      */
     #[ORM\OneToMany(targetEntity: self::class, mappedBy: 'parent')]
@@ -96,7 +106,13 @@ class Category
     public function setAccessKeyHash(?string $accessKeyHash): static
     {
         $this->accessKeyHash = $accessKeyHash;
+        ++$this->accessKeyVersion;
 
         return $this;
+    }
+
+    public function getAccessKeyVersion(): int
+    {
+        return $this->accessKeyVersion;
     }
 }

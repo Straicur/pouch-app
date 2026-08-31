@@ -6,6 +6,7 @@ namespace App\Category;
 
 use App\Entity\Category;
 use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadRequestException;
+use App\ExceptionManagement\Exceptions\ApiException\ConflictException\ConflictException;
 use App\ExceptionManagement\Exceptions\ApiException\NotFoundException\NotFoundException;
 
 interface CategoryServiceInterface
@@ -30,6 +31,14 @@ interface CategoryServiceInterface
      */
     public function move(int $id, ?int $parentId): Category;
 
-    /** @throws NotFoundException */
+    /**
+     * @throws NotFoundException   if $id doesn't exist
+     * @throws ConflictException   if $id or any of its descendants still holds
+     *                             an active (non-trashed) item — deleting the
+     *                             row would otherwise cascade past
+     *                             ItemGarbageCollector::purgeTrash(), the only
+     *                             place that actually removes storage objects
+     *                             from S3/MinIO, orphaning them in the bucket
+     */
     public function delete(int $id): void;
 }

@@ -131,6 +131,13 @@ class Item
     #[ORM\Column(name: 'access_key_hash', type: Types::STRING, length: 255, nullable: true)]
     private ?string $accessKeyHash = null;
 
+    /**
+     * Bumped every time setAccessKeyHash() runs — see Category's own field of
+     * the same name for why (grant invalidation on key reset).
+     */
+    #[ORM\Column(name: 'access_key_version', type: Types::INTEGER, nullable: false, options: ['default' => 0])]
+    private int $accessKeyVersion = 0;
+
     // --- lifecycle (Part 3) ---
 
     #[ORM\Column(name: 'keep_forever', type: Types::BOOLEAN, nullable: false)]
@@ -409,7 +416,13 @@ class Item
     public function setAccessKeyHash(?string $accessKeyHash): static
     {
         $this->accessKeyHash = $accessKeyHash;
+        ++$this->accessKeyVersion;
 
         return $this;
+    }
+
+    public function getAccessKeyVersion(): int
+    {
+        return $this->accessKeyVersion;
     }
 }

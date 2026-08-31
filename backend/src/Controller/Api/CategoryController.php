@@ -14,6 +14,8 @@ use App\DTO\Request\CategoryRenameRequestDTO;
 use App\DTO\Response\CategoryResponseDTO;
 use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadRequestException;
 use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadRequestExceptionModel;
+use App\ExceptionManagement\Exceptions\ApiException\ConflictException\ConflictException;
+use App\ExceptionManagement\Exceptions\ApiException\ConflictException\ConflictExceptionModel;
 use App\ExceptionManagement\Exceptions\ApiException\ForbiddenException\ForbiddenException;
 use App\ExceptionManagement\Exceptions\ApiException\ForbiddenException\ForbiddenExceptionModel;
 use App\ExceptionManagement\Exceptions\ApiException\NotFoundException\NotFoundException;
@@ -284,10 +286,12 @@ final class CategoryController extends AbstractController
      * @throws UnauthorizedException
      * @throws ForbiddenException
      * @throws NotFoundException
+     * @throws ConflictException
      */
     #[Route('/api/categories/{id}', name: 'category_delete', requirements: ['id' => '\d+'], methods: [Request::METHOD_DELETE])]
     #[OA\Delete(
-        description: 'Delete a category (admin only) — cascades to its descendants',
+        description: 'Delete a category (admin only) — cascades to its descendants. Refused (409) while it or any '
+            . 'descendant still holds an active item — trash/move those first.',
         responses: [
             new OA\Response(
                 response: 204,
@@ -299,6 +303,11 @@ final class CategoryController extends AbstractController
         response: 404,
         description: 'Category not found',
         content: new Model(type: NotFoundExceptionModel::class)
+    )]
+    #[OA\Response(
+        response: 409,
+        description: 'The category or one of its descendants still holds an active item',
+        content: new Model(type: ConflictExceptionModel::class)
     )]
     public function delete(Request $request, int $id): Response
     {

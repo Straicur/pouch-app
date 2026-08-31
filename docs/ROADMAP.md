@@ -424,6 +424,70 @@ włączonym (`/chrome`) albo ręcznie przez użytkownika.
 
 ---
 
+## Część 12 — Poprawki po code review Części 7–11
+
+Sześć znalezisk z code review (2 wysokie, 4 średnie), wszystkie naprawione:
+
+- [x] **[Wysoki] Granty dostępu przechodziły między użytkownikami po
+      wylogowaniu.** Dwie warstwy: (1) frontend — `authApi.ts`'s `login`/`logout`
+      `onQueryStarted` teraz wołają `accessGrants.clear()` (nowa metoda w
+      `lib/accessGrants.ts`), więc grant zdobyty przez jednego użytkownika nie
+      przetrwa do sesji następnego zalogowanego w tej samej karcie. (2) backend,
+      defense-in-depth — `AccessKeyResource` (`backend/src/Security/AccessKey/`)
+      teraz podpisuje `…:v{accessKeyVersion}:u{userId}`, nie sam `…:{id}`;
+      `AccessKeyService`/`AccessKeyGuard` wstrzykują `Security` i rozwiązują
+      bieżącego użytkownika, więc nawet gdyby frontend czegoś nie wyczyścił, grant
+      podpisany dla usera A nigdy nie zmatchuje requestu usera B (backend woła
+      `$security->getUser()` przy każdym sprawdzeniu, nie tylko przy wystawieniu).
+      Migracja `Version20260831180000.php` dodaje `access_key_version` na
+      `category`/`item`. Test `AccessKeyControllerTest` zaktualizowany pod nowy
+      format zasobu.
+- [x] **[Wysoki] Eksport ZIP/backup nie był realnie streamowany po stronie
+      przeglądarki.** `lib/downloadBlob.ts` → `lib/triggerDownload.ts`: zamiast
+      `httpClient.get(..., {responseType:"blob"})` (cały plik buforowany w pamięci
+      karty przed zapisem) — zwykła nawigacja (`window.location.assign(url)`).
+      Backend i tak już streamuje (`StreamedResponse` w `CategoryController::
+      export()`/`AdminController`'s backup) i ustawia `Content-Disposition:
+      attachment`, więc przeglądarka sama zapisuje plik strumieniowo, bez
+      przeładowania SPA. Użyte w `BackupModule.tsx` i `CategoryRow.tsx`.
+- [x] **[Średni] Reset/zmiana klucza nie unieważniała wcześniej wystawionych
+      grantów.** Rozwiązane tym samym `access_key_version` co Finding #1 —
+      `setAccessKeyHash()` bumpuje wersję przy każdej zmianie (patrz `Category`/
+      `Item`), więc grant podpisany na starą wersję przestaje pasować natychmiast,
+      bez listy odwołań.
+- [x] **[Średni] `window.open()` po `await` ryzykował zablokowanie jako popup.**
+      `ItemCard.tsx`'s `DownloadButton` i `VersionHistory.tsx`'s `handleDownload`
+      teraz otwierają pustą kartę synchronicznie w handlerze kliknięcia (to wciąż
+      liczy się jako user gesture), a dopiero po rozwiązaniu requestu ustawiają jej
+      `location.href` — zamiast wołać `window.open()` dopiero po `await`.
+- [x] **[Średni] Publiczne linki niedostępne dla notatek/URL-i.** `ShareButton` w
+      `ItemCard.tsx` przeniesiony poza warunek `file`/`photo` — renderuje się dla
+      każdego typu itemu; `DownloadButton` zostaje ograniczony do `file`/`photo`
+      (jedyne typy z realną zawartością do pobrania).
+- [x] **[Średni] Formularze tworzenia nie pozwalały ustawić cyklu życia itemu.**
+      Nowy współdzielony `modules/user/items/components/lifecycleFields.tsx`
+      (schema zod + `<LifecycleFieldsInput>`) używany przez `FileUploadForm` i
+      `NoteForm`: wybór "domyślnie (1 dzień)" / "przechowuj zawsze" / `1h`/`7d`/
+      `30d` / własna data. `itemApi.ts`'s `CreateFileRequest`/`CreateNoteRequest`
+      rozszerzone o `keepForever?`/`ttlPreset?`/`expiresAt?`, zgodnie z backendowym
+      `ItemLifecycleOptions`/`TtlPreset`.
+
+**Weryfikacja:** frontend — `tsc -p tsconfig.app.json --noEmit` i
+`biome check --write src` czysto (57 plików, tylko jedno niepowiązane
+pre-existing ostrzeżenie w `main.tsx`). `npm test`/`vitest` nie dało się odpalić
+lokalnie (uprawnienia na `node_modules/.tmp`/`node_modules/.vite-temp` z
+wcześniejszego uruchomienia w kontenerze jako root) — do zrobienia w kontenerze.
+Backend — `make cs`/`make phpstan`/`make test-backend`/migracja **nie zostały
+jeszcze uruchomione**: kontenery są zatrzymane (użytkownik wyłączył je wprost w tej
+sesji) i nie było zgody na ich ponowne włączenie od tego momentu — kod przejrzany
+ręcznie (w tym `php -l`-równoważny przegląd wszystkich zmienionych plików), ale
+realna weryfikacja (testy, PHPStan, migracja) czeka na kontenery.
+
+**Test ręczny:** ⏳ nie wykonany — te same ograniczenia co w Części 11 (brak
+`/chrome`, kontenery zatrzymane).
+
+---
+
 ## Opcjonalne do naprawy (niezależne od kolejności wyżej)
 
 Nie blokują żadnej części — zrobić przy okazji, kiedy akurat dotykamy powiązanego
@@ -436,29 +500,46 @@ kodu, albo osobno gdy będzie chwila:
 - [ ] **Brak prod stage dla backendu** — `backend/Dockerfile` ma tylko `base`+`dev`
       (frontend ma `prod` z nginx, backend nie). Potrzebne przed pierwszym realnym
       wdrożeniem, nie wcześniej.
-- [ ] **Usunięcie kategorii z itemami w środku kasuje je z bazy na twardo, z
-      pominięciem kosza** — `CategoryService::delete()` po prostu usuwa rekord i
-      liczy na `ON DELETE CASCADE`; `ItemGarbageCollector::purgeTrash()` (jedyne
-      miejsce, które faktycznie kasuje pliki z S3/MinIO) nigdy nie dostaje szansy
-      zobaczyć te itemy — ich storage key przepada bezpowrotnie, plik zostaje
-      osierocony w buckecie. Do wyboru: (a) zablokować usuwanie kategorii, dopóki
-      są w niej aktywne itemy (najprostsze), albo (b) przed usunięciem kategorii
-      rekurencyjnie otrasz-ować wszystkie itemy w niej i jej podkategoriach, a
-      dopiero po realnym opróżnieniu (przez GC albo synchronicznie) skasować samą
-      kategorię. Wymaga świadomej decyzji UX, nie tylko poprawki kodu — stąd na
-      liście do zrobienia, a nie zrobione od razu.
-- [ ] **`GET /api/items` zwraca całą treść każdego itemu, bez paginacji** —
-      `ItemRepository::findActive()` ładuje wszystkie aktywne itemy naraz, a
-      `ItemMapper` dokleja do każdego pełny `extractedText`/`noteContent`. Przy
-      większej kolekcji jeden request to potencjalnie kilka-kilkanaście MB JSON-a —
-      kłóci się z założeniem mobile-first. Potrzebny osobny DTO "podsumowania" (bez
-      pełnej treści) + paginacja na liście; pełna treść tylko na endpoincie
-      szczegółów pojedynczego itemu. Naturalnie pasuje do Części 6 (wyszukiwarka i
-      tak potrzebuje paginacji).
-- [ ] **`UrlValidator` świadomie nie chroni przed SSRF** (prywatne/localne IP,
-      metadata endpoints w chmurze) — udokumentowana decyzja z Części 3 ("self-hosted,
-      single/few-user, pełne hardening zostawione poza MVP"), nie przeoczenie.
-      Do rewizji, jeśli/gdy Pouch ma być kiedyś wystawiony publicznie z rejestracją
-      dla wielu niezaufanych użytkowników — wtedy dorobić rozwiązywanie DNS i
-      blokadę adresów prywatnych/loopback/link-local na każdym przekierowaniu, nie
-      tylko na wejściowym URL-u.
+- [x] ~~Usunięcie kategorii z itemami w środku kasuje je z bazy na twardo, z
+      pominięciem kosza~~ — **naprawione.** `CategoryService::delete()` teraz woła
+      nowy `ItemRepository::existsActiveInCategories()` na całe poddrzewo
+      (`collectSubtreeIds()`, rekurencyjnie przez `Category::getChildren()`) i
+      odrzuca usunięcie z 409 (`category.not_empty`), jeśli ono samo albo
+      którakolwiek z podkategorii wciąż ma aktywny (nietrasz-owany) item —
+      wariant (a) z listy. Testy: `testDeletingCategoryWithAnActiveItemFails`,
+      `testDeletingCategoryWithAnActiveItemInADescendantFails`
+      (`CategoryControllerTest`).
+- [x] ~~`GET /api/items` zwraca całą treść każdego itemu, bez paginacji~~ —
+      **naprawione.** Nowy `ItemRepository::findFilteredPage()` (DB-owy
+      `LIMIT`/`OFFSET` poza wyszukiwaniem pełnotekstowym, gdzie ranking i tak
+      musi zobaczyć wszystkie trafienia przed pocięciem na strony — patrz metody
+      własny komentarz) + nowy `ItemSummaryResponseDTO` (bez `extractedText` —
+      OCR/scraped-page text, nigdzie nie renderowany we froncie;
+      `noteContent` zostaje, bo `ItemCard` faktycznie pokazuje pełną treść
+      notatki w liście). `GET /api/items` odpowiada teraz kopertą
+      `{items, total, page, pageSize}` (`ItemListResponseDTO`, domyślnie
+      `pageSize=50`, cap `200`) zamiast gołej tablicy. Frontend: `itemApi.ts`'s
+      `ItemListResult`, `ItemsPage.tsx` ma prosty pager (poprzednia/następna
+      strona, reset do strony 1 przy zmianie filtrów). `findFiltered()`
+      (nieopaginowany) zostaje bez zmian dla `CategoryExportService`, które
+      faktycznie potrzebuje całego zbioru.
+- [x] ~~`UrlValidator` świadomie nie chroni przed SSRF~~ — **naprawione.**
+      `UrlValidator::assertValid()` teraz rozwiązuje DNS hosta (A + AAAA) i
+      odrzuca go, jeśli którykolwiek adres nie jest publicznie routowalny
+      (`FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE` — loopback,
+      RFC1918/ULA, link-local łącznie z `169.254.169.254`), literały IP też.
+      `OpenGraphScraper` woła to samo sprawdzenie na **każdym** przekierowaniu
+      (`max_redirects: 0` + ręczne podążanie za `Location`, walidacja przed
+      każdym hopem), nie tylko na wejściowym URL-u — to był właściwy brak, nie
+      samo sprawdzenie usera-podanego URL-a. Testy: `UrlValidatorTest` (literały
+      IP, bez DNS — deterministyczne), `OpenGraphScraperTest`'s
+      `testRejectsARedirectToAPrivateOrLinkLocalAddress`/
+      `testFollowsARedirectToAnotherPublicHost`.
+
+**Weryfikacja tych trzech:** kod przejrzany ręcznie, testy dopisane/zaktualizowane
+(w tym istniejące `GET /api/items` asercje w `ItemControllerTest`/
+`ItemSearchControllerTest`/`ItemTagFavoriteControllerTest` przełączone na nową
+kopertę `{items, ...}`) — **`make cs`/`make phpstan`/`make test-backend` nie zostały
+jeszcze uruchomione**, z tego samego powodu co Część 12: kontenery zatrzymane, brak
+zgody na ponowne włączenie od tamtej pory. Frontend: `tsc --noEmit` i
+`biome check --write` czysto.

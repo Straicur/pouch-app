@@ -50,7 +50,9 @@ class ItemSearchControllerTest extends WebTest
 
         self::assertResponseStatusCodeSame(Response::HTTP_OK);
 
-        return json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        $body = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+
+        return $body['items'];
     }
 
     public function testSearchMatchesByName(): void
@@ -205,11 +207,13 @@ class ItemSearchControllerTest extends WebTest
 
         $this->webClient->request(method: Request::METHOD_GET, uri: sprintf('/api/items?q=searchword&categoryId=%d', $otherCategory->getId()));
         self::assertResponseStatusCodeSame(Response::HTTP_OK);
-        self::assertSame([], json_decode((string) $this->webClient->getResponse()->getContent(), true));
+        $emptyBody = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        self::assertSame([], $emptyBody['items']);
 
         $this->webClient->request(method: Request::METHOD_GET, uri: sprintf('/api/items?q=searchword&categoryId=%d', $this->category->getId()));
         self::assertResponseStatusCodeSame(Response::HTTP_OK);
-        $items = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        $body = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        $items = $body['items'];
         self::assertCount(1, $items);
         self::assertSame($item['id'], $items[0]['id']);
     }

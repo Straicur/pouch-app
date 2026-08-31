@@ -7,6 +7,7 @@ namespace App\Security\AccessKey;
 use App\Category\CategoryServiceInterface;
 use App\Entity\Category;
 use App\Entity\Item;
+use App\Entity\User;
 use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadRequestException;
 use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\UnauthorizedException;
 use App\Item\ItemServiceInterface;
@@ -14,7 +15,9 @@ use App\Repository\CategoryRepository;
 use App\Repository\ItemRepository;
 use App\Security\AccessKeyRateLimiterInterface;
 use App\Security\SignedUrlServiceInterface;
+use LogicException;
 use Override;
+use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\Request;
 
 final readonly class AccessKeyService implements AccessKeyServiceInterface
@@ -35,7 +38,23 @@ final readonly class AccessKeyService implements AccessKeyServiceInterface
         private AccessKeyHasherInterface $accessKeyHasher,
         private SignedUrlServiceInterface $signedUrlService,
         private AccessKeyRateLimiterInterface $accessKeyRateLimiter,
+        private Security $security,
     ) {}
+
+    /**
+     * Post-review fix: a grant is bound to whoever's authenticated at the
+     * moment it's issued — see AccessKeyResource's doc comment for why.
+     */
+    private function currentUserId(): int
+    {
+        $user = $this->security->getUser();
+
+        if (!$user instanceof User) {
+            throw new LogicException('Access key unlock attempted without an authenticated user.');
+        }
+
+        return $user->getId();
+    }
 
     #[Override]
     public function findEffectiveKeyHolder(Category $category): ?Category
@@ -88,7 +107,7 @@ final readonly class AccessKeyService implements AccessKeyServiceInterface
 
         $this->assertKeyMatches($key, $holderKeyHash);
 
-        return $this->sign(AccessKeyResource::forCategory($holder->getId()));
+        return $this->sign(AccessKeyResource::forCategory($holder->getId(), $holder->getAccessKeyVersion(), $this->currentUserId()));
     }
 
     #[Override]
@@ -105,7 +124,7 @@ final readonly class AccessKeyService implements AccessKeyServiceInterface
 
         $this->assertKeyMatches($key, $itemKeyHash);
 
-        return $this->sign(AccessKeyResource::forItem($item->getId()));
+        return $this->sign(AccessKeyResource::forItem($item->getId(), $item->getAccessKeyVersion(), $this->currentUserId()));
     }
 
     /**

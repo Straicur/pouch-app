@@ -13,6 +13,7 @@ use Doctrine\Persistence\ManagerRegistry;
 
 use function array_filter;
 use function array_map;
+use function array_slice;
 use function array_values;
 use function is_numeric;
 use function is_scalar;
@@ -107,6 +108,83 @@ class ItemRepository extends ServiceEntityRepository
             static fn (int $id): ?Item => $itemsById[$id] ?? null,
             $rankedIds,
         )));
+    }
+
+    /**
+     * Post-review fix: paginated counterpart of findFiltered() — that method
+     * stays as-is (unpaginated) for callers that genuinely need the whole
+     * set (CategoryExportService's ZIP walk). GET /api/items used to load
+     * every active item, full note/OCR text included, in one response —
+     * fine for a handful of items, a real problem at any real collection
+     * size (mobile-first, per the product doc).
+     *
+     * Without free-text search, the DB itself does the LIMIT/OFFSET. With
+     * it, ranking needs to see every match before a page can be sliced off
+     * it (searchMatchingIds() already computes the full ranked list) — the
+     * slicing happens in PHP there instead, same as findFiltered()'s own
+     * re-sort.
+     *
+     * @return array{items: list<Item>, total: int}
+     */
+    public function findFilteredPage(ItemListFilter $filter, int $offset, int $limit): array
+    {
+        $qb = $this->createQueryBuilder('i')
+            ->where('i.trashedAt IS NULL');
+
+        if (null !== $filter->categoryId) {
+            $qb->andWhere('i.category = :categoryId')
+                ->setParameter('categoryId', $filter->categoryId);
+        }
+
+        if ($filter->favoriteOnly) {
+            $qb->andWhere('i.isFavorite = true');
+        }
+
+        if ([] !== $filter->tags) {
+            $qb->join('i.tags', 't')
+                ->andWhere('t.name IN (:tagNames)')
+                ->setParameter('tagNames', $filter->tags)
+                ->distinct();
+        }
+
+        if (null === $filter->query) {
+            $total = (clone $qb)->select('COUNT(DISTINCT i.id)')->getQuery()->getSingleScalarResult();
+
+            /** @var list<Item> $items */
+            $items = $qb->orderBy('i.createdAt', 'DESC')
+                ->setFirstResult($offset)
+                ->setMaxResults($limit)
+                ->getQuery()
+                ->getResult();
+
+            return ['items' => $items, 'total' => is_numeric($total) ? (int) $total : 0];
+        }
+
+        $rankedIds = $this->searchMatchingIds($filter->query);
+        if ([] === $rankedIds) {
+            return ['items' => [], 'total' => 0];
+        }
+
+        /** @var list<Item> $matched */
+        $matched = $qb->andWhere('i.id IN (:matchingIds)')
+            ->setParameter('matchingIds', $rankedIds)
+            ->getQuery()
+            ->getResult();
+
+        $itemsById = [];
+        foreach ($matched as $item) {
+            $itemsById[$item->getId()] = $item;
+        }
+
+        // Every id in $rankedIds that also survived the category/favorite/
+        // tags filters above, still in relevance order.
+        $orderedIds = array_values(array_filter($rankedIds, static fn (int $id): bool => isset($itemsById[$id])));
+        $pageIds = array_slice($orderedIds, $offset, $limit);
+
+        return [
+            'items' => array_values(array_map(static fn (int $id): Item => $itemsById[$id], $pageIds)),
+            'total' => count($orderedIds),
+        ];
     }
 
     /**
@@ -221,6 +299,34 @@ class ItemRepository extends ServiceEntityRepository
         }
 
         return $byType;
+    }
+
+    /**
+     * Post-review fix: CategoryService::delete() calls this before removing a
+     * category, across the whole subtree it and its descendants form —
+     * deleting a category with active items still in it would otherwise
+     * cascade at the DB level (ON DELETE CASCADE) without
+     * ItemGarbageCollector::purgeTrash() ever getting a chance to see them,
+     * orphaning their storage objects in S3/MinIO forever.
+     *
+     * @param list<int> $categoryIds
+     */
+    public function existsActiveInCategories(array $categoryIds): bool
+    {
+        if ([] === $categoryIds) {
+            return false;
+        }
+
+        $count = $this->createQueryBuilder('i')
+            ->select('COUNT(i.id)')
+            ->where('i.trashedAt IS NULL')
+            ->andWhere('i.category IN (:categoryIds)')
+            ->setParameter('categoryIds', $categoryIds)
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getSingleScalarResult();
+
+        return is_numeric($count) && (int) $count > 0;
     }
 
     /**

@@ -218,10 +218,21 @@ function DownloadButton({ item }: DownloadButtonProps) {
   const [getDownloadLink, { isLoading }] = useGetItemDownloadLinkMutation();
 
   const handleDownload = async () => {
+    // Post-review fix: open the tab synchronously, inside the click handler
+    // — that's still counted as a direct user gesture. Setting its location
+    // only after the awaited request resolves (i.e. calling window.open()
+    // itself post-await) risks the browser's popup blocker stepping in,
+    // especially on Safari/iOS.
+    const tab = window.open("", "_blank", "noreferrer");
+
     try {
       const link = await getDownloadLink(item.id).unwrap();
-      window.open(link.url, "_blank", "noreferrer");
+
+      if (null !== tab) {
+        tab.location.href = link.url;
+      }
     } catch {
+      tab?.close();
       toastUtil.showToast(t("items.downloadError"), "error");
     }
   };
@@ -286,12 +297,13 @@ export function ItemCard({ item }: ItemCardProps) {
           </p>
         )}
 
-        {("file" === item.type || "photo" === item.type) && (
-          <div className="item-card-actions">
-            <DownloadButton item={item} />
-            <ShareButton itemId={item.id} />
-          </div>
-        )}
+        <div className="item-card-actions">
+          {/* Downloading a file needs actual file content — restricted to
+              file/photo. Sharing a public link works for every item type
+              (backend's public-link endpoint has no such restriction). */}
+          {("file" === item.type || "photo" === item.type) && <DownloadButton item={item} />}
+          <ShareButton itemId={item.id} />
+        </div>
         {"file" === item.type && <VersionHistory itemId={item.id} />}
 
         <ItemAccessKeySection item={item} />

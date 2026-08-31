@@ -5,15 +5,23 @@ import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { useListCategoriesQuery } from "../../../../store/api/categoryApi";
 import { useCreateNoteMutation } from "../../../../store/api/itemApi";
+import { LifecycleFieldsInput, lifecycleFieldsSchema, toLifecyclePayload } from "./lifecycleFields";
 
 // Defined at module scope (zod needs the schema before any component/hook
 // runs), so — like LoginPage — these messages stay inline instead of going
 // through useTranslation(); see locales/pl.ts's header.
-const noteFormSchema = z.object({
-  categoryId: z.coerce.number().int().positive("Wybierz kategorię"),
-  name: z.string().max(255, "Maksymalnie 255 znaków").optional(),
-  content: z.string().min(1, "Treść notatki nie może być pusta"),
-});
+const noteFormSchema = z
+  .object({
+    categoryId: z.coerce.number().int().positive("Wybierz kategorię"),
+    name: z.string().max(255, "Maksymalnie 255 znaków").optional(),
+    content: z.string().min(1, "Treść notatki nie może być pusta"),
+    ...lifecycleFieldsSchema,
+  })
+  .superRefine((data, ctx) => {
+    if ("custom" === data.lifecycleMode && (undefined === data.customExpiresAt || "" === data.customExpiresAt)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["customExpiresAt"], message: "Podaj datę wygaśnięcia" });
+    }
+  });
 
 // z.coerce.number()'s input type (unknown, before coercion) differs from its
 // output type (number, after) — useForm needs both: the input shape for
@@ -32,11 +40,13 @@ export function NoteForm() {
     reset,
     setValue,
     setError,
+    watch,
     formState: { errors },
   } = useForm<NoteFormInput, unknown, NoteFormValues>({
     resolver: zodResolver(noteFormSchema),
-    defaultValues: { name: "", content: "" },
+    defaultValues: { name: "", content: "", lifecycleMode: "default" },
   });
+  const lifecycleMode = watch("lifecycleMode") ?? "default";
 
   useEffect(() => {
     if (undefined !== categories && categories.length > 0) {
@@ -51,8 +61,9 @@ export function NoteForm() {
         categoryId: values.categoryId,
         content: values.content,
         name: "" === name ? undefined : name,
+        ...toLifecyclePayload(values),
       }).unwrap();
-      reset({ categoryId: values.categoryId, name: "", content: "" });
+      reset({ categoryId: values.categoryId, name: "", content: "", lifecycleMode: "default" });
     } catch {
       setError("root", { message: t("notes.createError") });
     }
@@ -79,6 +90,8 @@ export function NoteForm() {
       <label htmlFor="note-content">{t("notes.contentLabel")}</label>
       <textarea id="note-content" rows={6} {...register("content")} />
       {undefined !== errors.content && <p className="field-error">{errors.content.message}</p>}
+
+      <LifecycleFieldsInput idPrefix="note" register={register} errors={errors} mode={lifecycleMode} />
 
       {undefined !== errors.root && <p className="form-error">{errors.root.message}</p>}
 

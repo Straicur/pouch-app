@@ -6,9 +6,11 @@ namespace App\Security\AccessKey;
 
 use App\Entity\Category;
 use App\Entity\Item;
+use App\Entity\User;
 use App\ExceptionManagement\Exceptions\ApiException\ForbiddenException\ForbiddenException;
 use App\Security\SignedUrlServiceInterface;
 use Override;
+use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\Request;
 use Throwable;
 
@@ -32,7 +34,21 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
     public function __construct(
         private AccessKeyServiceInterface $accessKeyService,
         private SignedUrlServiceInterface $signedUrlService,
+        private Security $security,
     ) {}
+
+    /**
+     * Post-review fix: a grant only matches for the user it was issued to —
+     * see AccessKeyResource's doc comment. Returns null (never matches any
+     * grant) rather than throwing: an unauthenticated request should simply
+     * see the resource as locked, not 500.
+     */
+    private function currentUserId(): ?int
+    {
+        $user = $this->security->getUser();
+
+        return $user instanceof User ? $user->getId() : null;
+    }
 
     #[Override]
     public function assertCategoryUnlocked(Category $category, Request $request): void
@@ -50,7 +66,7 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
         // independent locks (Part 7) is the one actually blocking them.
         $this->assertCategoryUnlocked($item->getCategory(), $request);
 
-        if (null !== $item->getAccessKeyHash() && false === $this->hasValidGrant($request, AccessKeyResource::forItem($item->getId()))) {
+        if (null !== $item->getAccessKeyHash() && false === $this->hasValidItemGrant($item, $request)) {
             throw new ForbiddenException(message: 'item.locked');
         }
     }
@@ -64,7 +80,13 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
             return true;
         }
 
-        return $this->hasValidGrant($request, AccessKeyResource::forCategory($holder->getId()));
+        $userId = $this->currentUserId();
+
+        if (null === $userId) {
+            return false;
+        }
+
+        return $this->hasValidGrant($request, AccessKeyResource::forCategory($holder->getId(), $holder->getAccessKeyVersion(), $userId));
     }
 
     #[Override]
@@ -78,7 +100,7 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
             return true;
         }
 
-        return $this->hasValidGrant($request, AccessKeyResource::forItem($item->getId()));
+        return $this->hasValidItemGrant($item, $request);
     }
 
     #[Override]
@@ -88,7 +110,18 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
             return true;
         }
 
-        return $this->hasValidGrant($request, AccessKeyResource::forItem($item->getId()));
+        return $this->hasValidItemGrant($item, $request);
+    }
+
+    private function hasValidItemGrant(Item $item, Request $request): bool
+    {
+        $userId = $this->currentUserId();
+
+        if (null === $userId) {
+            return false;
+        }
+
+        return $this->hasValidGrant($request, AccessKeyResource::forItem($item->getId(), $item->getAccessKeyVersion(), $userId));
     }
 
     private function hasValidGrant(Request $request, string $resource): bool

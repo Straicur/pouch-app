@@ -60,6 +60,9 @@ const pl = {
     downloadError: "Nie udało się wygenerować linku do pobrania.",
     unlockTitle: "Odblokuj zablokowany item",
     unlockIdPlaceholder: "ID itemu",
+    pagerPrevious: "Poprzednia",
+    pagerNext: "Następna",
+    pagerStatus: "Strona {{page}} z {{totalPages}}",
   },
   upload: {
     addTitle: "Dodaj plik",
@@ -68,6 +71,20 @@ const pl = {
     submit: "Wyślij plik",
     submitting: "Wysyłanie…",
     createError: "Nie udało się dodać pliku.",
+  },
+  // Shared by every create-item form (FileUploadForm, NoteForm — post-review
+  // fix: the product doc requires choosing this at creation time, not just
+  // getting the backend's silent 1-day default).
+  lifecycle: {
+    label: "Czas przechowywania",
+    default: "Domyślnie (1 dzień)",
+    keepForever: "Przechowuj zawsze",
+    ttl1h: "1 godzina",
+    ttl7d: "7 dni",
+    ttl30d: "30 dni",
+    custom: "Wybierz datę",
+    customDateLabel: "Wygasa",
+    customDateRequired: "Podaj datę wygaśnięcia",
   },
   accessKey: {
     sectionTitle: "Klucz dostępu",
@@ -203,8 +220,6 @@ const pl = {
     backup: {
       title: "Backup całości",
       button: "Pobierz backup (ZIP)",
-      downloading: "Pobieranie…",
-      error: "Nie udało się pobrać backupu.",
     },
   },
   toast: {

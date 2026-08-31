@@ -5,6 +5,11 @@ import { axiosBaseQuery } from "./baseQuery";
 export type ItemType = "file" | "url" | "photo" | "note";
 export type ItemProcessingStatus = "pending" | "completed" | "failed";
 
+// Post-review fix: GET /api/items returns this shape (no $extractedText —
+// OCR/scraped-page text, never rendered anywhere in the UI, dropped from the
+// paginated list response to keep it off every page's payload; see backend's
+// ItemSummaryResponseDTO). $noteContent stays: ItemCard renders a note's full
+// body inline in the list itself, not behind a separate detail fetch.
 export interface Item {
   id: number;
   categoryId: number;
@@ -19,7 +24,6 @@ export interface Item {
   url: string | null;
   pageTitle: string | null;
   pageDescription: string | null;
-  extractedText: string | null;
   noteContent: string | null;
   favorite: boolean;
   tags: string[];
@@ -34,6 +38,19 @@ export interface ItemListParams {
   favorite?: boolean;
   tags?: string[];
   q?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+// The envelope GET /api/items responds with — see backend's
+// ItemListResponseDTO. $total is pre-lock-filtering (see that DTO's own
+// comment), so a page can come back with fewer than $pageSize items without
+// $total being wrong about it.
+export interface ItemListResult {
+  items: Item[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 export interface SignedLink {
@@ -41,7 +58,21 @@ export interface SignedLink {
   expiresAt: string;
 }
 
-export interface CreateNoteRequest {
+// Mirrors backend's TtlPreset enum (see App\Enum\TtlPreset) — the three
+// choices the "ttlPreset" field of ItemLifecycleOptions actually accepts.
+export type TtlPreset = "1h" | "7d" | "30d";
+
+// Shared by every create-item form (post-review fix — see LifecycleFields):
+// keepForever wins over expiresAt, which wins over ttlPreset, which — if all
+// three are omitted — falls back to the backend's own 1-day default
+// (ItemService::resolveExpiresAt()).
+export interface ItemLifecycleFields {
+  keepForever?: boolean;
+  ttlPreset?: TtlPreset;
+  expiresAt?: string;
+}
+
+export interface CreateNoteRequest extends ItemLifecycleFields {
   categoryId: number;
   content: string;
   name?: string;
@@ -57,7 +88,7 @@ export interface UpdateTagsRequest {
   tags: string[];
 }
 
-export interface CreateFileRequest {
+export interface CreateFileRequest extends ItemLifecycleFields {
   categoryId: number;
   file: File;
   name?: string;
@@ -98,7 +129,7 @@ export const itemApi = createApi({
   baseQuery: axiosBaseQuery(),
   tagTypes: ["Item"],
   endpoints: (builder) => ({
-    listItems: builder.query<Item[], ItemListParams | undefined>({
+    listItems: builder.query<ItemListResult, ItemListParams | undefined>({
       query: (args) => ({
         url: ApiEndpoints.ITEMS,
         method: "GET",
@@ -107,6 +138,8 @@ export const itemApi = createApi({
           favorite: true === args?.favorite ? true : undefined,
           tags: args?.tags && args.tags.length > 0 ? args.tags.join(",") : undefined,
           q: args?.q && "" !== args.q ? args.q : undefined,
+          page: args?.page,
+          pageSize: args?.pageSize,
         },
       }),
       providesTags: ["Item"],
@@ -138,10 +171,16 @@ export const itemApi = createApi({
       invalidatesTags: ["Item"],
     }),
     createFile: builder.mutation<Item, CreateFileRequest>({
-      query: ({ categoryId, file, name }) => ({
+      query: ({ categoryId, file, name, keepForever, ttlPreset, expiresAt }) => ({
         url: ApiEndpoints.ITEM_FILES,
         method: "POST",
-        data: fileFormData(file, { categoryId: String(categoryId), ...(undefined !== name ? { name } : {}) }),
+        data: fileFormData(file, {
+          categoryId: String(categoryId),
+          ...(undefined !== name ? { name } : {}),
+          ...(undefined !== keepForever ? { keepForever: String(keepForever) } : {}),
+          ...(undefined !== ttlPreset ? { ttlPreset } : {}),
+          ...(undefined !== expiresAt ? { expiresAt } : {}),
+        }),
       }),
       invalidatesTags: ["Item"],
     }),

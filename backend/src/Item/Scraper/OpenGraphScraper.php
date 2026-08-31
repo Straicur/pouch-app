@@ -4,11 +4,14 @@ declare(strict_types = 1);
 
 namespace App\Item\Scraper;
 
+use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadRequestException;
+use App\Item\UrlValidator;
 use DOMElement;
 use Override;
 use RuntimeException;
 use Symfony\Component\DomCrawler\Crawler;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+use Symfony\Contracts\HttpClient\ResponseInterface;
 use Throwable;
 
 use function parse_url;
@@ -31,8 +34,11 @@ final readonly class OpenGraphScraper implements OpenGraphScraperInterface
 
     private const int TIMEOUT_SECONDS = 10;
 
+    private const int MAX_REDIRECTS = 5;
+
     public function __construct(
         private HttpClientInterface $httpClient,
+        private UrlValidator $urlValidator = new UrlValidator(),
     ) {}
 
     #[Override]
@@ -55,11 +61,7 @@ final readonly class OpenGraphScraper implements OpenGraphScraperInterface
     private function fetch(string $url): string
     {
         try {
-            $response = $this->httpClient->request('GET', $url, [
-                'timeout'       => self::TIMEOUT_SECONDS,
-                'max_redirects' => 5,
-                'headers'       => ['User-Agent' => 'PouchBot/1.0 (+personal document archive; not a public crawler)'],
-            ]);
+            $response = $this->requestFollowingSafeRedirects($url);
 
             $html = '';
             foreach ($this->httpClient->stream($response, self::TIMEOUT_SECONDS) as $chunk) {
@@ -73,6 +75,48 @@ final readonly class OpenGraphScraper implements OpenGraphScraperInterface
         }
 
         return $html;
+    }
+
+    /**
+     * Post-review fix: the old code just passed `max_redirects: 5` and let
+     * Symfony's HttpClient follow them on its own, with no chance to see
+     * where it actually went — a compromised (or malicious from the start)
+     * page can 302 straight at 169.254.169.254 or an RFC1918 address, and
+     * the SSRF check on the *input* URL (UrlValidator, called at item-
+     * creation time) never sees that hop at all. Redirects are disabled
+     * here (`max_redirects: 0`) and followed by hand instead, re-running
+     * that same host check before every one of them, input URL included.
+     *
+     * @throws BadRequestException if $url or any redirect target isn't safe to fetch
+     * @throws RuntimeException    on too many redirects
+     */
+    private function requestFollowingSafeRedirects(string $url): ResponseInterface
+    {
+        $current = $url;
+
+        for ($hop = 0; $hop <= self::MAX_REDIRECTS; ++$hop) {
+            $this->urlValidator->assertValid($current);
+
+            $response = $this->httpClient->request('GET', $current, [
+                'timeout'       => self::TIMEOUT_SECONDS,
+                'max_redirects' => 0,
+                'headers'       => ['User-Agent' => 'PouchBot/1.0 (+personal document archive; not a public crawler)'],
+            ]);
+
+            $status = $response->getStatusCode();
+            if ($status < 300 || $status >= 400) {
+                return $response;
+            }
+
+            $location = $response->getHeaders(false)['location'][0] ?? null;
+            if (null === $location) {
+                return $response;
+            }
+
+            $current = $this->resolveUrl($location, $current) ?? $location;
+        }
+
+        throw new RuntimeException(sprintf('Too many redirects fetching "%s"', $url));
     }
 
     private function metaContent(Crawler $crawler, string $property): ?string

@@ -44,10 +44,20 @@ export function VersionHistory({ itemId }: VersionHistoryProps) {
   };
 
   const handleDownload = async (version: number) => {
+    // Post-review fix: same reasoning as ItemCard's DownloadButton — open
+    // the tab synchronously during the click, then point it at the link
+    // once the request resolves, instead of calling window.open() after an
+    // await (popup-blocker risk).
+    const tab = window.open("", "_blank", "noreferrer");
+
     try {
       const link = await getVersionDownloadLink({ id: itemId, version }).unwrap();
-      window.open(link.url, "_blank", "noreferrer");
+
+      if (null !== tab) {
+        tab.location.href = link.url;
+      }
     } catch {
+      tab?.close();
       toastUtil.showToast(t("versions.downloadError"), "error");
     }
   };

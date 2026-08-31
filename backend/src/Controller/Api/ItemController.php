@@ -13,6 +13,7 @@ use App\DTO\Request\ItemCreateUrlRequestDTO;
 use App\DTO\Request\ItemUpdateNoteRequestDTO;
 use App\DTO\Request\ItemUpdateTagsRequestDTO;
 use App\DTO\Response\DownloadLinkResponseDTO;
+use App\DTO\Response\ItemListResponseDTO;
 use App\DTO\Response\ItemResponseDTO;
 use App\DTO\Response\ItemVersionResponseDTO;
 use App\DTO\Response\PublicItemLinkResponseDTO;
@@ -111,6 +112,17 @@ final class ItemController extends AbstractController
      */
     private const int PUBLIC_LINK_TTL_SECONDS = 86_400;
 
+    /**
+     * Post-review fix: GET /api/items' pagination defaults/cap — see
+     * ItemRepository::findFilteredPage(). 50 keeps a default page well under
+     * a real "several MB" response even with sizeable note bodies; 200 is a
+     * hard ceiling so `?pageSize=999999` can't be used to route around
+     * pagination entirely.
+     */
+    private const int DEFAULT_PAGE_SIZE = 50;
+
+    private const int MAX_PAGE_SIZE = 200;
+
     public function __construct(
         private readonly RequestServiceInterface $requestService,
         private readonly AuthServiceInterface $authService,
@@ -131,22 +143,22 @@ final class ItemController extends AbstractController
      */
     #[Route('/api/items', name: 'item_list', methods: [Request::METHOD_GET])]
     #[OA\Get(
-        description: 'List active (non-trashed) items, optionally filtered by category/favorite/tags, or full-text '
-            . 'searched across name, tags, note content, OCR text and OpenGraph title/description',
+        description: 'Paginated list of active (non-trashed) items, optionally filtered by category/favorite/tags, '
+            . 'or full-text searched across name, tags, note content, OCR text and OpenGraph title/description. '
+            . 'Each item is a summary (no $extractedText) — GET /api/items/{id} for the full item.',
         parameters: [
             new OA\Parameter(name: 'categoryId', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
             new OA\Parameter(name: 'favorite', in: 'query', required: false, schema: new OA\Schema(type: 'boolean')),
             new OA\Parameter(name: 'tags', description: 'Comma-separated tag names, matches any', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'q', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'page', description: '1-based, defaults to 1', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
+            new OA\Parameter(name: 'pageSize', description: 'Defaults to 50, capped at 200', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
         ],
         responses: [
             new OA\Response(
                 response: 200,
                 description: 'Success',
-                content: new OA\JsonContent(
-                    type: 'array',
-                    items: new OA\Items(ref: new Model(type: ItemResponseDTO::class)),
-                ),
+                content: new Model(type: ItemListResponseDTO::class),
             ),
         ]
     )]
@@ -174,18 +186,31 @@ final class ItemController extends AbstractController
             query: null !== $query && '' !== trim($query) ? trim($query) : null,
         );
 
-        // Locked items are filtered out rather than 403ing the whole list — a
-        // list mixes items from different categories/locks, unlike get()/
+        $page = max(1, $request->query->getInt('page', 1));
+        $pageSize = min(self::MAX_PAGE_SIZE, max(1, $request->query->getInt('pageSize', self::DEFAULT_PAGE_SIZE)));
+
+        $result = $this->itemService->listPage($filter, offset: ($page - 1) * $pageSize, limit: $pageSize);
+
+        // Locked items are filtered out rather than 403ing the whole page —
+        // a list mixes items from different categories/locks, unlike get()/
         // downloadLink() which are about one specific (and specifically
-        // requested) item.
+        // requested) item. $total above is deliberately the pre-lock-filter
+        // count (see ItemListResponseDTO's own doc comment) — this can make
+        // a page come back with fewer than $pageSize items without $total
+        // being "wrong".
         $unlockedItems = array_values(array_filter(
-            $this->itemService->list($filter),
+            $result['items'],
             fn (Item $item): bool => $this->accessKeyGuard->isItemUnlocked($item, $request),
         ));
 
-        $items = ItemMapper::toResponseDTOList($unlockedItems);
+        $responseDTO = new ItemListResponseDTO(
+            items: ItemMapper::toSummaryResponseDTOList($unlockedItems),
+            total: $result['total'],
+            page: $page,
+            pageSize: $pageSize,
+        );
 
-        return new Response($this->serializer->serialize(data: $items, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
+        return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
     }
 
     /**

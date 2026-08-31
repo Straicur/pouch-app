@@ -84,6 +84,13 @@ interface ItemServiceInterface
      */
     public function list(ItemListFilter $filter): array;
 
+    /**
+     * Paginated counterpart of list() — see ItemRepository::findFilteredPage().
+     *
+     * @return array{items: list<Item>, total: int}
+     */
+    public function listPage(ItemListFilter $filter, int $offset, int $limit): array;
+
     /** @throws NotFoundException */
     public function delete(int $id): void;
 

@@ -2,9 +2,15 @@ import { logger } from "./logger";
 
 // Part 7: what AccessKeyGuard (backend) expects on the X-Pouch-Access-Grants
 // header — a signed, time-limited proof this browser submitted the right key
-// for one resource (category-key:{id} / item-key:{id}). sessionStorage, not
-// localStorage: a grant is a per-tab "I unlocked this just now" fact, not
-// something that should silently outlive the tab it was earned in.
+// for one resource. The resource string itself (category-key:{id}:v{version}:
+// u{userId} / item-key:{id}:v{version}:u{userId}) is opaque to the frontend —
+// it's built server-side by AccessKeyResource and echoed back verbatim in the
+// unlock response, so a key reset or a different logged-in user automatically
+// invalidates it without the frontend needing to know why. sessionStorage,
+// not localStorage: a grant is a per-tab "I unlocked this just now" fact, not
+// something that should silently outlive the tab it was earned in — and it's
+// explicitly cleared on login/logout too (see authApi.ts), since a grant
+// earned by one account has no business surviving into another's session.
 export interface AccessGrant {
   resource: string;
   expires: number;
@@ -57,8 +63,16 @@ export const accessGrants = {
     writeAll([...others, grant]);
   },
 
-  hasValidFor(resource: string): boolean {
-    return accessGrants.getValid().some((grant) => grant.resource === resource);
+  // Post-review fix: called from authApi's login/logout onQueryStarted
+  // handlers. Without this, a grant earned by one account keeps being sent
+  // (and, pre-backend-fix, kept working) after that account logs out and a
+  // different one logs in on the same tab.
+  clear() {
+    try {
+      sessionStorage.removeItem(STORAGE_KEY);
+    } catch (error) {
+      logger.error("Failed to clear stored access grants:", error);
+    }
   },
 
   // The exact header value AccessKeyGuard::parseGrants() expects — undefined
@@ -68,13 +82,5 @@ export const accessGrants = {
     const grants = accessGrants.getValid();
 
     return grants.length > 0 ? JSON.stringify(grants) : undefined;
-  },
-
-  categoryResource(categoryId: number): string {
-    return `category-key:${categoryId}`;
-  },
-
-  itemResource(itemId: number): string {
-    return `item-key:${itemId}`;
   },
 };

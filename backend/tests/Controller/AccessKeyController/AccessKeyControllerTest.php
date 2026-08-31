@@ -174,7 +174,13 @@ class AccessKeyControllerTest extends WebTest
 
         $grant = $this->unlockCategory($category->getId(), 'sekret123');
         self::assertResponseStatusCodeSame(Response::HTTP_OK);
-        self::assertSame('category-key:' . $category->getId(), $grant['resource']);
+        // v1: setCategoryKey() above is the first (and only) key change on
+        // this category — the in-memory $category isn't reloaded from the DB
+        // after that request, so the version isn't read off it here.
+        self::assertSame(
+            'category-key:' . $category->getId() . ':v1:u' . $this->user->getId(),
+            $grant['resource'],
+        );
 
         $this->createNote($category->getId(), $grant);
         self::assertResponseStatusCodeSame(Response::HTTP_CREATED);

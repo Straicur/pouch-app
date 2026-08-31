@@ -6,11 +6,19 @@ import { z } from "zod";
 import { getApiErrorBody } from "../../../../lib/apiError";
 import { useListCategoriesQuery } from "../../../../store/api/categoryApi";
 import { useCreateFileMutation } from "../../../../store/api/itemApi";
+import { LifecycleFieldsInput, lifecycleFieldsSchema, toLifecyclePayload } from "./lifecycleFields";
 
 // Defined at module scope, like LoginPage/NoteForm — see locales/pl.ts's header.
-const categoryFieldSchema = z.object({
-  categoryId: z.coerce.number().int().positive("Wybierz kategorię"),
-});
+const categoryFieldSchema = z
+  .object({
+    categoryId: z.coerce.number().int().positive("Wybierz kategorię"),
+    ...lifecycleFieldsSchema,
+  })
+  .superRefine((data, ctx) => {
+    if ("custom" === data.lifecycleMode && (undefined === data.customExpiresAt || "" === data.customExpiresAt)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["customExpiresAt"], message: "Podaj datę wygaśnięcia" });
+    }
+  });
 
 // A native file input's value can't be a controlled/registered RHF field the
 // way text inputs are — $file stays in its own state, validated against this
@@ -37,8 +45,13 @@ export function FileUploadForm() {
     handleSubmit,
     setValue,
     setError,
+    watch,
     formState: { errors },
-  } = useForm<CategoryFieldInput, unknown, CategoryFieldValues>({ resolver: zodResolver(categoryFieldSchema) });
+  } = useForm<CategoryFieldInput, unknown, CategoryFieldValues>({
+    resolver: zodResolver(categoryFieldSchema),
+    defaultValues: { lifecycleMode: "default" },
+  });
+  const lifecycleMode = watch("lifecycleMode") ?? "default";
 
   useEffect(() => {
     if (undefined !== categories && categories.length > 0) {
@@ -61,7 +74,11 @@ export function FileUploadForm() {
     setFileError(null);
 
     try {
-      await createFile({ categoryId: values.categoryId, file: parsedFile.data }).unwrap();
+      await createFile({
+        categoryId: values.categoryId,
+        file: parsedFile.data,
+        ...toLifecyclePayload(values),
+      }).unwrap();
       setFile(null);
       if (null !== fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -89,6 +106,8 @@ export function FileUploadForm() {
       <label htmlFor="file-upload-input">{t("upload.fileLabel")}</label>
       <input id="file-upload-input" type="file" ref={fileInputRef} onChange={handleFileChange} />
       {null !== fileError && <p className="field-error">{fileError}</p>}
+
+      <LifecycleFieldsInput idPrefix="file-upload" register={register} errors={errors} mode={lifecycleMode} />
 
       {undefined !== errors.root && <p className="form-error">{errors.root.message}</p>}
 

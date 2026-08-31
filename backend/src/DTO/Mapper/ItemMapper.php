@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace App\DTO\Mapper;
 
 use App\DTO\Response\ItemResponseDTO;
+use App\DTO\Response\ItemSummaryResponseDTO;
 use App\DTO\Response\ItemVersionResponseDTO;
 use App\DTO\Response\PublicItemResponseDTO;
 use App\Entity\Item;
@@ -57,6 +58,48 @@ final class ItemMapper
     {
         return array_map(
             self::toResponseDTO(...),
+            $items,
+        );
+    }
+
+    public static function toSummaryResponseDTO(Item $item): ItemSummaryResponseDTO
+    {
+        return new ItemSummaryResponseDTO(
+            id: $item->getId(),
+            categoryId: $item->getCategory()->getId(),
+            type: $item->getType()->value,
+            name: $item->getName(),
+            processingStatus: $item->getProcessingStatus()->value,
+            processingError: $item->getProcessingError(),
+            originalFilename: $item->getOriginalFilename(),
+            mimeType: $item->getMimeType(),
+            size: $item->getSize(),
+            hasThumbnail: null !== $item->getThumbnailStorageKey(),
+            url: $item->getUrl(),
+            pageTitle: $item->getPageTitle(),
+            pageDescription: $item->getPageDescription(),
+            noteContent: $item->getNoteContent(),
+            favorite: $item->isFavorite(),
+            tags: array_values(array_map(
+                static fn (Tag $tag): string => $tag->getName(),
+                iterator_to_array($item->getTags()),
+            )),
+            keepForever: $item->isKeepForever(),
+            expiresAt: $item->getExpiresAt()?->format(DateTimeInterface::ATOM),
+            trashedAt: $item->getTrashedAt()?->format(DateTimeInterface::ATOM),
+            createdAt: $item->getCreatedAt()->format(DateTimeInterface::ATOM),
+        );
+    }
+
+    /**
+     * @param list<Item> $items
+     *
+     * @return list<ItemSummaryResponseDTO>
+     */
+    public static function toSummaryResponseDTOList(array $items): array
+    {
+        return array_map(
+            self::toSummaryResponseDTO(...),
             $items,
         );
     }
