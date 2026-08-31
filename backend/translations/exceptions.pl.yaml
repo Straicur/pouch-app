@@ -19,6 +19,7 @@ internal_server_error: "Wystąpił błąd wewnętrzny serwera."
 # Category
 category.not_found: "Nie znaleziono kategorii."
 category.move_cycle: "Nie można przenieść kategorii do niej samej ani do jednej z jej podkategorii."
+category.locked: "Ta kategoria jest chroniona kluczem dostępu."
 
 # Item (all types)
 item.not_found: "Nie znaleziono itemu."
@@ -36,6 +37,11 @@ item.file_size_unknown: "Nie udało się ustalić rozmiaru przesłanego pliku."
 item.link_invalid: "Link jest nieprawidłowy lub wygasł."
 item.expires_at_invalid: "Data wygaśnięcia jest nieprawidłowa."
 item.not_a_note: "Ten item nie jest notatką."
+item.locked: "Ten item jest chroniony kluczem dostępu."
+
+# Access key (Part 7)
+access_key.invalid: "Nieprawidłowy klucz dostępu."
+access_key.not_protected: "Ta kategoria/ten item nie ma ustawionego klucza dostępu."
 
 # Tag
 tag.too_long: "Nazwa tagu może mieć maksymalnie 50 znaków."

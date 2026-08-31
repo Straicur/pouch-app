@@ -123,6 +123,14 @@ class Item
     #[ORM\InverseJoinColumn(name: 'tag_id', referencedColumnName: 'tag_id', onDelete: 'CASCADE')]
     private Collection $tags;
 
+    /**
+     * Bcrypt hash of the item's own access key (Part 7) — independent of any
+     * key on $category: an item can be locked on its own inside an otherwise
+     * unlocked category, and vice versa (see AccessKeyGuard).
+     */
+    #[ORM\Column(name: 'access_key_hash', type: Types::STRING, length: 255, nullable: true)]
+    private ?string $accessKeyHash = null;
+
     // --- lifecycle (Part 3) ---
 
     #[ORM\Column(name: 'keep_forever', type: Types::BOOLEAN, nullable: false)]
@@ -379,5 +387,17 @@ class Item
     public function getCreatedAt(): DateTimeImmutable
     {
         return $this->createdAt;
+    }
+
+    public function getAccessKeyHash(): ?string
+    {
+        return $this->accessKeyHash;
+    }
+
+    public function setAccessKeyHash(?string $accessKeyHash): static
+    {
+        $this->accessKeyHash = $accessKeyHash;
+
+        return $this;
     }
 }

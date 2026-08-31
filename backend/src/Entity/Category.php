@@ -31,6 +31,14 @@ class Category
     private ?self $parent = null;
 
     /**
+     * Bcrypt hash of the category's own access key (Part 7). Null means "no
+     * key of its own" — not "unprotected": see CategoryRepository/CategoryService
+     * for walking up to the nearest ancestor that does have one (inherited key).
+     */
+    #[ORM\Column(name: 'access_key_hash', type: Types::STRING, length: 255, nullable: true)]
+    private ?string $accessKeyHash = null;
+
+    /**
      * @var Collection<int, self>
      */
     #[ORM\OneToMany(targetEntity: self::class, mappedBy: 'parent')]
@@ -78,5 +86,17 @@ class Category
     public function getChildren(): Collection
     {
         return $this->children;
+    }
+
+    public function getAccessKeyHash(): ?string
+    {
+        return $this->accessKeyHash;
+    }
+
+    public function setAccessKeyHash(?string $accessKeyHash): static
+    {
+        $this->accessKeyHash = $accessKeyHash;
+
+        return $this;
     }
 }

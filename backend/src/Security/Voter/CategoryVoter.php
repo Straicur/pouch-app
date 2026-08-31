@@ -13,10 +13,14 @@ use Symfony\Component\Security\Core\Authorization\Voter\Voter;
 use function in_array;
 
 /**
- * Purely role-based for now (see security.yaml's role_hierarchy): guest reads,
- * user creates/renames/moves, admin also deletes. $subject is accepted (and
- * currently ignored) so per-category ACL — Part 7's access keys — can slot in
- * later without changing every call site.
+ * Purely role-based (see security.yaml's role_hierarchy): guest reads, user
+ * creates/renames/moves/manages its own key, admin also deletes. $subject is
+ * accepted (and currently ignored) so per-category ACL could use it later.
+ *
+ * This only answers "does your role let you attempt this" — whether you
+ * actually *know* the access key (Part 7) is a separate question, checked by
+ * AccessKeyGuard, not this voter: MANAGE_KEY gates who may set/change/remove
+ * a key, UNLOCK gates who may attempt to submit one.
  *
  * @extends Voter<string, Category|null>
  */
@@ -32,7 +36,13 @@ final class CategoryVoter extends Voter
 
     public const string DELETE = 'CATEGORY_DELETE';
 
-    private const array ATTRIBUTES = [self::VIEW, self::CREATE, self::RENAME, self::MOVE, self::DELETE];
+    /** Set/change/remove the category's own access key (Part 7). */
+    public const string MANAGE_KEY = 'CATEGORY_MANAGE_KEY';
+
+    /** Submit a key to unlock a protected category (Part 7) — same role floor as VIEW. */
+    public const string UNLOCK = 'CATEGORY_UNLOCK';
+
+    private const array ATTRIBUTES = [self::VIEW, self::CREATE, self::RENAME, self::MOVE, self::DELETE, self::MANAGE_KEY, self::UNLOCK];
 
     public function __construct(
         private readonly Security $security,
@@ -54,8 +64,8 @@ final class CategoryVoter extends Voter
         // Delegated to isGranted() (not $token->getRoleNames()) so role_hierarchy
         // applies — an admin has ROLE_USER/ROLE_GUEST too, not just ROLE_ADMIN.
         return match ($attribute) {
-            self::VIEW => $this->security->isGranted('ROLE_GUEST'),
-            self::CREATE, self::RENAME, self::MOVE => $this->security->isGranted('ROLE_USER'),
+            self::VIEW, self::UNLOCK => $this->security->isGranted('ROLE_GUEST'),
+            self::CREATE, self::RENAME, self::MOVE, self::MANAGE_KEY => $this->security->isGranted('ROLE_USER'),
             self::DELETE => $this->security->isGranted('ROLE_ADMIN'),
             default      => false,
         };

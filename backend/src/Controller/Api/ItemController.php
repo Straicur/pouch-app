@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Controller\Api;
 
+use App\Category\CategoryServiceInterface;
 use App\DTO\Mapper\ItemMapper;
 use App\DTO\Request\ItemCreateNoteRequestDTO;
 use App\DTO\Request\ItemCreateRequestDTO;
@@ -29,6 +30,7 @@ use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentExceptio
 use App\Item\ItemLifecycleOptions;
 use App\Item\ItemListFilter;
 use App\Item\ItemServiceInterface;
+use App\Security\AccessKey\AccessKeyGuardInterface;
 use App\Security\AuthServiceInterface;
 use App\Security\SignedUrlServiceInterface;
 use App\Security\Voter\ItemVoter;
@@ -66,10 +68,15 @@ use function trim;
 
 /**
  * Every mutating/metadata action checks auth first (401), then ItemVoter (403)
- * — same pattern as CategoryController. The one deliberate exception is the
+ * — same pattern as CategoryController. After that, every action touching a
+ * specific item or category (get/list/download-link/thumbnail-link/create/
+ * edit/delete) also checks AccessKeyGuard (Part 7): a locked category/item
+ * without a valid grant on the request either 403s or, for list(), is just
+ * filtered out. The one deliberate exception to *all* of the above is the
  * download()/thumbnail() streams: a valid signed URL is its own, separate
  * authorization channel (product doc: "niezależny od auth-tokena
- * użytkownika"), so neither does an auth/voter check.
+ * użytkownika"), so neither does an auth/voter/key check — the key check
+ * already happened when the signed link was generated.
  */
 #[OA\Response(
     response: 401,
@@ -90,8 +97,10 @@ final class ItemController extends AbstractController
         private readonly RequestServiceInterface $requestService,
         private readonly AuthServiceInterface $authService,
         private readonly ItemServiceInterface $itemService,
+        private readonly CategoryServiceInterface $categoryService,
         private readonly StorageServiceInterface $storageService,
         private readonly SignedUrlServiceInterface $signedUrlService,
+        private readonly AccessKeyGuardInterface $accessKeyGuard,
         private readonly SerializerInterface $serializer,
     ) {}
 
@@ -145,7 +154,16 @@ final class ItemController extends AbstractController
             query: null !== $query && '' !== trim($query) ? trim($query) : null,
         );
 
-        $items = ItemMapper::toResponseDTOList($this->itemService->list($filter));
+        // Locked items are filtered out rather than 403ing the whole list — a
+        // list mixes items from different categories/locks, unlike get()/
+        // downloadLink() which are about one specific (and specifically
+        // requested) item.
+        $unlockedItems = array_values(array_filter(
+            $this->itemService->list($filter),
+            fn (Item $item): bool => $this->accessKeyGuard->isItemUnlocked($item, $request),
+        ));
+
+        $items = ItemMapper::toResponseDTOList($unlockedItems);
 
         return new Response($this->serializer->serialize(data: $items, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
     }
@@ -172,7 +190,7 @@ final class ItemController extends AbstractController
         description: 'Item not found',
         content: new Model(type: NotFoundExceptionModel::class)
     )]
-    public function get(int $id): Response
+    public function get(Request $request, int $id): Response
     {
         $this->authService->getUserFromAccessToken();
 
@@ -180,7 +198,10 @@ final class ItemController extends AbstractController
             throw new ForbiddenException();
         }
 
-        $responseDTO = ItemMapper::toResponseDTO($this->itemService->getById($id));
+        $item = $this->itemService->getById($id);
+        $this->accessKeyGuard->assertItemUnlocked($item, $request);
+
+        $responseDTO = ItemMapper::toResponseDTO($item);
 
         return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
     }
@@ -233,6 +254,7 @@ final class ItemController extends AbstractController
 
         $file = $this->extractUploadedFile($request);
         $createRequestDTO = $this->parseItemCreateRequestDTO($request);
+        $this->assertCategoryAccessible($createRequestDTO->getCategoryId(), $request);
 
         $item = $this->itemService->createFile(
             categoryId: $createRequestDTO->getCategoryId(),
@@ -294,6 +316,7 @@ final class ItemController extends AbstractController
 
         $file = $this->extractUploadedFile($request);
         $createRequestDTO = $this->parseItemCreateRequestDTO($request);
+        $this->assertCategoryAccessible($createRequestDTO->getCategoryId(), $request);
 
         $item = $this->itemService->createPhoto(
             categoryId: $createRequestDTO->getCategoryId(),
@@ -342,6 +365,7 @@ final class ItemController extends AbstractController
         }
 
         $createRequestDTO = $this->requestService->getRequestBodyContent($request, ItemCreateUrlRequestDTO::class);
+        $this->assertCategoryAccessible($createRequestDTO->getCategoryId(), $request);
 
         $item = $this->itemService->createUrl(
             categoryId: $createRequestDTO->getCategoryId(),
@@ -392,6 +416,7 @@ final class ItemController extends AbstractController
         }
 
         $createRequestDTO = $this->requestService->getRequestBodyContent($request, ItemCreateNoteRequestDTO::class);
+        $this->assertCategoryAccessible($createRequestDTO->getCategoryId(), $request);
 
         $item = $this->itemService->createNote(
             categoryId: $createRequestDTO->getCategoryId(),
@@ -444,6 +469,7 @@ final class ItemController extends AbstractController
         }
 
         $updateRequestDTO = $this->requestService->getRequestBodyContent($request, ItemUpdateNoteRequestDTO::class);
+        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
 
         $item = $this->itemService->updateNoteContent($id, $updateRequestDTO->getContent());
 
@@ -485,6 +511,7 @@ final class ItemController extends AbstractController
         }
 
         $updateRequestDTO = $this->requestService->getRequestBodyContent($request, ItemUpdateTagsRequestDTO::class);
+        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
 
         $item = $this->itemService->replaceTags($id, $updateRequestDTO->getTags());
 
@@ -511,9 +538,9 @@ final class ItemController extends AbstractController
         ]
     )]
     #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
-    public function markFavorite(int $id): Response
+    public function markFavorite(Request $request, int $id): Response
     {
-        return $this->setFavoriteResponse($id, true);
+        return $this->setFavoriteResponse($request, $id, true);
     }
 
     /**
@@ -534,9 +561,9 @@ final class ItemController extends AbstractController
         ]
     )]
     #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
-    public function unmarkFavorite(int $id): Response
+    public function unmarkFavorite(Request $request, int $id): Response
     {
-        return $this->setFavoriteResponse($id, false);
+        return $this->setFavoriteResponse($request, $id, false);
     }
 
     /**
@@ -545,13 +572,15 @@ final class ItemController extends AbstractController
      * @throws NotFoundException
      * @throws SerializerExceptionInterface
      */
-    private function setFavoriteResponse(int $id, bool $favorite): Response
+    private function setFavoriteResponse(Request $request, int $id, bool $favorite): Response
     {
         $this->authService->getUserFromAccessToken();
 
         if (false === $this->isGranted(ItemVoter::EDIT)) {
             throw new ForbiddenException();
         }
+
+        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
 
         $item = $this->itemService->setFavorite($id, $favorite);
 
@@ -573,13 +602,15 @@ final class ItemController extends AbstractController
         ]
     )]
     #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
-    public function delete(int $id): Response
+    public function delete(Request $request, int $id): Response
     {
         $this->authService->getUserFromAccessToken();
 
         if (false === $this->isGranted(ItemVoter::DELETE)) {
             throw new ForbiddenException();
         }
+
+        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
 
         $this->itemService->delete($id);
 
@@ -600,7 +631,7 @@ final class ItemController extends AbstractController
         ]
     )]
     #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
-    public function downloadLink(int $id): Response
+    public function downloadLink(Request $request, int $id): Response
     {
         $this->authService->getUserFromAccessToken();
 
@@ -609,6 +640,8 @@ final class ItemController extends AbstractController
         }
 
         $item = $this->itemService->getById($id);
+        $this->accessKeyGuard->assertItemUnlocked($item, $request);
+
         if (null === $item->getStorageKey()) {
             throw new NotFoundException(message: 'item.no_downloadable_file');
         }
@@ -665,7 +698,7 @@ final class ItemController extends AbstractController
         ]
     )]
     #[OA\Response(response: 404, description: 'Item or thumbnail not found', content: new Model(type: NotFoundExceptionModel::class))]
-    public function thumbnailLink(int $id): Response
+    public function thumbnailLink(Request $request, int $id): Response
     {
         $this->authService->getUserFromAccessToken();
 
@@ -674,6 +707,8 @@ final class ItemController extends AbstractController
         }
 
         $item = $this->itemService->getById($id);
+        $this->accessKeyGuard->assertItemUnlocked($item, $request);
+
         if (null === $item->getThumbnailStorageKey()) {
             throw new NotFoundException(message: 'item.no_thumbnail');
         }
@@ -709,6 +744,16 @@ final class ItemController extends AbstractController
         }
 
         return $this->streamedStorageResponse(storageKey: $thumbnailKey, mimeType: 'image/jpeg', size: null, downloadFilename: null);
+    }
+
+    /**
+     * @throws NotFoundException  if $categoryId doesn't exist
+     * @throws ForbiddenException if the category (or an ancestor) is locked and $request carries no valid grant
+     */
+    private function assertCategoryAccessible(int $categoryId, Request $request): void
+    {
+        $category = $this->categoryService->getById($categoryId);
+        $this->accessKeyGuard->assertCategoryUnlocked($category, $request);
     }
 
     private function createdResponse(Item $item): Response

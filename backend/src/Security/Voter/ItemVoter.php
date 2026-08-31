@@ -31,7 +31,13 @@ final class ItemVoter extends Voter
 
     public const string DELETE = 'ITEM_DELETE';
 
-    private const array ATTRIBUTES = [self::VIEW, self::DOWNLOAD, self::CREATE, self::EDIT, self::DELETE];
+    /** Set/change/remove the item's own access key (Part 7). */
+    public const string MANAGE_KEY = 'ITEM_MANAGE_KEY';
+
+    /** Submit a key to unlock a protected item (Part 7) — same role floor as VIEW. */
+    public const string UNLOCK = 'ITEM_UNLOCK';
+
+    private const array ATTRIBUTES = [self::VIEW, self::DOWNLOAD, self::CREATE, self::EDIT, self::DELETE, self::MANAGE_KEY, self::UNLOCK];
 
     public function __construct(
         private readonly Security $security,
@@ -51,8 +57,8 @@ final class ItemVoter extends Voter
     protected function voteOnAttribute(string $attribute, mixed $subject, TokenInterface $token): bool
     {
         return match ($attribute) {
-            self::VIEW, self::DOWNLOAD => $this->security->isGranted('ROLE_GUEST'),
-            self::CREATE, self::EDIT, self::DELETE => $this->security->isGranted('ROLE_USER'),
+            self::VIEW, self::DOWNLOAD, self::UNLOCK => $this->security->isGranted('ROLE_GUEST'),
+            self::CREATE, self::EDIT, self::DELETE, self::MANAGE_KEY => $this->security->isGranted('ROLE_USER'),
             default => false,
         };
     }
