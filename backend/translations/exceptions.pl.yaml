@@ -37,6 +37,8 @@ item.file_size_unknown: "Nie udało się ustalić rozmiaru przesłanego pliku."
 item.link_invalid: "Link jest nieprawidłowy lub wygasł."
 item.expires_at_invalid: "Data wygaśnięcia jest nieprawidłowa."
 item.not_a_note: "Ten item nie jest notatką."
+item.not_a_file: "Ten item nie jest plikiem — nie ma czego nadpisać nową wersją."
+item.version_not_found: "Nie znaleziono tej wersji itemu."
 item.locked: "Ten item jest chroniony kluczem dostępu."
 
 # Access key (Part 7)

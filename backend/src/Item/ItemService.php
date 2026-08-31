@@ -6,6 +6,7 @@ namespace App\Item;
 
 use App\Category\CategoryServiceInterface;
 use App\Entity\Item;
+use App\Entity\ItemVersion;
 use App\Enum\ItemProcessingStatus;
 use App\Enum\ItemType;
 use App\Exception\StorageException;
@@ -15,6 +16,7 @@ use App\ExceptionManagement\Exceptions\ApiException\NotFoundException\NotFoundEx
 use App\Message\ProcessPhotoMessage;
 use App\Message\ScrapeUrlMessage;
 use App\Repository\ItemRepository;
+use App\Repository\ItemVersionRepository;
 use App\Storage\StorageServiceInterface;
 use App\Tag\TagServiceInterface;
 use DateInterval;
@@ -23,10 +25,12 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Override;
 use Psr\Log\LoggerInterface;
+use RuntimeException;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Uid\Uuid;
 use Symfony\Contracts\Translation\TranslatorInterface;
 
+use function count;
 use function fclose;
 use function fopen;
 use function hash_file;
@@ -50,6 +54,7 @@ class ItemService implements ItemServiceInterface
 
     public function __construct(
         private readonly ItemRepository $itemRepository,
+        private readonly ItemVersionRepository $itemVersionRepository,
         private readonly CategoryServiceInterface $categoryService,
         private readonly StorageServiceInterface $storageService,
         private readonly FileValidator $fileValidator,
@@ -239,6 +244,64 @@ class ItemService implements ItemServiceInterface
         return $item;
     }
 
+    #[Override]
+    public function overwriteFile(
+        int $itemId,
+        string $tmpPath,
+        string $originalFilename,
+        string $mimeType,
+        int $size,
+    ): Item {
+        $item = $this->getById($itemId);
+        if (ItemType::FILE !== $item->getType()) {
+            throw new BadRequestException(message: 'item.not_a_file');
+        }
+
+        $this->fileValidator->assertValid($originalFilename, $mimeType, $size);
+        $contentHash = $this->assertNotDuplicateOfAnotherItem($tmpPath, $item);
+
+        // The item's *current* file becomes the archived version — captured
+        // before any of its fields are overwritten below.
+        $previousVersion = new ItemVersion(
+            item: $item,
+            version: $this->nextVersionNumber($item),
+            originalFilename: $this->currentFileField($item, $item->getOriginalFilename()),
+            mimeType: $this->currentFileField($item, $item->getMimeType()),
+            size: $item->getSize() ?? throw new RuntimeException(sprintf('Item #%d is a FILE item with no size set', $item->getId())),
+            storageKey: $this->currentFileField($item, $item->getStorageKey()),
+            contentHash: $this->currentFileField($item, $item->getContentHash()),
+        );
+        $this->itemVersionRepository->save($previousVersion);
+
+        $newStorageKey = $this->uploadToStorage($tmpPath, $originalFilename);
+        $item->setFileData($originalFilename, $mimeType, $size, $newStorageKey, $contentHash);
+
+        $this->itemRepository->save($item);
+
+        return $item;
+    }
+
+    #[Override]
+    public function listVersions(int $itemId): array
+    {
+        $item = $this->getById($itemId);
+
+        return $this->itemVersionRepository->findByItemOrderedByVersion($item);
+    }
+
+    #[Override]
+    public function getVersion(int $itemId, int $version): ItemVersion
+    {
+        $item = $this->getById($itemId);
+        $itemVersion = $this->itemVersionRepository->findOneByItemAndVersion($item, $version);
+
+        if (null === $itemVersion) {
+            throw new NotFoundException(message: 'item.version_not_found');
+        }
+
+        return $itemVersion;
+    }
+
     /**
      * @throws BadRequestException
      * @throws ConflictException
@@ -256,6 +319,45 @@ class ItemService implements ItemServiceInterface
         }
 
         return $contentHash;
+    }
+
+    /**
+     * Same duplicate check as assertNotDuplicate(), but for overwriting an
+     * *existing* item: $item matching its own (about-to-be-archived) content
+     * isn't a conflict — only some *other* active item having this content
+     * already is.
+     *
+     * @throws BadRequestException
+     * @throws ConflictException
+     */
+    private function assertNotDuplicateOfAnotherItem(string $tmpPath, Item $item): string
+    {
+        $contentHash = hash_file('sha256', $tmpPath);
+        if (false === $contentHash) {
+            throw new BadRequestException(message: 'item.upload_unreadable');
+        }
+
+        $duplicate = $this->itemRepository->findByContentHash($contentHash);
+        if (null !== $duplicate && $duplicate->getId() !== $item->getId()) {
+            $this->throwDuplicateConflict($duplicate);
+        }
+
+        return $contentHash;
+    }
+
+    private function nextVersionNumber(Item $item): int
+    {
+        return count($this->itemVersionRepository->findByItemOrderedByVersion($item)) + 1;
+    }
+
+    /**
+     * Narrows one of Item's nullable file-metadata getters to non-null for a
+     * FILE item, where createFile() guarantees it's always set — this should
+     * never actually throw.
+     */
+    private function currentFileField(Item $item, ?string $value): string
+    {
+        return $value ?? throw new RuntimeException(sprintf('Item #%d is a FILE item with no file data set', $item->getId()));
     }
 
     /**

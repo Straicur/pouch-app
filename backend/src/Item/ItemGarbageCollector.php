@@ -4,14 +4,17 @@ declare(strict_types = 1);
 
 namespace App\Item;
 
+use App\Entity\ItemVersion;
 use App\Exception\StorageException;
 use App\Repository\ItemRepository;
+use App\Repository\ItemVersionRepository;
 use App\Storage\StorageServiceInterface;
 use DateInterval;
 use DateTimeImmutable;
 use Override;
 use Psr\Log\LoggerInterface;
 
+use function array_map;
 use function count;
 use function sprintf;
 
@@ -22,6 +25,7 @@ class ItemGarbageCollector implements ItemGarbageCollectorInterface
 
     public function __construct(
         private readonly ItemRepository $itemRepository,
+        private readonly ItemVersionRepository $itemVersionRepository,
         private readonly StorageServiceInterface $storageService,
         private readonly LoggerInterface $logger,
     ) {}
@@ -58,10 +62,19 @@ class ItemGarbageCollector implements ItemGarbageCollectorInterface
             // $item's identifier inaccessible on the now-removed instance.
             $itemId = $item->getId();
 
+            // Part 8: every archived version (see ItemVersion) has its own
+            // storage object too, kept around precisely so the version stays
+            // downloadable — none of that has anywhere else to go once the
+            // item itself is gone, so it's purged right alongside it.
+            $versionStorageKeys = array_map(
+                static fn (ItemVersion $version): string => $version->getStorageKey(),
+                $this->itemVersionRepository->findByItemOrderedByVersion($item),
+            );
+
             try {
                 // Not every type has both (URL items have no primary file,
                 // FILE items have no thumbnail) — delete whichever exist.
-                foreach ([$item->getStorageKey(), $item->getThumbnailStorageKey()] as $storageKey) {
+                foreach ([$item->getStorageKey(), $item->getThumbnailStorageKey(), ...$versionStorageKeys] as $storageKey) {
                     if (null !== $storageKey) {
                         $this->storageService->delete($storageKey);
                     }

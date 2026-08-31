@@ -5,7 +5,9 @@ declare(strict_types = 1);
 namespace App\DTO\Mapper;
 
 use App\DTO\Response\ItemResponseDTO;
+use App\DTO\Response\ItemVersionResponseDTO;
 use App\Entity\Item;
+use App\Entity\ItemVersion;
 use App\Entity\Tag;
 use DateTimeInterface;
 
@@ -55,6 +57,30 @@ final class ItemMapper
         return array_map(
             self::toResponseDTO(...),
             $items,
+        );
+    }
+
+    public static function toVersionResponseDTO(ItemVersion $itemVersion): ItemVersionResponseDTO
+    {
+        return new ItemVersionResponseDTO(
+            version: $itemVersion->getVersion(),
+            originalFilename: $itemVersion->getOriginalFilename(),
+            mimeType: $itemVersion->getMimeType(),
+            size: $itemVersion->getSize(),
+            createdAt: $itemVersion->getCreatedAt()->format(DateTimeInterface::ATOM),
+        );
+    }
+
+    /**
+     * @param list<ItemVersion> $itemVersions
+     *
+     * @return list<ItemVersionResponseDTO>
+     */
+    public static function toVersionResponseDTOList(array $itemVersions): array
+    {
+        return array_map(
+            self::toVersionResponseDTO(...),
+            $itemVersions,
         );
     }
 }

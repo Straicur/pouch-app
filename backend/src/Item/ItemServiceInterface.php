@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace App\Item;
 
 use App\Entity\Item;
+use App\Entity\ItemVersion;
 use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadRequestException;
 use App\ExceptionManagement\Exceptions\ApiException\ConflictException\ConflictException;
 use App\ExceptionManagement\Exceptions\ApiException\NotFoundException\NotFoundException;
@@ -97,4 +98,33 @@ interface ItemServiceInterface
      * @throws BadRequestException if a tag name is too long or too many are given
      */
     public function replaceTags(int $id, array $tagNames): Item;
+
+    /**
+     * Overwrites a FILE item's primary asset in place — same id/URL as
+     * before (product doc: "bez zmiany ID/adresu w drzewie") — after
+     * archiving what it held until now into an ItemVersion row (see
+     * listVersions()/getVersion()). The old storage object is kept, not
+     * deleted, so the archived version stays downloadable.
+     *
+     * @throws NotFoundException   if the item doesn't exist
+     * @throws BadRequestException if the item isn't a FILE item, or the new file is invalid
+     * @throws ConflictException   if a *different*, non-trashed item already has this exact content
+     */
+    public function overwriteFile(
+        int $itemId,
+        string $tmpPath,
+        string $originalFilename,
+        string $mimeType,
+        int $size,
+    ): Item;
+
+    /**
+     * @return list<ItemVersion> oldest first
+     *
+     * @throws NotFoundException if the item doesn't exist
+     */
+    public function listVersions(int $itemId): array;
+
+    /** @throws NotFoundException if the item, or that version of it, doesn't exist */
+    public function getVersion(int $itemId, int $version): ItemVersion;
 }

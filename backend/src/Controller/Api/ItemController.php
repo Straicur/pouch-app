@@ -13,6 +13,7 @@ use App\DTO\Request\ItemUpdateNoteRequestDTO;
 use App\DTO\Request\ItemUpdateTagsRequestDTO;
 use App\DTO\Response\DownloadLinkResponseDTO;
 use App\DTO\Response\ItemResponseDTO;
+use App\DTO\Response\ItemVersionResponseDTO;
 use App\Entity\Item;
 use App\Enum\TtlPreset;
 use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadRequestException;
@@ -69,14 +70,15 @@ use function trim;
 /**
  * Every mutating/metadata action checks auth first (401), then ItemVoter (403)
  * — same pattern as CategoryController. After that, every action touching a
- * specific item or category (get/list/download-link/thumbnail-link/create/
- * edit/delete) also checks AccessKeyGuard (Part 7): a locked category/item
- * without a valid grant on the request either 403s or, for list(), is just
- * filtered out. The one deliberate exception to *all* of the above is the
- * download()/thumbnail() streams: a valid signed URL is its own, separate
+ * specific item or category (get/list/download-link/thumbnail-link/versions/
+ * version-download-link/create/edit/overwrite/delete) also checks
+ * AccessKeyGuard (Part 7): a locked category/item without a valid grant on
+ * the request either 403s or, for list(), is just filtered out. The one
+ * deliberate exception to *all* of the above is the download()/thumbnail()/
+ * versionDownload() streams: a valid signed URL is its own, separate
  * authorization channel (product doc: "niezależny od auth-tokena
- * użytkownika"), so neither does an auth/voter/key check — the key check
- * already happened when the signed link was generated.
+ * użytkownika"), so none of them does an auth/voter/key check — the key
+ * check already happened when the signed link was generated.
  */
 #[OA\Response(
     response: 401,
@@ -646,7 +648,7 @@ final class ItemController extends AbstractController
             throw new NotFoundException(message: 'item.no_downloadable_file');
         }
 
-        return $this->signedLinkResponse('item_download', $this->downloadSignatureResource($id), $id);
+        return $this->signedLinkResponse('item_download', $this->downloadSignatureResource($id), ['id' => $id]);
     }
 
     /**
@@ -713,7 +715,7 @@ final class ItemController extends AbstractController
             throw new NotFoundException(message: 'item.no_thumbnail');
         }
 
-        return $this->signedLinkResponse('item_thumbnail', $this->thumbnailSignatureResource($id), $id);
+        return $this->signedLinkResponse('item_thumbnail', $this->thumbnailSignatureResource($id), ['id' => $id]);
     }
 
     /**
@@ -744,6 +746,164 @@ final class ItemController extends AbstractController
         }
 
         return $this->streamedStorageResponse(storageKey: $thumbnailKey, mimeType: 'image/jpeg', size: null, downloadFilename: null);
+    }
+
+    /**
+     * Part 8. Same id/URL as before the upload — see ItemServiceInterface::overwriteFile().
+     *
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
+     * @throws NotFoundException             if the item doesn't exist
+     * @throws BadRequestException           if the item isn't a FILE item, or the new file is invalid
+     * @throws ConflictException             if a *different* item already has this exact content
+     * @throws UnprocessableContentException
+     * @throws SerializerExceptionInterface
+     */
+    #[Route('/api/items/{id}/file', name: 'item_overwrite_file', requirements: ['id' => '\d+'], methods: [Request::METHOD_POST])]
+    #[OA\Post(
+        description: "Overwrite a FILE item's content with a new upload — same id/URL as before; the previous "
+            . 'version is archived (see GET .../versions), not deleted',
+        requestBody: new OA\RequestBody(required: true, content: new OA\MediaType(
+            mediaType: 'multipart/form-data',
+            schema: new OA\Schema(required: ['file'], properties: [new OA\Property(property: 'file', type: 'string', format: 'binary')]),
+        )),
+        responses: [new OA\Response(response: 200, description: 'Success', content: new Model(type: ItemResponseDTO::class))],
+    )]
+    #[OA\Response(response: 400, description: 'Not a FILE item, or the new file is invalid', content: new Model(type: BadRequestExceptionModel::class))]
+    #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
+    #[OA\Response(response: 409, description: 'A different item already has this exact content', content: new Model(type: ConflictExceptionModel::class))]
+    #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
+    public function overwriteFile(Request $request, int $id): Response
+    {
+        $this->authService->getUserFromAccessToken();
+
+        if (false === $this->isGranted(ItemVoter::EDIT)) {
+            throw new ForbiddenException();
+        }
+
+        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
+
+        $file = $this->extractUploadedFile($request);
+
+        $item = $this->itemService->overwriteFile(
+            itemId: $id,
+            tmpPath: $file->getPathname(),
+            originalFilename: $file->getClientOriginalName(),
+            mimeType: $file->getMimeType() ?? 'application/octet-stream',
+            size: $this->fileSize($file),
+        );
+
+        $responseDTO = ItemMapper::toResponseDTO($item);
+
+        return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
+    }
+
+    /**
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
+     * @throws NotFoundException
+     * @throws SerializerExceptionInterface
+     */
+    #[Route('/api/items/{id}/versions', name: 'item_versions', requirements: ['id' => '\d+'], methods: [Request::METHOD_GET])]
+    #[OA\Get(
+        description: "An item's version history (oldest first) — versions it held before being overwritten; its "
+            . 'current content is on GET /api/items/{id} itself, not repeated here',
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Success',
+                content: new OA\JsonContent(type: 'array', items: new OA\Items(ref: new Model(type: ItemVersionResponseDTO::class))),
+            ),
+        ]
+    )]
+    #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
+    public function versions(Request $request, int $id): Response
+    {
+        $this->authService->getUserFromAccessToken();
+
+        if (false === $this->isGranted(ItemVoter::VIEW)) {
+            throw new ForbiddenException();
+        }
+
+        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
+
+        $versions = ItemMapper::toVersionResponseDTOList($this->itemService->listVersions($id));
+
+        return new Response($this->serializer->serialize(data: $versions, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
+    }
+
+    /**
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
+     * @throws NotFoundException
+     * @throws SerializerExceptionInterface
+     */
+    #[Route(
+        '/api/items/{id}/versions/{version}/download-link',
+        name: 'item_version_download_link',
+        requirements: ['id' => '\d+', 'version' => '\d+'],
+        methods: [Request::METHOD_POST],
+    )]
+    #[OA\Post(
+        description: "Generate a short-lived (15 min) signed download URL for one of an item's archived versions "
+            . '— the URL itself needs no auth token',
+        responses: [new OA\Response(response: 200, description: 'Success', content: new Model(type: DownloadLinkResponseDTO::class))],
+    )]
+    #[OA\Response(response: 404, description: 'Item, or that version of it, not found', content: new Model(type: NotFoundExceptionModel::class))]
+    public function versionDownloadLink(Request $request, int $id, int $version): Response
+    {
+        $this->authService->getUserFromAccessToken();
+
+        if (false === $this->isGranted(ItemVoter::DOWNLOAD)) {
+            throw new ForbiddenException();
+        }
+
+        $item = $this->itemService->getById($id);
+        $this->accessKeyGuard->assertItemUnlocked($item, $request);
+
+        // Also confirms the version exists, before minting a link for it.
+        $this->itemService->getVersion($id, $version);
+
+        return $this->signedLinkResponse(
+            'item_version_download',
+            $this->versionDownloadSignatureResource($id, $version),
+            ['id' => $id, 'version' => $version],
+        );
+    }
+
+    /**
+     * @throws ForbiddenException invalid or expired signature
+     * @throws NotFoundException
+     */
+    #[Route(
+        '/api/items/{id}/versions/{version}/download',
+        name: 'item_version_download',
+        requirements: ['id' => '\d+', 'version' => '\d+'],
+        methods: [Request::METHOD_GET],
+    )]
+    #[OA\Get(
+        description: 'Stream one of an item\'s archived versions — requires a valid signature from POST '
+            . '.../download-link, no auth token',
+        parameters: [
+            new OA\Parameter(name: 'expires', in: 'query', required: true, schema: new OA\Schema(type: 'integer')),
+            new OA\Parameter(name: 'signature', in: 'query', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [new OA\Response(response: 200, description: 'The file content, streamed')],
+    )]
+    #[OA\Response(response: 404, description: 'Item, or that version of it, not found', content: new Model(type: NotFoundExceptionModel::class))]
+    public function versionDownload(Request $request, int $id, int $version): StreamedResponse
+    {
+        $this->assertValidSignature($request, $this->versionDownloadSignatureResource($id, $version));
+
+        // Deliberately no auth/voter check here — see the class docblock.
+        $itemVersion = $this->itemService->getVersion($id, $version);
+
+        return $this->streamedStorageResponse(
+            storageKey: $itemVersion->getStorageKey(),
+            mimeType: $itemVersion->getMimeType(),
+            size: $itemVersion->getSize(),
+            downloadFilename: $itemVersion->getOriginalFilename(),
+        );
     }
 
     /**
@@ -819,7 +979,11 @@ final class ItemController extends AbstractController
         );
     }
 
-    private function signedLinkResponse(string $routeName, string $signatureResource, int $id): Response
+    /**
+     * @param array<string, int|string> $routeParams route params besides expires/signature (e.g. ['id' => $id], or
+     *                                               ['id' => $id, 'version' => $version] for a version download link)
+     */
+    private function signedLinkResponse(string $routeName, string $signatureResource, array $routeParams): Response
     {
         $signed = $this->signedUrlService->sign($signatureResource, self::LINK_TTL_SECONDS);
 
@@ -832,7 +996,7 @@ final class ItemController extends AbstractController
         // (a configured public base URL), not this one.
         $url = $this->generateUrl(
             $routeName,
-            ['id' => $id, 'expires' => $signed['expires'], 'signature' => $signed['signature']],
+            [...$routeParams, 'expires' => $signed['expires'], 'signature' => $signed['signature']],
             UrlGeneratorInterface::ABSOLUTE_PATH,
         );
 
@@ -891,6 +1055,11 @@ final class ItemController extends AbstractController
     private function thumbnailSignatureResource(int $id): string
     {
         return 'item-thumbnail:' . $id;
+    }
+
+    private function versionDownloadSignatureResource(int $id, int $version): string
+    {
+        return 'item-version-download:' . $id . ':' . $version;
     }
 
     private function nullableString(mixed $value): ?string

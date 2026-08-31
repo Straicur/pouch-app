@@ -223,12 +223,25 @@ na klucz) jeszcze nie powstał.
 ## Część 8 — Wersjonowanie plików
 
 **Zakres:**
-- [ ] Nadpisanie pliku nowszą wersją bez zmiany ID/adresu w drzewie, historia wersji.
+- [x] Nadpisanie pliku nowszą wersją bez zmiany ID/adresu w drzewie, historia wersji.
 
 **Testy kodowe:** integration test: upload → nadpisz → sprawdź że stara wersja nadal
 dostępna z historii, a referencje do itemu się nie zmieniły.
+✅ `backend/tests/Controller/ItemController/ItemVersioningTest.php` (id/URL bez zmian
+po nadpisaniu, stara wersja w historii i realnie pobieralna przez podpisany link,
+wiele nadpisań buduje uporządkowaną historię, nadpisanie itemu innego niż plik → 400),
+rozszerzony `backend/tests/Item/ItemGarbageCollectorTest.php` (purge kasuje z
+MinIO także storage każdej zarchiwizowanej wersji, nie tylko bieżący plik itemu —
+inaczej wersje wyciekałyby w buckecie po realnym usunięciu itemu). `make cs` /
+`make phpstan` / `make test-backend` — 128/128, 0 błędów.
 
 **Test ręczny:** nadpisać plik, przejrzeć historię wersji w UI.
+✅ zrobione przez realne żądania HTTP do `:8111`: upload pliku (`v1.txt`, 11 B) →
+nadpisanie (`v2.txt`, 24 B) → `GET /api/items/{id}` dalej pod tym samym `id`, ale z
+metadanymi v2 → `GET /api/items/{id}/versions` pokazuje wersję 1 (v1.txt, 11 B) →
+podpisany link do wersji 1 realnie zwraca oryginalną treść "v1 content". UI (frontend)
+do przeglądania historii jeszcze nie powstało — na razie tylko API/Swagger, tak jak
+modal na klucz z Części 7.
 
 ---
 
