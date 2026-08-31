@@ -6,6 +6,7 @@ namespace App\DTO\Mapper;
 
 use App\DTO\Response\ItemResponseDTO;
 use App\DTO\Response\ItemVersionResponseDTO;
+use App\DTO\Response\PublicItemResponseDTO;
 use App\Entity\Item;
 use App\Entity\ItemVersion;
 use App\Entity\Tag;
@@ -57,6 +58,24 @@ final class ItemMapper
         return array_map(
             self::toResponseDTO(...),
             $items,
+        );
+    }
+
+    public static function toPublicResponseDTO(Item $item): PublicItemResponseDTO
+    {
+        return new PublicItemResponseDTO(
+            id: $item->getId(),
+            type: $item->getType()->value,
+            name: $item->getName(),
+            originalFilename: $item->getOriginalFilename(),
+            mimeType: $item->getMimeType(),
+            size: $item->getSize(),
+            hasThumbnail: null !== $item->getThumbnailStorageKey(),
+            url: $item->getUrl(),
+            pageTitle: $item->getPageTitle(),
+            pageDescription: $item->getPageDescription(),
+            noteContent: $item->getNoteContent(),
+            createdAt: $item->getCreatedAt()->format(DateTimeInterface::ATOM),
         );
     }
 

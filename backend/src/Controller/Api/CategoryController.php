@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Controller\Api;
 
+use App\Category\CategoryExportServiceInterface;
 use App\Category\CategoryServiceInterface;
 use App\DTO\Mapper\CategoryMapper;
 use App\DTO\Request\CategoryCreateRequestDTO;
@@ -25,13 +26,22 @@ use App\Security\Voter\CategoryVoter;
 use App\Service\RequestServiceInterface;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
+use RuntimeException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\HeaderUtils;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Serializer\Encoder\JsonEncoder;
 use Symfony\Component\Serializer\Exception\ExceptionInterface as SerializerExceptionInterface;
 use Symfony\Component\Serializer\SerializerInterface;
+
+use function fclose;
+use function fopen;
+use function is_resource;
+use function stream_copy_to_stream;
+use function unlink;
 
 /**
  * Every action checks auth first (401 if there's no valid access token at all),
@@ -55,6 +65,7 @@ final class CategoryController extends AbstractController
         private readonly RequestServiceInterface $requestService,
         private readonly AuthServiceInterface $authService,
         private readonly CategoryServiceInterface $categoryService,
+        private readonly CategoryExportServiceInterface $categoryExportService,
         private readonly SerializerInterface $serializer,
     ) {}
 
@@ -298,5 +309,65 @@ final class CategoryController extends AbstractController
         $this->categoryService->delete($id);
 
         return new Response(status: Response::HTTP_NO_CONTENT);
+    }
+
+    /**
+     * Part 9. Streams a ZIP of the whole (sub)tree — see
+     * CategoryExportServiceInterface::buildZip() for what goes in and how
+     * Part 7 locks are handled (filtered out, not a hard failure).
+     *
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
+     * @throws NotFoundException
+     */
+    #[Route('/api/categories/{id}/export', name: 'category_export', requirements: ['id' => '\d+'], methods: [Request::METHOD_GET])]
+    #[OA\Get(
+        description: 'Download a category (and its full subtree) as a ZIP, preserving folder structure',
+        responses: [
+            new OA\Response(response: 200, description: 'The archive, streamed'),
+        ]
+    )]
+    #[OA\Response(
+        response: 404,
+        description: 'Category not found',
+        content: new Model(type: NotFoundExceptionModel::class)
+    )]
+    public function export(Request $request, int $id): StreamedResponse
+    {
+        $this->authService->getUserFromAccessToken();
+
+        if (false === $this->isGranted(CategoryVoter::VIEW)) {
+            throw new ForbiddenException();
+        }
+
+        $category = $this->categoryService->getById($id);
+        $zipPath = $this->categoryExportService->buildZip($id, $request);
+
+        $response = new StreamedResponse(function () use ($zipPath): void {
+            $sourceStream = fopen($zipPath, 'rb');
+            if (false === is_resource($sourceStream)) {
+                throw new RuntimeException('Could not open the temporary export archive for reading');
+            }
+
+            $outputStream = fopen('php://output', 'wb');
+            if (false === is_resource($outputStream)) {
+                fclose($sourceStream);
+
+                throw new RuntimeException('Could not open php://output for writing');
+            }
+
+            stream_copy_to_stream($sourceStream, $outputStream);
+            fclose($sourceStream);
+            fclose($outputStream);
+            unlink($zipPath);
+        });
+
+        $response->headers->set('Content-Type', 'application/zip');
+        $response->headers->set(
+            'Content-Disposition',
+            HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_ATTACHMENT, $category->getName() . '.zip'),
+        );
+
+        return $response;
     }
 }

@@ -248,14 +248,33 @@ modal na klucz z Części 7.
 ## Część 9 — Publiczne czasowe linki + eksport kategorii
 
 **Zakres:**
-- [ ] Publiczny, czasowy link do pojedynczego itemu (bez konta, np. 24h).
-- [ ] "Pobierz całą kategorię" jako strumieniowany ZIP z zachowaniem struktury.
+- [x] Publiczny, czasowy link do pojedynczego itemu (bez konta, np. 24h).
+- [x] "Pobierz całą kategorię" jako strumieniowany ZIP z zachowaniem struktury.
 
 **Testy kodowe:** test generowania/wygasania publicznego linku, test streamowanego
 ZIP-a (struktura + zawartość).
+✅ `backend/tests/Controller/ItemController/ItemPublicLinkTest.php` (generowanie
+wymaga loginu, URL-e są naprawdę absolutne — nie ścieżki względne jak private
+15-minutowe linki z Części 3/4 — podgląd/pobranie działają bez żadnego auth,
+działa dla itemów bez pliku (notatka), zmanipulowany podpis → 403; wygasanie samo
+w sobie pokryte już przez `SignedUrlServiceTest`, bo to ten sam mechanizm, tylko
+dłuższy TTL). `backend/tests/Controller/CategoryController/CategoryExportTest.php`
+(struktura + zawartość zachowane, puste podkategorie nadal jako foldery, zablokowana
+kategoria pomija swoje itemy ale zostawia odblokowane rodzeństwo — Część 7 — kolizje
+nazw w jednym folderze dostają unikalne nazwy). `make cs` / `make phpstan` /
+`make test-backend` — 137/137, 0 błędów.
 
 **Test ręczny:** wygenerować publiczny link, otworzyć go w prywatnym oknie bez
 zalogowania, pobrać całą kategorię i sprawdzić strukturę archiwum.
+✅ zrobione przez realne żądania HTTP do `:8111` (bez ciasteczka auth na etapie
+otwierania linku — dokładnie jak "prywatne okno bez zalogowania"): wygenerowano
+link publiczny do pliku → `viewUrl` i `downloadUrl` to prawdziwe pełne URL-e
+(`http://localhost:8111/...`, nie ścieżki względne) → oba otwarte bez żadnego
+ciasteczka zwróciły 200 z poprawną treścią/metadanymi. Eksport kategorii z
+podkategorią (plik + notatka) → prawdziwy plik `.zip` (`Content-Type:
+application/zip`, `Content-Disposition` z nazwą kategorii) → rozpakowany:
+struktura folderów zgodna z drzewem kategorii, plik i notatka (`.md`) z poprawną
+zawartością. Dane testowe posprzątane.
 
 ---
 

@@ -14,6 +14,8 @@ use App\DTO\Request\ItemUpdateTagsRequestDTO;
 use App\DTO\Response\DownloadLinkResponseDTO;
 use App\DTO\Response\ItemResponseDTO;
 use App\DTO\Response\ItemVersionResponseDTO;
+use App\DTO\Response\PublicItemLinkResponseDTO;
+use App\DTO\Response\PublicItemResponseDTO;
 use App\Entity\Item;
 use App\Enum\TtlPreset;
 use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadRequestException;
@@ -33,6 +35,7 @@ use App\Item\ItemListFilter;
 use App\Item\ItemServiceInterface;
 use App\Security\AccessKey\AccessKeyGuardInterface;
 use App\Security\AuthServiceInterface;
+use App\Security\ConfigServiceInterface;
 use App\Security\SignedUrlServiceInterface;
 use App\Security\Voter\ItemVoter;
 use App\Service\RequestServiceInterface;
@@ -71,14 +74,18 @@ use function trim;
  * Every mutating/metadata action checks auth first (401), then ItemVoter (403)
  * — same pattern as CategoryController. After that, every action touching a
  * specific item or category (get/list/download-link/thumbnail-link/versions/
- * version-download-link/create/edit/overwrite/delete) also checks
- * AccessKeyGuard (Part 7): a locked category/item without a valid grant on
- * the request either 403s or, for list(), is just filtered out. The one
- * deliberate exception to *all* of the above is the download()/thumbnail()/
- * versionDownload() streams: a valid signed URL is its own, separate
+ * version-download-link/public-link/create/edit/overwrite/delete) also
+ * checks AccessKeyGuard (Part 7): a locked category/item without a valid
+ * grant on the request either 403s or, for list(), is just filtered out. The
+ * one deliberate exception to *all* of the above is download()/thumbnail()/
+ * versionDownload()/publicView(): a valid signed URL is its own, separate
  * authorization channel (product doc: "niezależny od auth-tokena
  * użytkownika"), so none of them does an auth/voter/key check — the key
- * check already happened when the signed link was generated.
+ * check already happened when the signed link was generated. publicView()
+ * (and the file/thumbnail links publicLink() mints alongside it) additionally
+ * uses a much longer-lived signature (Part 9: "np. 24h") since it's meant to
+ * be opened by someone with no account at all, not fetched immediately by
+ * the app that just requested it.
  */
 #[OA\Response(
     response: 401,
@@ -95,6 +102,14 @@ final class ItemController extends AbstractController
 {
     private const int LINK_TTL_SECONDS = 900;
 
+    /**
+     * Part 9: "np. 24h" per the product doc — much longer than the 15-minute
+     * private preview links above, since a public link is meant to be handed
+     * to someone else to use whenever they get to it, not fetched immediately
+     * by the app that just requested it.
+     */
+    private const int PUBLIC_LINK_TTL_SECONDS = 86_400;
+
     public function __construct(
         private readonly RequestServiceInterface $requestService,
         private readonly AuthServiceInterface $authService,
@@ -103,6 +118,7 @@ final class ItemController extends AbstractController
         private readonly StorageServiceInterface $storageService,
         private readonly SignedUrlServiceInterface $signedUrlService,
         private readonly AccessKeyGuardInterface $accessKeyGuard,
+        private readonly ConfigServiceInterface $configService,
         private readonly SerializerInterface $serializer,
     ) {}
 
@@ -907,6 +923,91 @@ final class ItemController extends AbstractController
     }
 
     /**
+     * Part 9. Reuses the exact same signed-URL mechanism as download-link/
+     * thumbnail-link (product doc: "naturalne rozszerzenie mechanizmu
+     * podpisanych URL-i... tu tylko dłuższy TTL podpisu i świadome kliknięcie
+     * 'udostępnij'") — download()/thumbnail() themselves are untouched, a
+     * signature they accept doesn't care whether it came from here or from
+     * downloadLink()/thumbnailLink(). Requires an access key grant to
+     * *generate* (this is still an authenticated, in-app action), same as
+     * every other item-touching endpoint — but the resulting links need none,
+     * on purpose: that's the whole point of sharing outside the app.
+     *
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
+     * @throws NotFoundException
+     * @throws SerializerExceptionInterface
+     */
+    #[Route('/api/items/{id}/public-link', name: 'item_public_link', requirements: ['id' => '\d+'], methods: [Request::METHOD_POST])]
+    #[OA\Post(
+        description: 'Generate a public, 24h link to an item — usable by someone with no account at all. Includes a '
+            . 'view link (item metadata) and, if the item has them, a file/thumbnail download link — all three share '
+            . 'the same expiry.',
+        responses: [new OA\Response(response: 200, description: 'Success', content: new Model(type: PublicItemLinkResponseDTO::class))],
+    )]
+    #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
+    public function publicLink(Request $request, int $id): Response
+    {
+        $this->authService->getUserFromAccessToken();
+
+        if (false === $this->isGranted(ItemVoter::DOWNLOAD)) {
+            throw new ForbiddenException();
+        }
+
+        $item = $this->itemService->getById($id);
+        $this->accessKeyGuard->assertItemUnlocked($item, $request);
+
+        $view = $this->publicSignedUrl('item_public_view', $this->publicViewSignatureResource($id), ['id' => $id]);
+
+        $downloadUrl = null !== $item->getStorageKey()
+            ? $this->publicSignedUrl('item_download', $this->downloadSignatureResource($id), ['id' => $id])['url']
+            : null;
+
+        $thumbnailUrl = null !== $item->getThumbnailStorageKey()
+            ? $this->publicSignedUrl('item_thumbnail', $this->thumbnailSignatureResource($id), ['id' => $id])['url']
+            : null;
+
+        $responseDTO = new PublicItemLinkResponseDTO(
+            viewUrl: $view['url'],
+            downloadUrl: $downloadUrl,
+            thumbnailUrl: $thumbnailUrl,
+            expiresAt: $view['expiresAt'],
+        );
+
+        return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
+    }
+
+    /**
+     * The public, unauthenticated counterpart to get() — no auth/voter/key
+     * check (see the class docblock), deliberately a curated subset of
+     * fields (see PublicItemResponseDTO), reachable only with a valid
+     * signature minted by publicLink() above.
+     *
+     * @throws ForbiddenException           invalid or expired signature
+     * @throws NotFoundException
+     * @throws SerializerExceptionInterface
+     */
+    #[Route('/api/public/items/{id}', name: 'item_public_view', requirements: ['id' => '\d+'], methods: [Request::METHOD_GET])]
+    #[OA\Get(
+        description: "An item's public, read-only details — requires a valid signature from POST "
+            . '.../public-link, no auth token',
+        parameters: [
+            new OA\Parameter(name: 'expires', in: 'query', required: true, schema: new OA\Schema(type: 'integer')),
+            new OA\Parameter(name: 'signature', in: 'query', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [new OA\Response(response: 200, description: 'Success', content: new Model(type: PublicItemResponseDTO::class))],
+    )]
+    #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
+    public function publicView(Request $request, int $id): Response
+    {
+        $this->assertValidSignature($request, $this->publicViewSignatureResource($id));
+
+        $responseDTO = ItemMapper::toPublicResponseDTO($this->itemService->getById($id));
+
+        return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
+    }
+
+    /**
      * @throws NotFoundException  if $categoryId doesn't exist
      * @throws ForbiddenException if the category (or an ancestor) is locked and $request carries no valid grant
      */
@@ -992,8 +1093,8 @@ final class ItemController extends AbstractController
         // same domain as the API) — an absolute URL would instead embed
         // *this request's* Host header, which behind the dev proxy is the
         // internal Docker service name and unreachable from the browser.
-        // Part 9's genuinely-external public links need their own solution
-        // (a configured public base URL), not this one.
+        // Part 9's genuinely-external public links use publicSignedUrl()
+        // below instead, precisely because they need a real absolute URL.
         $url = $this->generateUrl(
             $routeName,
             [...$routeParams, 'expires' => $signed['expires'], 'signature' => $signed['signature']],
@@ -1006,6 +1107,33 @@ final class ItemController extends AbstractController
         );
 
         return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
+    }
+
+    /**
+     * Part 9's counterpart to signedLinkResponse() above — same signing, but
+     * a genuinely absolute URL (ConfigService::getPublicBaseUrl(), not this
+     * request's Host) since the recipient has no app context to resolve a
+     * relative one against, and returns the pieces rather than a Response
+     * since publicLink() bundles up to three of these into one DTO.
+     *
+     * @param array<string, int|string> $routeParams
+     *
+     * @return array{url: string, expiresAt: string}
+     */
+    private function publicSignedUrl(string $routeName, string $signatureResource, array $routeParams): array
+    {
+        $signed = $this->signedUrlService->sign($signatureResource, self::PUBLIC_LINK_TTL_SECONDS);
+
+        $path = $this->generateUrl(
+            $routeName,
+            [...$routeParams, 'expires' => $signed['expires'], 'signature' => $signed['signature']],
+            UrlGeneratorInterface::ABSOLUTE_PATH,
+        );
+
+        return [
+            'url'       => $this->configService->getPublicBaseUrl() . $path,
+            'expiresAt' => new DateTimeImmutable('@' . $signed['expires'])->format(DateTimeInterface::ATOM),
+        ];
     }
 
     /**
@@ -1060,6 +1188,11 @@ final class ItemController extends AbstractController
     private function versionDownloadSignatureResource(int $id, int $version): string
     {
         return 'item-version-download:' . $id . ':' . $version;
+    }
+
+    private function publicViewSignatureResource(int $id): string
+    {
+        return 'item-public-view:' . $id;
     }
 
     private function nullableString(mixed $value): ?string
