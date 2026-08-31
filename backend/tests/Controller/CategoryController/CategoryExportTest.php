@@ -107,7 +107,7 @@ class CategoryExportTest extends WebTest
     private function readZipEntries(): array
     {
         $zipPath = tempnam(sys_get_temp_dir(), 'pouch-export-test-read-');
-        file_put_contents($zipPath, (string) $this->webClient->getInternalResponse()->getContent());
+        file_put_contents($zipPath, $this->webClient->getInternalResponse()->getContent());
 
         $zip = new ZipArchive();
         self::assertTrue($zip->open($zipPath));
@@ -161,7 +161,7 @@ class CategoryExportTest extends WebTest
         self::assertResponseStatusCodeSame(Response::HTTP_OK);
 
         $zipPath = tempnam(sys_get_temp_dir(), 'pouch-export-test-read-');
-        file_put_contents($zipPath, (string) $this->webClient->getInternalResponse()->getContent());
+        file_put_contents($zipPath, $this->webClient->getInternalResponse()->getContent());
         $zip = new ZipArchive();
         self::assertTrue($zip->open($zipPath));
 
@@ -169,6 +169,7 @@ class CategoryExportTest extends WebTest
         for ($i = 0; $i < $zip->numFiles; ++$i) {
             $names[] = $zip->getNameIndex($i);
         }
+
         $zip->close();
         unlink($zipPath);
 
@@ -211,6 +212,27 @@ class CategoryExportTest extends WebTest
 
         self::assertArrayHasKey('Collisions/same.md', $entries);
         self::assertArrayHasKey('Collisions/same (2).md', $entries);
+    }
+
+    /**
+     * Post-review fix: CategoryService doesn't enforce unique names among
+     * sibling categories — two "Docs" under the same parent (or two root
+     * "Docs") used to collide into a single ZIP directory, silently merging
+     * their contents (and risking item name collisions across categories
+     * that never had anything to do with each other).
+     */
+    public function testExportGivesDistinctNamesToSiblingCategoriesThatWouldOtherwiseCollide(): void
+    {
+        $root = $this->databaseMockManager->createCategory('Roots');
+        $firstDocs = $this->databaseMockManager->createCategory('Docs', $root);
+        $secondDocs = $this->databaseMockManager->createCategory('Docs', $root);
+        $this->createNote($firstDocs->getId(), 'first');
+        $this->createNote($secondDocs->getId(), 'second');
+
+        $entries = $this->downloadAndReadZip($root->getId());
+
+        self::assertArrayHasKey('Roots/Docs/first.md', $entries);
+        self::assertArrayHasKey('Roots/Docs (2)/second.md', $entries);
     }
 
     /**
@@ -262,7 +284,7 @@ class CategoryExportTest extends WebTest
         $this->auth();
         $this->webClient->request(
             method: Request::METHOD_GET,
-            uri: "/api/categories/{$root->getId()}/export?token=" . urlencode($tokenResponse['token']),
+            uri: "/api/categories/{$root->getId()}/export?token=" . urlencode((string) $tokenResponse['token']),
         );
         self::assertResponseStatusCodeSame(Response::HTTP_OK);
 
@@ -273,12 +295,12 @@ class CategoryExportTest extends WebTest
     }
 
     /**
-     * A token minted for a *different* category (or, equivalently, a plain
-     * garbage string) must not unlock anything — the resource embedded in it
-     * won't match what export() expects, so it's silently ignored rather
-     * than trusted.
+     * Post-review fix: a token minted for a *different* category used to be
+     * silently ignored (export proceeded, just without the grants it
+     * carried) — a caller that explicitly passed a token expects it to have
+     * been honored, so a mismatch is now rejected loudly (403) instead.
      */
-    public function testExportIgnoresATokenMintedForADifferentCategory(): void
+    public function testExportRejectsATokenMintedForADifferentCategory(): void
     {
         $root = $this->databaseMockManager->createCategory('Mixed');
         $locked = $this->databaseMockManager->createCategory('Locked', $root);
@@ -316,13 +338,58 @@ class CategoryExportTest extends WebTest
         $this->auth();
         $this->webClient->request(
             method: Request::METHOD_GET,
-            uri: "/api/categories/{$root->getId()}/export?token=" . urlencode($tokenResponse['token']),
+            uri: "/api/categories/{$root->getId()}/export?token=" . urlencode((string) $tokenResponse['token']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_FORBIDDEN);
+        $this->responseTool->testForbiddenRequestResponseData($this->webClient);
+    }
+
+    /**
+     * Post-review fix: same as above, for a token that's missing/garbage/
+     * already used rather than merely mismatched — every "not a currently
+     * valid token" case goes through the same rejection, not just the
+     * category-mismatch one.
+     */
+    public function testExportRejectsAGarbageToken(): void
+    {
+        $root = $this->databaseMockManager->createCategory('Mixed');
+
+        $this->auth();
+        $this->webClient->request(
+            method: Request::METHOD_GET,
+            uri: "/api/categories/{$root->getId()}/export?token=not-a-real-token",
+        );
+
+        self::assertResponseStatusCodeSame(Response::HTTP_FORBIDDEN);
+        $this->responseTool->testForbiddenRequestResponseData($this->webClient);
+    }
+
+    /**
+     * Post-review fix: the token is single-use — a second export with the
+     * same token must be rejected exactly like an unknown one.
+     */
+    public function testExportRejectsAnAlreadyUsedToken(): void
+    {
+        $root = $this->databaseMockManager->createCategory('Mixed');
+
+        $this->auth();
+        $this->webClient->request(method: Request::METHOD_POST, uri: "/api/categories/{$root->getId()}/export-token");
+        $tokenResponse = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+
+        $this->auth();
+        $this->webClient->request(
+            method: Request::METHOD_GET,
+            uri: "/api/categories/{$root->getId()}/export?token=" . urlencode((string) $tokenResponse['token']),
         );
         self::assertResponseStatusCodeSame(Response::HTTP_OK);
 
-        $entries = $this->readZipEntries();
-
-        self::assertArrayNotHasKey('Mixed/Locked/secret.txt', $entries);
+        $this->auth();
+        $this->webClient->request(
+            method: Request::METHOD_GET,
+            uri: "/api/categories/{$root->getId()}/export?token=" . urlencode((string) $tokenResponse['token']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_FORBIDDEN);
+        $this->responseTool->testForbiddenRequestResponseData($this->webClient);
     }
 
     /**

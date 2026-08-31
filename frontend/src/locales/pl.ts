@@ -17,6 +17,7 @@ const pl = {
     invalidCredentials: "Nieprawidłowy e-mail lub hasło.",
     genericError: "Coś poszło nie tak. Spróbuj ponownie.",
     logoutButton: "Wyloguj się",
+    logoutError: "Nie udało się wylogować. Spróbuj ponownie.",
   },
   home: {
     loggedInAs: "Zalogowano jako: {{email}}",

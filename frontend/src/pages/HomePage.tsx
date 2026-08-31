@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
+import { toastUtil } from "../libs/toastUtil";
 import { useLogoutMutation } from "../store/api/authApi";
 import { useWhoAmIQuery } from "../store/api/sessionApi";
 
@@ -19,8 +20,15 @@ export function HomePage() {
   }, [status, navigate]);
 
   const handleLogout = async () => {
-    await logout();
-    await navigate("/login", { replace: true });
+    // .unwrap() matters here — the bare trigger's Promise resolves even on
+    // a failed request, so without it a failed logout still navigated to
+    // /login looking like a success while the server-side session survived.
+    try {
+      await logout().unwrap();
+      await navigate("/login", { replace: true });
+    } catch {
+      toastUtil.showToast(t("auth.logoutError"), "error");
+    }
   };
 
   if (isLoading || 401 === status) {

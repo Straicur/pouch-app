@@ -225,7 +225,7 @@ final class UrlResolver
 
         $url .= $parts['path'] ?? '';
 
-        if (isset($parts['query']) && null !== $parts['query'] && '' !== $parts['query']) {
+        if (isset($parts['query']) && '' !== $parts['query']) {
             $url .= '?' . $parts['query'];
         }
 

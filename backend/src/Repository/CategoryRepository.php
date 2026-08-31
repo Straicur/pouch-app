@@ -10,6 +10,7 @@ use Doctrine\Persistence\ManagerRegistry;
 
 use function array_map;
 use function array_values;
+use function is_numeric;
 use function is_string;
 
 /**
@@ -75,10 +76,10 @@ class CategoryRepository extends ServiceEntityRepository
             ->getArrayResult();
 
         return array_map(static fn (array $row): array => [
-            'id'               => (int) $row['id'],
-            'parentId'         => null !== $row['parentId'] ? (int) $row['parentId'] : null,
+            'id'               => is_numeric($row['id']) ? (int) $row['id'] : 0,
+            'parentId'         => is_numeric($row['parentId']) ? (int) $row['parentId'] : null,
             'accessKeyHash'    => is_string($row['accessKeyHash']) ? $row['accessKeyHash'] : null,
-            'accessKeyVersion' => (int) $row['accessKeyVersion'],
+            'accessKeyVersion' => is_numeric($row['accessKeyVersion']) ? (int) $row['accessKeyVersion'] : 0,
         ], $rows);
     }
 }

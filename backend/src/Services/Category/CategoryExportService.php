@@ -82,11 +82,14 @@ class CategoryExportService implements CategoryExportServiceInterface
             $tmpItemFiles = [];
 
             try {
+                $usedRootNames = [];
                 foreach ($roots as $root) {
-                    $this->addCategoryToZip($zip, $root, '', $request, $tmpItemFiles, $bypassLocks);
+                    $this->addCategoryToZip($zip, $root, '', $request, $tmpItemFiles, $bypassLocks, $usedRootNames);
                 }
 
-                $zip->close();
+                if (false === $zip->close()) {
+                    throw new RuntimeException('Could not finalize the export archive');
+                }
             } finally {
                 foreach ($tmpItemFiles as $tmpItemFile) {
                     @unlink($tmpItemFile);
@@ -102,11 +105,17 @@ class CategoryExportService implements CategoryExportServiceInterface
     }
 
     /**
-     * @param list<string> $tmpItemFiles
+     * @param list<string>        $tmpItemFiles
+     * @param array<string, true> $usedSiblingNames names already taken among $category's siblings at this level
+     *                                              (i.e. under the same parent, or among the roots) — nothing
+     *                                              stops two sibling categories sharing a name (CategoryService
+     *                                              doesn't enforce uniqueness), so without this two "Dokumenty"
+     *                                              categories would silently merge into one ZIP directory
      */
-    private function addCategoryToZip(ZipArchive $zip, Category $category, string $basePath, Request $request, array &$tmpItemFiles, bool $bypassLocks): void
+    private function addCategoryToZip(ZipArchive $zip, Category $category, string $basePath, Request $request, array &$tmpItemFiles, bool $bypassLocks, array &$usedSiblingNames): void
     {
-        $dirPath = $basePath . $this->sanitize($category->getName()) . '/';
+        $dirName = $this->uniqueEntryName('', $category->getName(), $usedSiblingNames);
+        $dirPath = $basePath . $dirName . '/';
         // Ensures even an empty (sub)category still shows up in the archive
         // — "z zachowaniem struktury" means the tree, not just the leaves.
         $zip->addEmptyDir(rtrim($dirPath, '/'));
@@ -121,8 +130,9 @@ class CategoryExportService implements CategoryExportServiceInterface
             $this->addItemToZip($zip, $item, $dirPath, $usedNames, $tmpItemFiles);
         }
 
+        $usedChildNames = [];
         foreach ($category->getChildren() as $child) {
-            $this->addCategoryToZip($zip, $child, $dirPath, $request, $tmpItemFiles, $bypassLocks);
+            $this->addCategoryToZip($zip, $child, $dirPath, $request, $tmpItemFiles, $bypassLocks, $usedChildNames);
         }
     }
 
@@ -163,8 +173,11 @@ class CategoryExportService implements CategoryExportServiceInterface
             throw new RuntimeException('Could not create a temporary file for item #' . $item->getId());
         }
 
-        $this->storageService->downloadToPath($storageKey, $localPath);
+        // Tracked before the download, not after — downloadToPath() can
+        // throw partway through (see testFailedExportDoesNotLeaveATempFileBehind),
+        // and $localPath already exists on disk by this point regardless.
         $tmpItemFiles[] = $localPath;
+        $this->storageService->downloadToPath($storageKey, $localPath);
 
         $entryName = $this->uniqueEntryName($dirPath, $item->getOriginalFilename() ?? $item->getName(), $usedNames);
         $zip->addFile($localPath, $entryName);

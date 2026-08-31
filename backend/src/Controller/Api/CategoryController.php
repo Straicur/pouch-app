@@ -345,7 +345,9 @@ final class CategoryController extends AbstractController
     #[OA\Get(
         description: 'Download a category (and its full subtree) as a ZIP, preserving folder structure. Pass a '
             . '"token" from POST .../export-token to include whatever this session currently has access-key '
-            . 'grants for — omit it to get everything this account can see *without* a key, same as before.',
+            . 'grants for — omit it to get everything this account can see *without* a key, same as before. A '
+            . 'token that is given but missing, expired, already used, or minted for a different category is '
+            . 'rejected with 403 rather than silently ignored.',
         parameters: [
             new OA\Parameter(name: 'token', description: 'A token from POST .../export-token', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],

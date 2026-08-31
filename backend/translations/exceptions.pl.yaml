@@ -22,6 +22,7 @@ category.not_found: "Nie znaleziono kategorii."
 category.move_cycle: "Nie można przenieść kategorii do niej samej ani do jednej z jej podkategorii."
 category.locked: "Ta kategoria jest chroniona kluczem dostępu."
 category.not_empty: "Ta kategoria (albo jedna z jej podkategorii) wciąż zawiera itemy — w tym być może w koszu, oczekujące na wyczyszczenie — usuń lub przenieś je najpierw."
+category.export_token_invalid: "Token eksportu jest nieprawidłowy lub wygasł."
 
 # Item (all types)
 item.not_found: "Nie znaleziono itemu."

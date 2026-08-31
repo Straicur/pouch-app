@@ -4,7 +4,9 @@ declare(strict_types = 1);
 
 namespace App\DataFixtures;
 
+use App\Entity\Category;
 use App\Entity\User;
+use App\Repository\CategoryRepository;
 use App\Repository\UserRepository;
 use Doctrine\Bundle\FixturesBundle\Fixture;
 use Doctrine\Bundle\FixturesBundle\FixtureGroupInterface;
@@ -15,8 +17,13 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 class AppFixtures extends Fixture implements FixtureGroupInterface
 {
+    // Flat, no nesting — categories aren't per-user (Category has no owner
+    // field), just enough real folders to exercise lists/filters manually.
+    private const array CATEGORY_NAMES = ['Dokumenty', 'Zdjęcia', 'Linki', 'Notatki', 'Praca', 'Prywatne'];
+
     public function __construct(
         private readonly UserRepository $userRepository,
+        private readonly CategoryRepository $categoryRepository,
         private readonly UserPasswordHasherInterface $passwordHasher,
     ) {}
 
@@ -38,6 +45,10 @@ class AppFixtures extends Fixture implements FixtureGroupInterface
         $guest->setRoles(['ROLE_GUEST']);
 
         $this->userRepository->saveUser(user: $guest);
+
+        foreach (self::CATEGORY_NAMES as $categoryName) {
+            $this->categoryRepository->save(new Category($categoryName));
+        }
 
         $manager->flush();
     }

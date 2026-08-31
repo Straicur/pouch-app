@@ -15,6 +15,7 @@ use function array_filter;
 use function array_map;
 use function array_slice;
 use function array_values;
+use function count;
 use function is_numeric;
 use function is_scalar;
 use function str_replace;
@@ -426,8 +427,8 @@ class ItemRepository extends ServiceEntityRepository
             ->getArrayResult();
 
         return array_map(static fn (array $row): array => [
-            'id'               => (int) $row['id'],
-            'accessKeyVersion' => (int) $row['accessKeyVersion'],
+            'id'               => is_numeric($row['id']) ? (int) $row['id'] : 0,
+            'accessKeyVersion' => is_numeric($row['accessKeyVersion']) ? (int) $row['accessKeyVersion'] : 0,
         ], $rows);
     }
 }
