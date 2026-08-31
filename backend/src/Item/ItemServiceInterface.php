@@ -9,6 +9,7 @@ use App\Entity\ItemVersion;
 use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadRequestException;
 use App\ExceptionManagement\Exceptions\ApiException\ConflictException\ConflictException;
 use App\ExceptionManagement\Exceptions\ApiException\NotFoundException\NotFoundException;
+use DateTimeImmutable;
 
 interface ItemServiceInterface
 {
@@ -127,4 +128,27 @@ interface ItemServiceInterface
 
     /** @throws NotFoundException if the item, or that version of it, doesn't exist */
     public function getVersion(int $itemId, int $version): ItemVersion;
+
+    /**
+     * Part 10: "lista itemów wygasających w ciągu najbliższych 24h" —
+     * generalized to any window (the endpoint decides what "soon" means).
+     *
+     * @return list<Item> ordered by expiresAt, soonest first
+     */
+    public function findExpiringBetween(DateTimeImmutable $from, DateTimeImmutable $until): array;
+
+    /**
+     * Part 10: "masowe przedłużenie ważności wybranych itemów" — the exact
+     * same lifecycle rules createFile()/createUrl()/etc. use (see
+     * ItemLifecycleOptions), just applied to items that already exist rather
+     * than one being created.
+     *
+     * @param list<int> $itemIds
+     *
+     * @return list<Item>
+     *
+     * @throws NotFoundException   if any $itemIds entry doesn't exist
+     * @throws BadRequestException if the resulting expiry isn't in the future
+     */
+    public function extendExpiry(array $itemIds, ItemLifecycleOptions $options): array;
 }

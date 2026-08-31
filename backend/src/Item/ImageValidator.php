@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Item;
 
+use App\Enum\ItemType;
 use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadRequestException;
 use Symfony\Contracts\Translation\TranslatorInterface;
 
@@ -15,7 +16,8 @@ use const PATHINFO_EXTENSION;
 
 /**
  * Photo items' own allow-list — separate from FileValidator's general-file
- * one (product doc: explicit allow-list per item type).
+ * one (product doc: explicit allow-list per item type). The size limit is
+ * the one thing an admin can override (Part 10) — see StorageLimitService.
  */
 final readonly class ImageValidator
 {
@@ -29,10 +31,9 @@ final readonly class ImageValidator
      */
     private const array ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
-    private const int MAX_SIZE_BYTES = 25 * 1024 * 1024;
-
     public function __construct(
         private TranslatorInterface $translator,
+        private StorageLimitServiceInterface $storageLimitService,
     ) {}
 
     /**
@@ -44,7 +45,7 @@ final readonly class ImageValidator
             throw new BadRequestException(message: 'item.file_empty');
         }
 
-        if (self::MAX_SIZE_BYTES < $size) {
+        if ($this->storageLimitService->getMaxSizeBytes(ItemType::PHOTO) < $size) {
             throw new BadRequestException(message: 'item.file_too_large');
         }
 

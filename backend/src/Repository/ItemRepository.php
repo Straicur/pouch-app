@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace App\Repository;
 
 use App\Entity\Item;
+use App\Enum\ItemType;
 use App\Item\ItemListFilter;
 use DateTimeImmutable;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
@@ -14,6 +15,7 @@ use function array_filter;
 use function array_map;
 use function array_values;
 use function is_numeric;
+use function is_scalar;
 use function str_replace;
 
 /**
@@ -180,6 +182,65 @@ class ItemRepository extends ServiceEntityRepository
             ->where('i.trashedAt IS NOT NULL')
             ->andWhere('i.trashedAt <= :trashedBefore')
             ->setParameter('trashedBefore', $trashedBefore)
+            ->getQuery()
+            ->getResult();
+
+        return $result;
+    }
+
+    /**
+     * Part 10 storage dashboard: total bytes + item count per type, for
+     * every type that actually carries a $size (URL/NOTE items don't, and
+     * are meaningless as "storage usage") — includes trashed-but-not-yet-
+     * purged items on purpose: their storage object is still sitting in
+     * MinIO/S3 either way, so it's still real usage until GC purges it.
+     *
+     * @return array<string, array{totalBytes: int, itemCount: int}> keyed by ItemType value
+     */
+    public function sumSizeByType(): array
+    {
+        /** @var list<array{type: mixed, totalBytes: mixed, itemCount: mixed}> $rows */
+        $rows = $this->createQueryBuilder('i')
+            ->select('i.type as type', 'SUM(i.size) as totalBytes', 'COUNT(i.id) as itemCount')
+            ->where('i.size IS NOT NULL')
+            ->groupBy('i.type')
+            ->getQuery()
+            ->getArrayResult();
+
+        $byType = [];
+        foreach ($rows as $row) {
+            $rawType = $row['type'];
+            $type = match (true) {
+                $rawType instanceof ItemType => $rawType->value,
+                is_scalar($rawType)          => (string) $rawType,
+                default                      => '',
+            };
+            $totalBytes = is_numeric($row['totalBytes']) ? (int) $row['totalBytes'] : 0;
+            $itemCount = is_numeric($row['itemCount']) ? (int) $row['itemCount'] : 0;
+            $byType[$type] = ['totalBytes' => $totalBytes, 'itemCount' => $itemCount];
+        }
+
+        return $byType;
+    }
+
+    /**
+     * Part 10: "lista itemów wygasających w ciągu najbliższych 24h" —
+     * generalized to any window, not just exactly 24h, since the endpoint
+     * itself is the one deciding what "soon" means.
+     *
+     * @return list<Item>
+     */
+    public function findExpiringBetween(DateTimeImmutable $from, DateTimeImmutable $until): array
+    {
+        /** @var list<Item> $result */
+        $result = $this->createQueryBuilder('i')
+            ->where('i.trashedAt IS NULL')
+            ->andWhere('i.keepForever = false')
+            ->andWhere('i.expiresAt IS NOT NULL')
+            ->andWhere('i.expiresAt BETWEEN :from AND :until')
+            ->setParameter('from', $from)
+            ->setParameter('until', $until)
+            ->orderBy('i.expiresAt', 'ASC')
             ->getQuery()
             ->getResult();
 

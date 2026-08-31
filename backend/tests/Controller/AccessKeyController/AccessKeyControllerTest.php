@@ -21,16 +21,24 @@ class AccessKeyControllerTest extends WebTest
 {
     private User $user;
 
+    private User $admin;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->user = $this->databaseMockManager->createUser(new UserTestDTO('access-key-user@example.com', 'zaq12wsx'));
+        $this->admin = $this->databaseMockManager->createUser(new UserTestDTO('access-key-admin@example.com', 'zaq12wsx', ['ROLE_ADMIN']));
     }
 
     private function auth(): void
     {
         $this->setAuthCookie($this->databaseMockManager->loginUser($this->user));
+    }
+
+    private function authAsAdmin(): void
+    {
+        $this->setAuthCookie($this->databaseMockManager->loginUser($this->admin));
     }
 
     private function setCategoryKey(int $categoryId, string $key): void
@@ -92,6 +100,44 @@ class AccessKeyControllerTest extends WebTest
         }
 
         return ['HTTP_' . str_replace('-', '_', mb_strtoupper(AccessKeyGuard::GRANTS_HEADER)) => json_encode([$grants])];
+    }
+
+    /**
+     * Part 10: "Reset klucza dostępu" — a regular user can't change/remove a
+     * key they don't know, but an admin can, on purpose.
+     */
+    public function testChangingAnExistingKeyRequiresProvingItUnlessAdmin(): void
+    {
+        $category = $this->databaseMockManager->createCategory('Reset test');
+        $this->setCategoryKey($category->getId(), 'sekret123');
+
+        // A regular user (even the one who *set* the key — this endpoint has
+        // no notion of "owner") without a grant is refused.
+        $this->auth();
+        $this->webClient->request(
+            method: Request::METHOD_PUT,
+            uri: "/api/categories/{$category->getId()}/access-key",
+            content: json_encode(['key' => 'new-key']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_FORBIDDEN);
+
+        // An admin bypasses that requirement entirely.
+        $this->authAsAdmin();
+        $this->webClient->request(
+            method: Request::METHOD_PUT,
+            uri: "/api/categories/{$category->getId()}/access-key",
+            content: json_encode(['key' => null]),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_NO_CONTENT);
+
+        // The reset actually took — the old key no longer unlocks it.
+        $this->auth();
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: "/api/categories/{$category->getId()}/unlock",
+            content: json_encode(['key' => 'sekret123']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_BAD_REQUEST);
     }
 
     public function testSetKeyThenCreatingItemWithoutUnlockingIsForbidden(): void

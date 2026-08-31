@@ -81,6 +81,16 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
         return $this->hasValidGrant($request, AccessKeyResource::forItem($item->getId()));
     }
 
+    #[Override]
+    public function isItemOwnKeyUnlocked(Item $item, Request $request): bool
+    {
+        if (null === $item->getAccessKeyHash()) {
+            return true;
+        }
+
+        return $this->hasValidGrant($request, AccessKeyResource::forItem($item->getId()));
+    }
+
     private function hasValidGrant(Request $request, string $resource): bool
     {
         foreach ($this->parseGrants($request) as $grant) {

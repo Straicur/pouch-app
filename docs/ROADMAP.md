@@ -281,17 +281,44 @@ zawartością. Dane testowe posprzątane.
 ## Część 10 — Panel admina
 
 **Zakres:**
-- [ ] Storage/limity: podgląd zużycia (per typ), globalne limity wagowe.
-- [ ] GC dashboard: podgląd automatycznego czyszczenia + ręczne "Run GC Now" + logi.
-- [ ] Audit log: kto/kiedy/skąd (IP) podejrzał/pobrał/usunął/zmienił klucz.
-- [ ] Lista wygasających w 24h + masowe przedłużenie.
-- [ ] Eksport/backup całości jako ZIP.
+- [x] Storage/limity: podgląd zużycia (per typ), globalne limity wagowe.
+- [x] GC dashboard: podgląd automatycznego czyszczenia + ręczne "Run GC Now" + logi.
+- [x] Audit log: kto/kiedy/skąd (IP) podejrzał/pobrał/usunął/zmienił klucz.
+- [x] Lista wygasających w 24h + masowe przedłużenie.
+- [x] Eksport/backup całości jako ZIP.
+
+Przy okazji: "Dodawanie kategorii" i "usuwanie cudzych itemów z dowolnej kategorii"
+(product doc, sekcja admina) nie wymagały nowego kodu — pierwsze działa od Części 2
+(`ROLE_USER`+), drugie nigdy nie było ograniczone do właściciela (`ItemVoter::DELETE`).
+"Reset klucza dostępu" (Część 7, świadomie odłożone) rozwiązany teraz:
+`AccessKeyController::setCategoryKey()`/`setItemKey()` wymagają dowodu znajomości
+aktualnego klucza, chyba że wywołujący ma `ROLE_ADMIN` — patrz `AccessKeyGuard::
+isItemOwnKeyUnlocked()`.
 
 **Testy kodowe:** functional testy każdego endpointu admina + test uprawnień (tylko
 `ROLE_ADMIN`).
+✅ `backend/tests/Controller/AdminController/AdminControllerTest.php` (401/403 na
+każdym endpoincie, storage report + wymuszenie ustawionego limitu na kolejnym
+uploadzie, odrzucenie limitu dla typu bez rozmiaru, ręczne GC + historia, wpis w
+audit logu po podejrzeniu itemu, lista wygasających + masowe przedłużenie usuwa z tej
+listy, backup zawiera każdą kategorię root). Nowy test w
+`AccessKeyControllerTest.php` na admin-reset. `make cs` / `make phpstan` /
+`make test-backend` — 146/146, 0 błędów.
 
 **Test ręczny:** przejść całą ścieżkę jako admin — zobaczyć dashboard, ręcznie
 odpalić GC, sprawdzić log audytu po wykonaniu jakiejś akcji.
+✅ zrobione przez realne żądania HTTP do `:8111` jako `admin@pouch.test`: dashboard
+storage (puste → po uploadzie pliku pokazuje realne zużycie per typ + domyślne
+limity), podejrzenie itemu → ręczne "Run GC Now" (`POST /api/admin/gc/run`) → wpis w
+historii (`GET /api/admin/gc/runs`) → **audit log realnie pokazuje wcześniejsze
+podejrzenie**: `{"action":"view","resourceType":"item","resourceId":18,
+"userEmail":"admin@pouch.test","ip":"172.23.0.1",...}`. Lista wygasających i backup
+(prawdziwy `.zip` z poprawną strukturą) też zweryfikowane. Dane testowe posprzątane
+(wpisy audit/GC-log zostawione — to celowo append-only historia, nie dane testowe do
+kasowania).
+
+**Frontend:** cały panel admina to jeszcze samo API — UI (dashboard, przyciski,
+tabele) nie powstał, tak jak dla Części 7/8/9.
 
 ---
 

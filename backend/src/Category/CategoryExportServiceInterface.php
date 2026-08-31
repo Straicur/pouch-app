@@ -26,4 +26,14 @@ interface CategoryExportServiceInterface
      * @throws NotFoundException if $categoryId doesn't exist
      */
     public function buildZip(int $categoryId, Request $request): string;
+
+    /**
+     * Part 10: "eksport/backup całości jako ZIP" — every root category (and
+     * its full subtree) in one archive, same rules as buildZip() otherwise.
+     *
+     * @return string absolute path to the finished archive on local disk —
+     *                the caller streams it out and is responsible for
+     *                deleting it once done
+     */
+    public function buildFullBackupZip(Request $request): string;
 }

@@ -4,8 +4,11 @@ declare(strict_types = 1);
 
 namespace App\Item;
 
+use App\Audit\AuditLoggerInterface;
+use App\Entity\GcRunLog;
 use App\Entity\ItemVersion;
 use App\Exception\StorageException;
+use App\Repository\GcRunLogRepository;
 use App\Repository\ItemRepository;
 use App\Repository\ItemVersionRepository;
 use App\Storage\StorageServiceInterface;
@@ -26,9 +29,23 @@ class ItemGarbageCollector implements ItemGarbageCollectorInterface
     public function __construct(
         private readonly ItemRepository $itemRepository,
         private readonly ItemVersionRepository $itemVersionRepository,
+        private readonly GcRunLogRepository $gcRunLogRepository,
         private readonly StorageServiceInterface $storageService,
+        private readonly AuditLoggerInterface $auditLogger,
         private readonly LoggerInterface $logger,
     ) {}
+
+    #[Override]
+    public function run(string $trigger, ?DateTimeImmutable $now = null, ?DateInterval $retention = null): GcRunLog
+    {
+        $expiredCount = $this->expireOverdueItems($now);
+        $purgedCount = $this->purgeTrash($now, $retention);
+
+        $runLog = new GcRunLog(trigger: $trigger, expiredCount: $expiredCount, purgedCount: $purgedCount);
+        $this->gcRunLogRepository->save($runLog);
+
+        return $runLog;
+    }
 
     #[Override]
     public function expireOverdueItems(?DateTimeImmutable $now = null): int
@@ -90,6 +107,10 @@ class ItemGarbageCollector implements ItemGarbageCollectorInterface
 
             $this->itemRepository->remove($item);
             $this->logger->info(sprintf('Item #%d: purged from trash', $itemId));
+            // No $request (this runs from a cron/console command as often as
+            // from an admin's manual trigger) and no $user (system-triggered,
+            // not any one person's action) — see AuditLoggerInterface.
+            $this->auditLogger->log(AuditLoggerInterface::ACTION_PURGE, AuditLoggerInterface::RESOURCE_ITEM, $itemId, null, null);
             ++$purgedCount;
         }
 

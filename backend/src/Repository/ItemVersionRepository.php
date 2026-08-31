@@ -37,4 +37,20 @@ class ItemVersionRepository extends ServiceEntityRepository
     {
         return $this->findOneBy(['item' => $item, 'version' => $version]);
     }
+
+    /**
+     * Part 10 storage dashboard: archived versions occupy real storage too
+     * (that's the whole point of not deleting them — see ItemService::
+     * overwriteFile()), so they count toward total usage even though they're
+     * not reflected in Item::$size for any single item.
+     */
+    public function sumSize(): int
+    {
+        $total = $this->createQueryBuilder('v')
+            ->select('SUM(v.size)')
+            ->getQuery()
+            ->getSingleScalarResult();
+
+        return null !== $total ? (int) $total : 0;
+    }
 }

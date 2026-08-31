@@ -8,6 +8,7 @@ use App\Entity\Category;
 use App\Entity\Item;
 use App\Enum\ItemType;
 use App\Item\ItemListFilter;
+use App\Repository\CategoryRepository;
 use App\Repository\ItemRepository;
 use App\Security\AccessKey\AccessKeyGuardInterface;
 use App\Storage\StorageServiceInterface;
@@ -30,6 +31,7 @@ class CategoryExportService implements CategoryExportServiceInterface
 {
     public function __construct(
         private readonly CategoryServiceInterface $categoryService,
+        private readonly CategoryRepository $categoryRepository,
         private readonly ItemRepository $itemRepository,
         private readonly StorageServiceInterface $storageService,
         private readonly AccessKeyGuardInterface $accessKeyGuard,
@@ -38,8 +40,20 @@ class CategoryExportService implements CategoryExportServiceInterface
     #[Override]
     public function buildZip(int $categoryId, Request $request): string
     {
-        $root = $this->categoryService->getById($categoryId);
+        return $this->buildZipFromRoots([$this->categoryService->getById($categoryId)], $request);
+    }
 
+    #[Override]
+    public function buildFullBackupZip(Request $request): string
+    {
+        return $this->buildZipFromRoots($this->categoryRepository->findRootCategories(), $request);
+    }
+
+    /**
+     * @param list<Category> $roots each becomes its own top-level folder
+     */
+    private function buildZipFromRoots(array $roots, Request $request): string
+    {
         $zipPath = tempnam(sys_get_temp_dir(), 'pouch-export-');
         if (false === $zipPath) {
             throw new RuntimeException('Could not create a temporary file for the export archive');
@@ -56,7 +70,10 @@ class CategoryExportService implements CategoryExportServiceInterface
         $tmpItemFiles = [];
 
         try {
-            $this->addCategoryToZip($zip, $root, '', $request, $tmpItemFiles);
+            foreach ($roots as $root) {
+                $this->addCategoryToZip($zip, $root, '', $request, $tmpItemFiles);
+            }
+
             $zip->close();
         } finally {
             foreach ($tmpItemFiles as $tmpItemFile) {

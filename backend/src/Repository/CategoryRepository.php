@@ -37,4 +37,16 @@ class CategoryRepository extends ServiceEntityRepository
     {
         return array_values($this->findBy([], ['name' => 'ASC']));
     }
+
+    /**
+     * Part 10: "eksport/backup całości jako ZIP" — the whole tree is every
+     * category with no parent, plus (recursively, via Category::getChildren())
+     * everything under each of them.
+     *
+     * @return list<Category>
+     */
+    public function findRootCategories(): array
+    {
+        return array_values($this->findBy(['parent' => null], ['name' => 'ASC']));
+    }
 }

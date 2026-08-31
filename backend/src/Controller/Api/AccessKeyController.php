@@ -4,6 +4,8 @@ declare(strict_types = 1);
 
 namespace App\Controller\Api;
 
+use App\Audit\AuditLoggerInterface;
+use App\Category\CategoryServiceInterface;
 use App\DTO\Mapper\AccessGrantMapper;
 use App\DTO\Request\AccessKeySetRequestDTO;
 use App\DTO\Request\AccessKeyUnlockRequestDTO;
@@ -20,6 +22,8 @@ use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\Unauth
 use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\UnauthorizedExceptionModel;
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentException;
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentExceptionModel;
+use App\Item\ItemServiceInterface;
+use App\Security\AccessKey\AccessKeyGuardInterface;
 use App\Security\AccessKey\AccessKeyServiceInterface;
 use App\Security\AuthServiceInterface;
 use App\Security\Voter\CategoryVoter;
@@ -41,6 +45,10 @@ use Symfony\Component\Serializer\SerializerInterface;
  * independently, on individual items. Every action checks auth (401) then a
  * voter (403) same as Category/ItemController; unlock() additionally
  * rate-limits (429) and can 401 on a wrong key — see AccessKeyServiceInterface.
+ * Part 10: setCategoryKey()/setItemKey() additionally require proving the
+ * *current* key (if there is one) before changing/removing it — a resolved
+ * TODO from Part 7 — except for ROLE_ADMIN, which bypasses that on purpose
+ * ("Reset klucza dostępu").
  */
 #[OA\Response(response: 401, description: 'User not authorized', content: new Model(type: UnauthorizedExceptionModel::class))]
 #[OA\Response(response: 403, description: "Forbidden — logged in, but role doesn't allow this action", content: new Model(type: ForbiddenExceptionModel::class))]
@@ -52,6 +60,10 @@ final class AccessKeyController extends AbstractController
         private readonly RequestServiceInterface $requestService,
         private readonly AuthServiceInterface $authService,
         private readonly AccessKeyServiceInterface $accessKeyService,
+        private readonly CategoryServiceInterface $categoryService,
+        private readonly ItemServiceInterface $itemService,
+        private readonly AccessKeyGuardInterface $accessKeyGuard,
+        private readonly AuditLoggerInterface $auditLogger,
         private readonly SerializerInterface $serializer,
     ) {}
 
@@ -71,14 +83,23 @@ final class AccessKeyController extends AbstractController
     #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
     public function setCategoryKey(Request $request, int $id): Response
     {
-        $this->authService->getUserFromAccessToken();
+        $user = $this->authService->getUserFromAccessToken();
 
         if (false === $this->isGranted(CategoryVoter::MANAGE_KEY)) {
             throw new ForbiddenException();
         }
 
+        // Part 10: "Reset klucza dostępu" — changing/removing a key that's
+        // already protecting this category (own or inherited) requires
+        // proving you know it first, same as actually unlocking it, *unless*
+        // you're ROLE_ADMIN — that bypass is the whole point of a reset.
+        if (false === $this->isGranted('ROLE_ADMIN')) {
+            $this->accessKeyGuard->assertCategoryUnlocked($this->categoryService->getById($id), $request);
+        }
+
         $setRequestDTO = $this->requestService->getRequestBodyContent($request, AccessKeySetRequestDTO::class);
         $this->accessKeyService->setCategoryKey(categoryId: $id, key: $setRequestDTO->getKey());
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_KEY_CHANGE, AuditLoggerInterface::RESOURCE_CATEGORY, $id, $user, $request);
 
         return new Response(status: Response::HTTP_NO_CONTENT);
     }
@@ -134,14 +155,21 @@ final class AccessKeyController extends AbstractController
     #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
     public function setItemKey(Request $request, int $id): Response
     {
-        $this->authService->getUserFromAccessToken();
+        $user = $this->authService->getUserFromAccessToken();
 
         if (false === $this->isGranted(ItemVoter::MANAGE_KEY)) {
             throw new ForbiddenException();
         }
 
+        // Part 10: same "Reset klucza dostępu" rule as setCategoryKey() —
+        // an item's *own* key only (not its category's, unrelated here).
+        if (false === $this->isGranted('ROLE_ADMIN') && false === $this->accessKeyGuard->isItemOwnKeyUnlocked($this->itemService->getById($id), $request)) {
+            throw new ForbiddenException(message: 'item.locked');
+        }
+
         $setRequestDTO = $this->requestService->getRequestBodyContent($request, AccessKeySetRequestDTO::class);
         $this->accessKeyService->setItemKey(itemId: $id, key: $setRequestDTO->getKey());
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_KEY_CHANGE, AuditLoggerInterface::RESOURCE_ITEM, $id, $user, $request);
 
         return new Response(status: Response::HTTP_NO_CONTENT);
     }

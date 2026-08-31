@@ -367,6 +367,18 @@ class Item
         return $this->expiresAt;
     }
 
+    /**
+     * Part 10: admin bulk-extend ("masowe przedłużenie ważności") — the only
+     * caller besides the constructor that ever changes an item's lifecycle.
+     */
+    public function setLifecycle(bool $keepForever, ?DateTimeImmutable $expiresAt): static
+    {
+        $this->keepForever = $keepForever;
+        $this->expiresAt = $expiresAt;
+
+        return $this;
+    }
+
     public function getTrashedAt(): ?DateTimeImmutable
     {
         return $this->trashedAt;

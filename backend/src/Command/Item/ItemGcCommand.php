@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Command\Item;
 
+use App\Entity\GcRunLog;
 use App\Item\ItemGarbageCollectorInterface;
 use DateInterval;
 use Override;
@@ -18,9 +19,11 @@ use function is_string;
 use function sprintf;
 
 /**
- * "Run GC Now" from the CLI — same two phases the admin dashboard (Part 10)
- * will trigger on demand. --retention-days is there for manual dev testing on
- * a shortened trash window (see roadmap Part 3's manual test), not for prod use.
+ * "Run GC Now" from the CLI, tagged as the "cron" trigger in GcRunLog — the
+ * admin dashboard's own "Run GC Now" (Part 10) goes through the exact same
+ * ItemGarbageCollectorInterface::run(), tagged "manual" instead.
+ * --retention-days is there for manual dev testing on a shortened trash
+ * window (see roadmap Part 3's manual test), not for prod use.
  */
 #[AsCommand(
     name: 'app:item:gc',
@@ -53,10 +56,13 @@ class ItemGcCommand extends Command
         $retentionDays = $input->getOption('retention-days');
         $retention = is_string($retentionDays) ? new DateInterval(sprintf('P%dD', (int) $retentionDays)) : null;
 
-        $expiredCount = $this->itemGarbageCollector->expireOverdueItems();
-        $purgedCount = $this->itemGarbageCollector->purgeTrash(retention: $retention);
+        $runLog = $this->itemGarbageCollector->run(trigger: GcRunLog::TRIGGER_CRON, retention: $retention);
 
-        $io->success(sprintf('Moved %d item(s) to the trash. Purged %d item(s) from the trash.', $expiredCount, $purgedCount));
+        $io->success(sprintf(
+            'Moved %d item(s) to the trash. Purged %d item(s) from the trash.',
+            $runLog->getExpiredCount(),
+            $runLog->getPurgedCount(),
+        ));
 
         return Command::SUCCESS;
     }

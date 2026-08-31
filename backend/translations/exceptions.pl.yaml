@@ -45,6 +45,9 @@ item.locked: "Ten item jest chroniony kluczem dostępu."
 access_key.invalid: "Nieprawidłowy klucz dostępu."
 access_key.not_protected: "Ta kategoria/ten item nie ma ustawionego klucza dostępu."
 
+# Admin (Part 10)
+admin.storage_limit_type_invalid: "Limit rozmiaru można ustawić tylko dla typu \"file\" lub \"photo\"."
+
 # Tag
 tag.too_long: "Nazwa tagu może mieć maksymalnie 50 znaków."
 tag.too_many: "Można przypisać maksymalnie 20 tagów do jednego itemu."

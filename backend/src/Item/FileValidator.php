@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Item;
 
+use App\Enum\ItemType;
 use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadRequestException;
 use Symfony\Contracts\Translation\TranslatorInterface;
 
@@ -16,7 +17,9 @@ use const PATHINFO_EXTENSION;
 /**
  * Product doc: "jawna lista dozwolonych rozszerzeń/MIME per typ itemu i twardy
  * limit rozmiaru" — this is the allow-list for the general-file item type
- * specifically; other item types (Part 4/5) will get their own.
+ * specifically; other item types (Part 4/5) will get their own. The size
+ * limit itself is the one thing an admin can override (Part 10) — see
+ * StorageLimitService.
  */
 final readonly class FileValidator
 {
@@ -49,10 +52,9 @@ final readonly class FileValidator
         'video/mp4', 'video/quicktime', 'video/webm',
     ];
 
-    private const int MAX_SIZE_BYTES = 100 * 1024 * 1024;
-
     public function __construct(
         private TranslatorInterface $translator,
+        private StorageLimitServiceInterface $storageLimitService,
     ) {}
 
     /**
@@ -64,7 +66,7 @@ final readonly class FileValidator
             throw new BadRequestException(message: 'item.file_empty');
         }
 
-        if (self::MAX_SIZE_BYTES < $size) {
+        if ($this->storageLimitService->getMaxSizeBytes(ItemType::FILE) < $size) {
             throw new BadRequestException(message: 'item.file_too_large');
         }
 

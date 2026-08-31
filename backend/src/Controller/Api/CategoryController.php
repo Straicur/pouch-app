@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Controller\Api;
 
+use App\Audit\AuditLoggerInterface;
 use App\Category\CategoryExportServiceInterface;
 use App\Category\CategoryServiceInterface;
 use App\DTO\Mapper\CategoryMapper;
@@ -66,6 +67,7 @@ final class CategoryController extends AbstractController
         private readonly AuthServiceInterface $authService,
         private readonly CategoryServiceInterface $categoryService,
         private readonly CategoryExportServiceInterface $categoryExportService,
+        private readonly AuditLoggerInterface $auditLogger,
         private readonly SerializerInterface $serializer,
     ) {}
 
@@ -298,15 +300,16 @@ final class CategoryController extends AbstractController
         description: 'Category not found',
         content: new Model(type: NotFoundExceptionModel::class)
     )]
-    public function delete(int $id): Response
+    public function delete(Request $request, int $id): Response
     {
-        $this->authService->getUserFromAccessToken();
+        $user = $this->authService->getUserFromAccessToken();
 
         if (false === $this->isGranted(CategoryVoter::DELETE)) {
             throw new ForbiddenException();
         }
 
         $this->categoryService->delete($id);
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_DELETE, AuditLoggerInterface::RESOURCE_CATEGORY, $id, $user, $request);
 
         return new Response(status: Response::HTTP_NO_CONTENT);
     }

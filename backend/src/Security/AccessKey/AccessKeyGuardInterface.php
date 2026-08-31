@@ -22,4 +22,12 @@ interface AccessKeyGuardInterface
 
     /** Same check as assertItemUnlocked(), without throwing — for filtering lists. */
     public function isItemUnlocked(Item $item, Request $request): bool;
+
+    /**
+     * $item's *own* key only — ignores its category chain entirely, unlike
+     * isItemUnlocked(). Part 10's "you must know a key to change/remove it"
+     * check needs exactly this narrower question; general item access needs
+     * the full isItemUnlocked() instead.
+     */
+    public function isItemOwnKeyUnlocked(Item $item, Request $request): bool;
 }

@@ -302,6 +302,27 @@ class ItemService implements ItemServiceInterface
         return $itemVersion;
     }
 
+    #[Override]
+    public function findExpiringBetween(DateTimeImmutable $from, DateTimeImmutable $until): array
+    {
+        return $this->itemRepository->findExpiringBetween($from, $until);
+    }
+
+    #[Override]
+    public function extendExpiry(array $itemIds, ItemLifecycleOptions $options): array
+    {
+        $items = [];
+
+        foreach ($itemIds as $itemId) {
+            $item = $this->getById($itemId);
+            $item->setLifecycle($options->keepForever, $this->resolveExpiresAt($options));
+            $this->itemRepository->save($item);
+            $items[] = $item;
+        }
+
+        return $items;
+    }
+
     /**
      * @throws BadRequestException
      * @throws ConflictException

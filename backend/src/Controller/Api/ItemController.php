@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Controller\Api;
 
+use App\Audit\AuditLoggerInterface;
 use App\Category\CategoryServiceInterface;
 use App\DTO\Mapper\ItemMapper;
 use App\DTO\Request\ItemCreateNoteRequestDTO;
@@ -119,6 +120,7 @@ final class ItemController extends AbstractController
         private readonly SignedUrlServiceInterface $signedUrlService,
         private readonly AccessKeyGuardInterface $accessKeyGuard,
         private readonly ConfigServiceInterface $configService,
+        private readonly AuditLoggerInterface $auditLogger,
         private readonly SerializerInterface $serializer,
     ) {}
 
@@ -210,7 +212,7 @@ final class ItemController extends AbstractController
     )]
     public function get(Request $request, int $id): Response
     {
-        $this->authService->getUserFromAccessToken();
+        $user = $this->authService->getUserFromAccessToken();
 
         if (false === $this->isGranted(ItemVoter::VIEW)) {
             throw new ForbiddenException();
@@ -218,6 +220,7 @@ final class ItemController extends AbstractController
 
         $item = $this->itemService->getById($id);
         $this->accessKeyGuard->assertItemUnlocked($item, $request);
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_VIEW, AuditLoggerInterface::RESOURCE_ITEM, $id, $user, $request);
 
         $responseDTO = ItemMapper::toResponseDTO($item);
 
@@ -622,7 +625,7 @@ final class ItemController extends AbstractController
     #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
     public function delete(Request $request, int $id): Response
     {
-        $this->authService->getUserFromAccessToken();
+        $user = $this->authService->getUserFromAccessToken();
 
         if (false === $this->isGranted(ItemVoter::DELETE)) {
             throw new ForbiddenException();
@@ -631,6 +634,7 @@ final class ItemController extends AbstractController
         $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
 
         $this->itemService->delete($id);
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_DELETE, AuditLoggerInterface::RESOURCE_ITEM, $id, $user, $request);
 
         return new Response(status: Response::HTTP_NO_CONTENT);
     }
@@ -693,6 +697,10 @@ final class ItemController extends AbstractController
         if (null === $storageKey) {
             throw new NotFoundException(message: 'item.no_downloadable_file');
         }
+
+        // No $user — this endpoint takes no auth token by design (see the
+        // class docblock); still worth an IP, per the product doc.
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_DOWNLOAD, AuditLoggerInterface::RESOURCE_ITEM, $id, null, $request);
 
         return $this->streamedStorageResponse(
             storageKey: $storageKey,
@@ -913,6 +921,7 @@ final class ItemController extends AbstractController
 
         // Deliberately no auth/voter check here — see the class docblock.
         $itemVersion = $this->itemService->getVersion($id, $version);
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_DOWNLOAD, AuditLoggerInterface::RESOURCE_ITEM, $id, null, $request);
 
         return $this->streamedStorageResponse(
             storageKey: $itemVersion->getStorageKey(),
@@ -1002,7 +1011,10 @@ final class ItemController extends AbstractController
     {
         $this->assertValidSignature($request, $this->publicViewSignatureResource($id));
 
-        $responseDTO = ItemMapper::toPublicResponseDTO($this->itemService->getById($id));
+        $item = $this->itemService->getById($id);
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_VIEW, AuditLoggerInterface::RESOURCE_ITEM, $id, null, $request);
+
+        $responseDTO = ItemMapper::toPublicResponseDTO($item);
 
         return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
     }
