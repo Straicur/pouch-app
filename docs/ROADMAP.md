@@ -192,23 +192,31 @@ od sieci — patrz komentarz w teście).
 
 **Testy kodowe:** test dziedziczenia klucza (podkategoria bez własnego → dziedziczy
 z rodzica), test rate limitera.
-✅ napisane: `backend/tests/Security/AccessKey/AccessKeyServiceTest.php` (dziedziczenie
-— wprost i przez nieoznaczonego rodzica, brak klucza w łańcuchu, własny klucz nie
-dziedziczy), `backend/tests/Security/AccessKeyRateLimiterTest.php` (limiter
-skonstruowany bezpośrednio z małym limitem — `access_key` jest w `when@test` podbity
-do 1000/15min, jak `login`, więc nie da się tego sensownie przetestować przez
-webClient), `backend/tests/Controller/AccessKeyController/AccessKeyControllerTest.php`
+✅ `backend/tests/Security/AccessKey/AccessKeyServiceTest.php` (dziedziczenie — wprost
+i przez nieoznaczonego rodzica, brak klucza w łańcuchu, własny klucz nie dziedziczy),
+`backend/tests/Security/AccessKeyRateLimiterTest.php` (limiter skonstruowany
+bezpośrednio z małym limitem — `access_key` jest w `when@test` podbity do 1000/15min,
+jak `login`, więc nie da się tego sensownie przetestować przez webClient),
+`backend/tests/Controller/AccessKeyController/AccessKeyControllerTest.php`
 (ustawienie/zmiana klucza, zły klucz → 401, dobry klucz → grant, brak grantu → 403,
-dziedziczenie przez HTTP, niezależny klucz itemu). **Jeszcze nieuruchomione** —
-kontenery `pouch-app` celowo nie zostały włączone w tej sesji (użytkownik pracował
-równolegle nad innym projektem); do potwierdzenia `make test-backend`/`make phpstan`/
-`make cs` po starcie stacku.
+dziedziczenie przez HTTP, niezależny klucz itemu, i regresja na komunikat 403 —
+zablokowany item bez własnego klucza w zablokowanej kategorii musi zgłaszać
+"kategoria", nie "item", zablokowany — błąd złapany właśnie w teście ręcznym niżej).
+`make cs` / `make phpstan` / `make test-backend` — 123/123, 0 błędów.
 
 **Test ręczny:** spróbować wejść do chronionej kategorii bez klucza / ze złym kluczem
 kilka razy z rzędu i zobaczyć blokadę.
-⏳ nie wykonane — wymaga uruchomionego stacku (`make up`/`make migrate`), odłożone do
-zgody na włączenie kontenerów. Minimalny frontend (modal na klucz) też jeszcze nie
-powstał — patrz plan sesji.
+✅ zrobione przez realne żądania HTTP do `:8111` (`make up` + `make migrate` +
+`make fixtures`): założono kategorię, ustawiono klucz, próba dodania itemu bez
+odblokowania → 403 "Ta kategoria jest chroniona kluczem dostępu."; 5 złych prób klucza
+→ 401 za każdym razem, 6. próba → 429 z `retryAfter` (limit dev: 5/15min); dobry klucz
+→ grant; z grantem w nagłówku `X-Pouch-Access-Grants` dodanie itemu i jego odczyt
+działają, bez nagłówka ten sam item znów 403 (stateless — nic nie jest pamiętane po
+stronie serwera). Po drodze złapano i naprawiono realny błąd: item bez własnego klucza
+w zablokowanej kategorii zgłaszał się jako "item.locked" zamiast "category.locked"
+(mylące — nie ma czym odblokować itemu, bo to kategoria go blokuje) — poprawione w
+`AccessKeyGuard::assertItemUnlocked()` i pokryte nowym testem wyżej. Frontend (modal
+na klucz) jeszcze nie powstał.
 
 ---
 

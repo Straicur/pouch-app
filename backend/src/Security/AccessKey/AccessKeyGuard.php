@@ -45,7 +45,12 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
     #[Override]
     public function assertItemUnlocked(Item $item, Request $request): void
     {
-        if (false === $this->isItemUnlocked($item, $request)) {
+        // Checked (and reported) separately from the item's own key below —
+        // isItemUnlocked() alone can't tell the caller *which* of the two
+        // independent locks (Part 7) is the one actually blocking them.
+        $this->assertCategoryUnlocked($item->getCategory(), $request);
+
+        if (null !== $item->getAccessKeyHash() && false === $this->hasValidGrant($request, AccessKeyResource::forItem($item->getId()))) {
             throw new ForbiddenException(message: 'item.locked');
         }
     }

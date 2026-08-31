@@ -143,6 +143,27 @@ class AccessKeyControllerTest extends WebTest
         self::assertResponseStatusCodeSame(Response::HTTP_OK);
     }
 
+    /**
+     * A regression test for a bug the manual test caught: an item with no key
+     * of its own, sitting in a locked category, used to be reported as
+     * "item.locked" — misleading, since unlocking the item (which has no key)
+     * is impossible; the category is what actually needs unlocking.
+     */
+    public function testGettingAnUnkeyedItemInALockedCategoryReportsTheCategoryAsLocked(): void
+    {
+        $category = $this->databaseMockManager->createCategory('Locked');
+        $this->createNote($category->getId());
+        $item = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+
+        $this->setCategoryKey($category->getId(), 'sekret123');
+
+        $this->getItem($item['id']);
+
+        self::assertResponseStatusCodeSame(Response::HTTP_FORBIDDEN);
+        $content = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        self::assertStringContainsString('kategori', $content['detail']);
+    }
+
     public function testSubcategoryInheritsParentKeyAndParentGrantUnlocksIt(): void
     {
         $parent = $this->databaseMockManager->createCategory('Parent');
