@@ -4,8 +4,8 @@ declare(strict_types = 1);
 
 namespace App\Controller\Api;
 
-use App\Audit\AuditLoggerInterface;
-use App\Category\CategoryServiceInterface;
+use App\Services\Audit\AuditLoggerInterface;
+use App\Services\Category\CategoryServiceInterface;
 use App\DTO\Mapper\AccessGrantMapper;
 use App\DTO\Request\AccessKeySetRequestDTO;
 use App\DTO\Request\AccessKeyUnlockRequestDTO;
@@ -22,13 +22,14 @@ use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\Unauth
 use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\UnauthorizedExceptionModel;
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentException;
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentExceptionModel;
-use App\Item\ItemServiceInterface;
+use App\ControllerHelper\Traits\AuthorizesRequestsTrait;
+use App\Services\Item\ItemServiceInterface;
 use App\Security\AccessKey\AccessKeyGuardInterface;
 use App\Security\AccessKey\AccessKeyServiceInterface;
-use App\Security\AuthServiceInterface;
+use App\Security\AuthorizationServiceInterface;
 use App\Security\Voter\CategoryVoter;
 use App\Security\Voter\ItemVoter;
-use App\Service\RequestServiceInterface;
+use App\Services\Request\RequestServiceInterface;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -56,9 +57,11 @@ use Symfony\Component\Serializer\SerializerInterface;
 #[OA\Tag(name: 'AccessKey')]
 final class AccessKeyController extends AbstractController
 {
+    use AuthorizesRequestsTrait;
+
     public function __construct(
         private readonly RequestServiceInterface $requestService,
-        private readonly AuthServiceInterface $authService,
+        private readonly AuthorizationServiceInterface $authorizationService,
         private readonly AccessKeyServiceInterface $accessKeyService,
         private readonly CategoryServiceInterface $categoryService,
         private readonly ItemServiceInterface $itemService,
@@ -83,11 +86,7 @@ final class AccessKeyController extends AbstractController
     #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
     public function setCategoryKey(Request $request, int $id): Response
     {
-        $user = $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(CategoryVoter::MANAGE_KEY)) {
-            throw new ForbiddenException();
-        }
+        $user = $this->assertGranted(CategoryVoter::MANAGE_KEY);
 
         // Part 10: "Reset klucza dostępu" — changing/removing a key that's
         // already protecting this category (own or inherited) requires
@@ -125,11 +124,7 @@ final class AccessKeyController extends AbstractController
     #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
     public function unlockCategory(Request $request, int $id): Response
     {
-        $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(CategoryVoter::UNLOCK)) {
-            throw new ForbiddenException();
-        }
+        $this->assertGranted(CategoryVoter::UNLOCK);
 
         $unlockRequestDTO = $this->requestService->getRequestBodyContent($request, AccessKeyUnlockRequestDTO::class);
         $grant = $this->accessKeyService->unlockCategory(categoryId: $id, key: $unlockRequestDTO->getKey(), request: $request);
@@ -155,11 +150,7 @@ final class AccessKeyController extends AbstractController
     #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
     public function setItemKey(Request $request, int $id): Response
     {
-        $user = $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::MANAGE_KEY)) {
-            throw new ForbiddenException();
-        }
+        $user = $this->assertGranted(ItemVoter::MANAGE_KEY);
 
         // Part 10: same "Reset klucza dostępu" rule as setCategoryKey() —
         // an item's *own* key only (not its category's, unrelated here).
@@ -195,11 +186,7 @@ final class AccessKeyController extends AbstractController
     #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
     public function unlockItem(Request $request, int $id): Response
     {
-        $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::UNLOCK)) {
-            throw new ForbiddenException();
-        }
+        $this->assertGranted(ItemVoter::UNLOCK);
 
         $unlockRequestDTO = $this->requestService->getRequestBodyContent($request, AccessKeyUnlockRequestDTO::class);
         $grant = $this->accessKeyService->unlockItem(itemId: $id, key: $unlockRequestDTO->getKey(), request: $request);

@@ -13,7 +13,7 @@ use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\Unauth
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentException;
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentExceptionModel;
 use App\Security\AuthServiceInterface;
-use App\Service\RequestServiceInterface;
+use App\Services\Request\RequestServiceInterface;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;

@@ -4,8 +4,8 @@ declare(strict_types = 1);
 
 namespace App\Controller\Api;
 
-use App\Audit\AuditLoggerInterface;
-use App\Category\CategoryServiceInterface;
+use App\Services\Audit\AuditLoggerInterface;
+use App\Services\Category\CategoryServiceInterface;
 use App\DTO\Mapper\ItemMapper;
 use App\DTO\Request\ItemCreateNoteRequestDTO;
 use App\DTO\Request\ItemCreateRequestDTO;
@@ -32,16 +32,17 @@ use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\Unauth
 use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\UnauthorizedExceptionModel;
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentException;
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentExceptionModel;
-use App\Item\ItemLifecycleOptions;
-use App\Item\ItemListFilter;
-use App\Item\ItemServiceInterface;
+use App\Services\Item\ValueObject\ItemLifecycleOptions;
+use App\Services\Item\ValueObject\ItemListFilter;
+use App\Services\Item\ItemServiceInterface;
+use App\ControllerHelper\Traits\AuthorizesRequestsTrait;
 use App\Security\AccessKey\AccessKeyGuardInterface;
-use App\Security\AuthServiceInterface;
+use App\Security\AuthorizationServiceInterface;
 use App\Security\ConfigServiceInterface;
 use App\Security\SignedUrlServiceInterface;
 use App\Security\Voter\ItemVoter;
-use App\Service\RequestServiceInterface;
-use App\Storage\StorageServiceInterface;
+use App\Services\Request\RequestServiceInterface;
+use App\Services\Storage\StorageServiceInterface;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Exception;
@@ -102,6 +103,8 @@ use function trim;
 #[OA\Tag(name: 'Item')]
 final class ItemController extends AbstractController
 {
+    use AuthorizesRequestsTrait;
+
     private const int LINK_TTL_SECONDS = 900;
 
     /**
@@ -125,7 +128,7 @@ final class ItemController extends AbstractController
 
     public function __construct(
         private readonly RequestServiceInterface $requestService,
-        private readonly AuthServiceInterface $authService,
+        private readonly AuthorizationServiceInterface $authorizationService,
         private readonly ItemServiceInterface $itemService,
         private readonly CategoryServiceInterface $categoryService,
         private readonly StorageServiceInterface $storageService,
@@ -164,11 +167,7 @@ final class ItemController extends AbstractController
     )]
     public function list(Request $request): Response
     {
-        $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::VIEW)) {
-            throw new ForbiddenException();
-        }
+        $this->assertGranted(ItemVoter::VIEW);
 
         $categoryId = $request->query->get('categoryId');
         $tags = $request->query->get('tags');
@@ -248,11 +247,7 @@ final class ItemController extends AbstractController
     )]
     public function get(Request $request, int $id): Response
     {
-        $user = $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::VIEW)) {
-            throw new ForbiddenException();
-        }
+        $user = $this->assertGranted(ItemVoter::VIEW);
 
         $item = $this->itemService->getById($id);
         $this->accessKeyGuard->assertItemUnlocked($item, $request);
@@ -303,11 +298,7 @@ final class ItemController extends AbstractController
     #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
     public function createFile(Request $request): Response
     {
-        $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::CREATE)) {
-            throw new ForbiddenException();
-        }
+        $this->assertGranted(ItemVoter::CREATE);
 
         $file = $this->extractUploadedFile($request);
         $createRequestDTO = $this->parseItemCreateRequestDTO($request);
@@ -365,11 +356,7 @@ final class ItemController extends AbstractController
     #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
     public function createPhoto(Request $request): Response
     {
-        $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::CREATE)) {
-            throw new ForbiddenException();
-        }
+        $this->assertGranted(ItemVoter::CREATE);
 
         $file = $this->extractUploadedFile($request);
         $createRequestDTO = $this->parseItemCreateRequestDTO($request);
@@ -415,11 +402,7 @@ final class ItemController extends AbstractController
     #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
     public function createUrl(Request $request): Response
     {
-        $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::CREATE)) {
-            throw new ForbiddenException();
-        }
+        $this->assertGranted(ItemVoter::CREATE);
 
         $createRequestDTO = $this->requestService->getRequestBodyContent($request, ItemCreateUrlRequestDTO::class);
         $this->assertCategoryAccessible($createRequestDTO->getCategoryId(), $request);
@@ -466,11 +449,7 @@ final class ItemController extends AbstractController
     #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
     public function createNote(Request $request): Response
     {
-        $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::CREATE)) {
-            throw new ForbiddenException();
-        }
+        $this->assertGranted(ItemVoter::CREATE);
 
         $createRequestDTO = $this->requestService->getRequestBodyContent($request, ItemCreateNoteRequestDTO::class);
         $this->assertCategoryAccessible($createRequestDTO->getCategoryId(), $request);
@@ -519,11 +498,7 @@ final class ItemController extends AbstractController
     #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
     public function updateNote(Request $request, int $id): Response
     {
-        $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::EDIT)) {
-            throw new ForbiddenException();
-        }
+        $this->assertGranted(ItemVoter::EDIT);
 
         $updateRequestDTO = $this->requestService->getRequestBodyContent($request, ItemUpdateNoteRequestDTO::class);
         $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
@@ -561,11 +536,7 @@ final class ItemController extends AbstractController
     #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
     public function updateTags(Request $request, int $id): Response
     {
-        $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::EDIT)) {
-            throw new ForbiddenException();
-        }
+        $this->assertGranted(ItemVoter::EDIT);
 
         $updateRequestDTO = $this->requestService->getRequestBodyContent($request, ItemUpdateTagsRequestDTO::class);
         $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
@@ -631,11 +602,7 @@ final class ItemController extends AbstractController
      */
     private function setFavoriteResponse(Request $request, int $id, bool $favorite): Response
     {
-        $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::EDIT)) {
-            throw new ForbiddenException();
-        }
+        $this->assertGranted(ItemVoter::EDIT);
 
         $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
 
@@ -661,11 +628,7 @@ final class ItemController extends AbstractController
     #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
     public function delete(Request $request, int $id): Response
     {
-        $user = $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::DELETE)) {
-            throw new ForbiddenException();
-        }
+        $user = $this->assertGranted(ItemVoter::DELETE);
 
         $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
 
@@ -691,11 +654,7 @@ final class ItemController extends AbstractController
     #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
     public function downloadLink(Request $request, int $id): Response
     {
-        $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::DOWNLOAD)) {
-            throw new ForbiddenException();
-        }
+        $this->assertGranted(ItemVoter::DOWNLOAD);
 
         $item = $this->itemService->getById($id);
         $this->accessKeyGuard->assertItemUnlocked($item, $request);
@@ -762,11 +721,7 @@ final class ItemController extends AbstractController
     #[OA\Response(response: 404, description: 'Item or thumbnail not found', content: new Model(type: NotFoundExceptionModel::class))]
     public function thumbnailLink(Request $request, int $id): Response
     {
-        $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::DOWNLOAD)) {
-            throw new ForbiddenException();
-        }
+        $this->assertGranted(ItemVoter::DOWNLOAD);
 
         $item = $this->itemService->getById($id);
         $this->accessKeyGuard->assertItemUnlocked($item, $request);
@@ -835,11 +790,7 @@ final class ItemController extends AbstractController
     #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
     public function overwriteFile(Request $request, int $id): Response
     {
-        $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::EDIT)) {
-            throw new ForbiddenException();
-        }
+        $this->assertGranted(ItemVoter::EDIT);
 
         $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
 
@@ -879,11 +830,7 @@ final class ItemController extends AbstractController
     #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
     public function versions(Request $request, int $id): Response
     {
-        $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::VIEW)) {
-            throw new ForbiddenException();
-        }
+        $this->assertGranted(ItemVoter::VIEW);
 
         $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
 
@@ -912,11 +859,7 @@ final class ItemController extends AbstractController
     #[OA\Response(response: 404, description: 'Item, or that version of it, not found', content: new Model(type: NotFoundExceptionModel::class))]
     public function versionDownloadLink(Request $request, int $id, int $version): Response
     {
-        $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::DOWNLOAD)) {
-            throw new ForbiddenException();
-        }
+        $this->assertGranted(ItemVoter::DOWNLOAD);
 
         $item = $this->itemService->getById($id);
         $this->accessKeyGuard->assertItemUnlocked($item, $request);
@@ -993,11 +936,7 @@ final class ItemController extends AbstractController
     #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
     public function publicLink(Request $request, int $id): Response
     {
-        $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::DOWNLOAD)) {
-            throw new ForbiddenException();
-        }
+        $this->assertGranted(ItemVoter::DOWNLOAD);
 
         $item = $this->itemService->getById($id);
         $this->accessKeyGuard->assertItemUnlocked($item, $request);

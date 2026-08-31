@@ -6,7 +6,10 @@
     "require": {
         "php": ">=8.4",
         "ext-ctype": "*",
+        "ext-dom": "*",
+        "ext-gd": "*",
         "ext-iconv": "*",
+        "ext-zip": "*",
         "async-aws/s3": "^3.4",
         "doctrine/doctrine-bundle": "^3.2",
         "doctrine/doctrine-migrations-bundle": "^4.0",

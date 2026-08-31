@@ -13,8 +13,8 @@ framework:
             # Part 4: OCR/scraping/thumbnails must not block the request — see
             # ScrapeUrlMessageHandler (the "one handler as a pattern" from the
             # roadmap) and ProcessPhotoMessageHandler.
-            App\Message\ScrapeUrlMessage: async
-            App\Message\ProcessPhotoMessage: async
+            App\Messenger\ScrapeUrlMessage: async
+            App\Messenger\ProcessPhotoMessage: async
 
 when@test:
     framework:

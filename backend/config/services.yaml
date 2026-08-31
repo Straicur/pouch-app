@@ -24,7 +24,6 @@ services:
             - '../src/Query/'
             - '../src/DTO/'
             - '../src/Exception/'
-            - '../src/Util/'
             - '../src/Enum/'
     # add more service definition
     # add more service definitions when explicit configuration is needed

@@ -508,13 +508,13 @@ Osiem znalezisk (4 P1, 4 P2), wszystkie naprawione:
 - [x] **[P1] Uwierzytelnianie cookie było podatne na CSRF.** Dwie warstwy:
       (1) `CookieService` — `SameSite=None` → `SameSite=Lax` (frontend/API są
       same-origin, "site" w SameSite to domena, nie port, więc nic więcej nie
-      trzeba zmieniać). (2) nowy `OriginCheckSubscriber` — na każdym
+      trzeba zmieniać). (2) nowy `OriginCheckListener` — na każdym
       POST/PUT/PATCH/DELETE sprawdza nagłówek `Origin` (albo `Referer` jako
       fallback) przeciwko tej samej liście dozwolonych originów co
       nelmio/cors-bundle (`CORS_ALLOW_ORIGIN`), 403 jeśli się nie zgadza.
       Wyłączony w env testowym (`.env.test`, `CSRF_ORIGIN_CHECK_ENABLED=0`) —
       ~150 istniejących testów funkcjonalnych nie wysyła `Origin`, ten sam
-      powód co bumpowanie rate limiterów tam. `OriginCheckSubscriberTest`
+      powód co bumpowanie rate limiterów tam. `OriginCheckListenerTest`
       sprawdza go bezpośrednio (bez pełnego kernela HTTP).
 - [x] **[P1] Eksport i backup pomijały treść chronioną kluczem po cichu, bez
       komunikatu.** Dwa osobne problemy: (a) `triggerDownload()` (Część 12)
@@ -598,6 +598,149 @@ zgodności typów), nowe/zaktualizowane testy opisane przy każdym punkcie —
 realna weryfikacja czeka na kontenery.
 
 **Test ręczny:** ⏳ nie wykonany — te same ograniczenia co w Części 11/12.
+
+---
+
+## Część 14 — Trzecia runda code review (regresje po Części 13)
+
+Siedem znalezisk (2 P1, 5 P2) na commit z Części 13 — kilka to realne regresje
+wprowadzone przez tamte poprawki, nie nowe tematy. Wszystkie naprawione:
+
+- [x] **[P1] Przypięcie IP w `SafeUrlFetcher` nie działało z prawdziwym
+      transportem.** `'resolve' => [$pin['host'] . ':' . $pin['port'] => $pin['ip']]`
+      — Symfony (i cURL pod spodem) oczekuje mapy kluczowanej **samym hostem**;
+      port dokleja sam transport z URL-a requestu. Klucz `"host:port"` kończył
+      się jako `host:port:port:ip` w `CURLOPT_RESOLVE` (potwierdzone w źródle
+      `CurlHttpClient.php`: *"curl's resolve feature varies by host:port but
+      ours varies by host only"*) — pinning realnie nie działał, luka DNS
+      rebindingu zostawała otwarta, a testy tego nie łapały, bo
+      `MockHttpClient` nie symuluje zachowania transportu. Naprawione na
+      `[$pin['host'] => $pin['ip']]`; `UrlValidator::assertValidAndPin()` nie
+      liczy już w ogóle portu (był tylko dla tego jednego, błędnego użycia).
+      Test: nowy `SafeUrlFetcherTest::testResolveOptionIsKeyedByHostOnlyNotHostAndPort`
+      (przechwytuje realne opcje przekazane do `HttpClientInterface::request()`).
+- [ ] **[P1] Nadpisanie pliku nie było atomowe.** `ItemService::overwriteFile()`
+      archiwizowało poprzednią wersję i flushowało ją do DB **przed** uploadem
+      nowego pliku — nieudany upload zostawiał "wersję" bez faktycznej podmiany;
+      nieudany finalny flush osierocał nowy plik w storage. Naprawione:
+      upload najpierw (nic do sprzątania przy jego porażce), potem archiwizacja
+      wersji + aktualizacja itemu w jednej transakcji DB
+      (`Connection::transactional()`), z kompensacyjnym `storageService->delete()`
+      nowego klucza, jeśli transakcja się nie powiedzie — ten sam wzorzec co
+      istniejące już `saveNewItemOrConflict()`. **Bez automatycznego testu** —
+      symulacja realnej awarii w połowie transakcji wymagałaby infrastruktury
+      do wstrzykiwania błędów (fault injection), której ten projekt nigdzie
+      indziej nie ma; kod przejrzany ręcznie, nie zweryfikowany testem.
+- [x] **[P2] `UrlResolver` nie obsługiwał `false` z `parse_url()`.**
+      `parse_url($reference, PHP_URL_PATH) ?? ''` — `??` łapie tylko `null`
+      (brak komponentu), nie `false` (błędny URL); `false` leciało dalej do
+      `str_starts_with()`/`mergePaths()` i wywalało `TypeError`. Ponieważ
+      `$reference` to `og:image`/`Location` ze strony **kontrolowanej przez
+      atakującego**, to nie był tylko problem typów — jedna źle sformatowana
+      strona mogła wywalić cały scrape. Naprawione jawnym `is_string()` na
+      każdym z trzech wywołań (`path`/`query`/`fragment`), tym samym wzorcem,
+      jaki reszta klasy już stosowała dla `scheme`/`host`. Nowy `UrlResolverTest`
+      (7 przypadków — wcześniej nie było żadnego dedykowanego testu tej klasy).
+- [x] **[P2] Paginacja ACL robiła pełne skany danych przy każdym requestcie.**
+      `AccessKeyGuard::lockedCategoryIds()`/`lockedItemIdsWithOwnKey()` (Część 13)
+      hydrowały pełne encje (wszystkie kategorie; wszystkie itemy z własnym
+      kluczem, **także skoszowane**) i parsowały nagłówek grantów od nowa przy
+      każdym pojedynczym sprawdzeniu. Naprawa poprawności (ACL przed
+      paginacją) została, ale teraz taniej: nowe `CategoryRepository::
+      findAllForLockCheck()`/`ItemRepository::findAllWithOwnAccessKeyForLockCheck()`
+      zwracają same skalary (id/parentId/accessKeyHash/accessKeyVersion),
+      drugie dodatkowo filtruje `trashedAt IS NULL`; `AccessKeyGuard` dostał
+      `WeakMap<Request, list<AccessGrant>>` jako cache parsowanych grantów
+      (właściwość `readonly`, obiekt `WeakMap` pod nią wciąż mutowalny —
+      standardowy wzorzec na cache w niemutowalnym poza tym serwisie; klucz
+      po `Request` = nic nie przecieka między requestami, nie trzeba ręcznie
+      czyścić).
+- [x] **[P2] Granty w query stringu.** Zamiast przekładać same granty na
+      `?grants=` (realna treść w historii przeglądarki i logach proxy, bez
+      górnego ograniczenia rozmiaru), nowy endpoint `POST /api/categories/
+      {id}/export-token` wymienia bieżące granty (zwykły AJAX, nagłówek
+      działa normalnie) na nieprzezroczysty, krótkotrwały (60 s) token —
+      `CategoryExportTokenResponseDTO`, podpisany przez `SignedUrlService`
+      (resource embeduje hash grantów + id kategorii + usera, więc token nie
+      da się użyć dla innej kategorii ani z podmienionymi grantami). Tylko
+      *token* trafia do URL-a; `GET /api/categories/{id}/export?token=...`
+      dekoduje/weryfikuje i podkłada granty pod nagłówek, jeśli wszystko się
+      zgadza — po cichu ignorując token nieprawidłowy/wygasły/dla innej
+      kategorii (ta sama tolerancja co brak grantu w ogóle). Frontend:
+      `accessKeyApi.ts`'s `useGetCategoryExportTokenMutation`,
+      `CategoryRow.tsx` woła go przed `triggerDownload()`, który wrócił do
+      bycia zwykłą, generyczną nawigacją. Testy:
+      `CategoryExportTest::testExportWithTokenFromGrantsIncludesUnlockedContent`,
+      `testExportIgnoresATokenMintedForADifferentCategory`.
+- [x] **[P2] Nieudany eksport mógł zostawiać archiwa w `/tmp`.**
+      `CategoryExportService::buildZipFromRoots()` czyściło tylko itemowe pliki
+      tymczasowe w `finally` — sam `$zipPath` (utworzony `tempnam()` na samym
+      początku) nigdy nie był usuwany przy awarii `open()`/budowania archiwum/
+      `close()`. Do tego oba kontrolery (`CategoryController::export()`,
+      `AdminController::backup()`) usuwały archiwum dopiero na końcu
+      *udanego* callbacku strumienia — błąd przed/w trakcie streamu (albo
+      rozłączenie klienta) też zostawiał plik. Oba miejsca dostały `try/
+      finally` gwarantujące `@unlink()` niezależnie od wyniku. Test:
+      `CategoryExportTest::testFailedExportDoesNotLeaveATempFileBehind`
+      (kasuje obiekt ze storage pod itemem, wymusza błąd, sprawdza katalog
+      tymczasowy przed/po).
+- [x] **[P2] Obowiązkowe quality gates.** Dwa konkretne, zweryfikowane
+      ręcznie: `OriginCheckListener` — brakujące `#[Override]` na
+      `getSubscribedEvents()` (dopisane) i klasa niebędąca `readonly` mimo że
+      wszystkie jej pola już były (zmienione na `final readonly class`,
+      zgodnie z dominującą konwencją w tym kodzie). Reszta zgłoszonych
+      błędów PHPStan/plików Rectora nie została policzona 1:1 — kontenery
+      wciąż zatrzymane, `make cs`/`make phpstan`/rector nie zostały odpalone
+      w tej rundzie też.
+
+**Weryfikacja:** frontend — `tsc -p tsconfig.app.json --noEmit` i
+`biome check --write src` czysto. Backend — **wciąż bez `make cs`/
+`make phpstan`/`make test-backend`**, kontenery zatrzymane przez całą tę
+sesję. Ręczny przegląd tym razem poszedł głębiej niż zwykle na jednym punkcie
+konkretnie (`resolve` w Symfony HttpClient) — sprawdzone bezpośrednio w
+źródle `vendor/symfony/http-client/{HttpClientTrait,CurlHttpClient}.php`,
+nie z pamięci, bo to jest dokładnie ten rodzaj błędu, który "wygląda dobrze"
+bez uruchomienia.
+
+---
+
+## Część 15 — Symfony PasswordHasher zamiast ręcznego `password_hash()`
+
+Nie z code review — pytanie użytkownika ("czy warto korzystać z filesystemu
+Symfony zamiast czystego PHP" → rozszerzone na "co jeszcze"), które ujawniło
+realną, nie tylko kosmetyczną, okazję: `symfony/password-hasher` był
+bezpośrednią zależnością z **skonfigurowanym, ale nigdy niewołanym**
+`password_hashers` w `security.yaml` (włącznie z tańszym kosztem w
+`when@test` — też nigdy nie używanym). Trzy niezależne miejsca ręcznie
+wołały `password_hash()`/`password_verify()` zamiast przez tę fabrykę:
+
+- [x] **`AuthService::getUserByEmailAndPassword()`** — `password_verify()`
+      wprost → `UserPasswordHasherInterface::isPasswordValid()`.
+- [x] **`AccessKeyHasher`** (Część 7 — hash klucza dostępu, niezwiązany z
+      żadnym `User`) — `password_hash()`/`password_verify()` wprost →
+      `PasswordHasherFactoryInterface::getPasswordHasher('access_key')`, nowy
+      nazwany hasher w `security.yaml` (osobny od tego dla `User`, bo
+      `UserPasswordHasherInterface` wymaga `PasswordAuthenticatedUserInterface`,
+      a klucz dostępu nim nie jest) — algorytm/koszt sterowany configiem,
+      **nie** hardkodowanym `PASSWORD_BCRYPT` w kodzie.
+- [x] **`App\Util\PasswordHasher`** (hardkodowany bcrypt, `cost => 15`,
+      niezależnie od środowiska) — usunięty całkowicie. Używały go tylko
+      `AppFixtures` i `tests/DatabaseMockManager`, oba przepisane na
+      `UserPasswordHasherInterface::hashPassword()`. Efekt uboczny: testy
+      tworzące userów (a robi to prawie każdy test w tym repo) dostały
+      **za darmo** dużo tańszy koszt hashowania z `when@test`'s configu
+      (`cost: 4` zamiast zakopanego wcześniej `15`) — realny, mierzalny
+      zysk prędkości całego zestawu testów, nie tylko porządek w kodzie.
+
+`security.yaml` dostał nowy wpis `access_key: 'auto'` (plus taniej w
+`when@test`, tym samym wzorcem co istniejący wpis dla `User`).
+
+**Weryfikacja:** ręczny przegląd (kontenery zatrzymane, jak w poprzednich
+częściach) — `make cs`/`make phpstan`/`make test-backend` nie odpalone.
+`AccessKeyServiceTest`'s `new AccessKeyHasher()` zaktualizowane pod nowy
+konstruktor (stub `PasswordHasherFactoryInterface`, metoda testowana i tak
+nigdy nie dotyka hashera). Żadna zmiana kontraktu publicznego
+(`AccessKeyHasherInterface`, `AuthServiceInterface`) — tylko wnętrza.
 
 ---
 

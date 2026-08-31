@@ -8,6 +8,11 @@ security:
     # https://symfony.com/doc/current/security.html#registering-the-user-hashing-passwords
     password_hashers:
         Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface: 'auto'
+        # Access keys (Part 7) — bcrypt/argon just like User's own password,
+        # but not tied to a User (a key isn't an account), so it's looked up
+        # by this plain string key via PasswordHasherFactoryInterface instead
+        # of the interface-keyed entry above — see AccessKeyHasher.
+        access_key: 'auto'
 
     # https://symfony.com/doc/current/security.html#loading-the-user-the-user-provider
     providers:
@@ -53,3 +58,8 @@ when@test:
                 cost: 4 # Lowest possible value for bcrypt
                 time_cost: 3 # Lowest possible value for argon
                 memory_cost: 10 # Lowest possible value for argon
+            access_key:
+                algorithm: auto
+                cost: 4
+                time_cost: 3
+                memory_cost: 10

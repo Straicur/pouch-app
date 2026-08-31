@@ -15,6 +15,7 @@ use Override;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\Request;
 use Throwable;
+use WeakMap;
 
 use function is_array;
 use function is_int;
@@ -27,13 +28,32 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
 {
     // GRANTS_HEADER now lives on AccessKeyGuardInterface (inherited here) — see its own doc comment.
 
+    /**
+     * Post-review fix: parseGrants() used to re-decode the same request's
+     * grants header from scratch on every single hasValidGrant() call —
+     * cheap for one item, wasteful when lockedCategoryIds()/
+     * lockedItemIdsWithOwnKey() call it once per category/item on every
+     * GET /api/items. Keyed by Request (a WeakMap, not a plain array, so it
+     * never outlives — or needs manual clearing between — the request
+     * itself, which matters if this service is ever reused across requests
+     * in a long-running worker). Readonly property, mutable object: `readonly`
+     * only stops *this* property from being reassigned, not the WeakMap
+     * instance it points to from being written to — the standard pattern for
+     * a cache on an otherwise-immutable, request-scoped-by-convention service.
+     *
+     * @var WeakMap<Request, list<AccessGrant>>
+     */
+    private WeakMap $grantsCache;
+
     public function __construct(
         private AccessKeyServiceInterface $accessKeyService,
         private SignedUrlServiceInterface $signedUrlService,
         private Security $security,
         private CategoryRepository $categoryRepository,
         private ItemRepository $itemRepository,
-    ) {}
+    ) {
+        $this->grantsCache = new WeakMap();
+    }
 
     /**
      * Post-review fix: a grant only matches for the user it was issued to —
@@ -114,7 +134,16 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
     #[Override]
     public function lockedCategoryIds(Request $request): array
     {
-        $categories = $this->categoryRepository->findAllOrderedByName();
+        // Post-review fix: scalar rows (id/parentId/accessKeyHash/
+        // accessKeyVersion), not full Category entities — see
+        // CategoryRepository::findAllForLockCheck()'s own doc comment.
+        $rows = $this->categoryRepository->findAllForLockCheck();
+
+        $byId = [];
+        foreach ($rows as $row) {
+            $byId[$row['id']] = $row;
+        }
+
         $userId = $this->currentUserId();
 
         // Memoized per holder — every category sharing an inherited key
@@ -123,24 +152,49 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
         $holderIsLocked = [];
         $locked = [];
 
-        foreach ($categories as $category) {
-            $holder = $this->accessKeyService->findEffectiveKeyHolder($category);
+        foreach ($rows as $row) {
+            $holder = $this->effectiveKeyHolderRow($row, $byId);
             if (null === $holder) {
                 continue;
             }
 
-            $holderId = $holder->getId();
+            $holderId = $holder['id'];
             if (false === isset($holderIsLocked[$holderId])) {
                 $holderIsLocked[$holderId] = null === $userId
-                    || false === $this->hasValidGrant($request, AccessKeyResource::forCategory($holderId, $holder->getAccessKeyVersion(), $userId));
+                    || false === $this->hasValidGrant($request, AccessKeyResource::forCategory($holderId, $holder['accessKeyVersion'], $userId));
             }
 
             if ($holderIsLocked[$holderId]) {
-                $locked[] = $category->getId();
+                $locked[] = $row['id'];
             }
         }
 
         return $locked;
+    }
+
+    /**
+     * Scalar-row counterpart of AccessKeyService::findEffectiveKeyHolder() —
+     * same "walk up until a key is found" logic, over the id-keyed map
+     * lockedCategoryIds() builds instead of live Category::getParent() calls.
+     *
+     * @param array{id: int, parentId: int|null, accessKeyHash: string|null, accessKeyVersion: int}   $row
+     * @param array<int, array{id: int, parentId: int|null, accessKeyHash: string|null, accessKeyVersion: int}> $byId
+     *
+     * @return array{id: int, parentId: int|null, accessKeyHash: string|null, accessKeyVersion: int}|null
+     */
+    private function effectiveKeyHolderRow(array $row, array $byId): ?array
+    {
+        $current = $row;
+
+        while (null !== $current) {
+            if (null !== $current['accessKeyHash']) {
+                return $current;
+            }
+
+            $current = null !== $current['parentId'] ? ($byId[$current['parentId']] ?? null) : null;
+        }
+
+        return null;
     }
 
     #[Override]
@@ -149,12 +203,15 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
         $userId = $this->currentUserId();
         $locked = [];
 
-        foreach ($this->itemRepository->findAllWithOwnAccessKey() as $item) {
+        // Post-review fix: scalar id/accessKeyVersion pairs, active items
+        // only — see ItemRepository::findAllWithOwnAccessKeyForLockCheck()'s
+        // own doc comment.
+        foreach ($this->itemRepository->findAllWithOwnAccessKeyForLockCheck() as $row) {
             $isUnlocked = null !== $userId
-                && $this->hasValidGrant($request, AccessKeyResource::forItem($item->getId(), $item->getAccessKeyVersion(), $userId));
+                && $this->hasValidGrant($request, AccessKeyResource::forItem($row['id'], $row['accessKeyVersion'], $userId));
 
             if (false === $isUnlocked) {
-                $locked[] = $item->getId();
+                $locked[] = $row['id'];
             }
         }
 
@@ -187,6 +244,21 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
      * @return list<AccessGrant>
      */
     private function parseGrants(Request $request): array
+    {
+        if (isset($this->grantsCache[$request])) {
+            return $this->grantsCache[$request];
+        }
+
+        $grants = $this->doParseGrants($request);
+        $this->grantsCache[$request] = $grants;
+
+        return $grants;
+    }
+
+    /**
+     * @return list<AccessGrant>
+     */
+    private function doParseGrants(Request $request): array
     {
         $header = $request->headers->get(self::GRANTS_HEADER);
 

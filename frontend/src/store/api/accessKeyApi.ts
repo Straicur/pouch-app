@@ -30,6 +30,17 @@ interface SetItemKeyRequest {
   key: string | null;
 }
 
+// Post-review fix: what POST .../export-token returns — see
+// lib/triggerDownload.ts and CategoryController's own doc comments for why
+// a category export needs this at all (a plain navigation, used so the ZIP
+// streams, can't set the X-Pouch-Access-Grants header a normal request
+// would — this mints a short-lived, opaque token carrying the same grants
+// instead of putting them in the URL itself).
+export interface CategoryExportToken {
+  token: string;
+  expiresAt: string;
+}
+
 // Part 7. accessKeyApi is its own createApi instance (like every other slice
 // here), so its invalidatesTags can't reach itemApi's cache — RTK Query tags
 // only invalidate within the same api. Instead, every mutation that changes
@@ -78,8 +89,19 @@ export const accessKeyApi = createApi({
         dispatch(itemApi.util.invalidateTags(["Item"]));
       },
     }),
+    getCategoryExportToken: builder.mutation<CategoryExportToken, number>({
+      // A normal AJAX POST — httpClient's interceptor attaches whatever
+      // grants this session currently holds as the usual header, no special
+      // handling needed here.
+      query: (categoryId) => ({ url: ApiEndpoints.CATEGORY_EXPORT_TOKEN(categoryId), method: "POST", data: {} }),
+    }),
   }),
 });
 
-export const { useUnlockCategoryMutation, useUnlockItemMutation, useSetCategoryKeyMutation, useSetItemKeyMutation } =
-  accessKeyApi;
+export const {
+  useUnlockCategoryMutation,
+  useUnlockItemMutation,
+  useSetCategoryKeyMutation,
+  useSetItemKeyMutation,
+  useGetCategoryExportTokenMutation,
+} = accessKeyApi;

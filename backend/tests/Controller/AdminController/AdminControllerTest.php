@@ -10,7 +10,7 @@ use App\Entity\User;
 use App\Enum\ItemProcessingStatus;
 use App\Enum\ItemType;
 use App\Repository\ItemRepository;
-use App\Storage\StorageService;
+use App\Services\Storage\StorageService;
 use App\Tests\DTO\UserTestDTO;
 use App\Tests\WebTest;
 use DateInterval;

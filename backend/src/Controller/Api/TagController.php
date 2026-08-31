@@ -4,14 +4,15 @@ declare(strict_types = 1);
 
 namespace App\Controller\Api;
 
+use App\ControllerHelper\Traits\AuthorizesRequestsTrait;
 use App\Entity\Tag;
 use App\ExceptionManagement\Exceptions\ApiException\ForbiddenException\ForbiddenException;
 use App\ExceptionManagement\Exceptions\ApiException\ForbiddenException\ForbiddenExceptionModel;
 use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\UnauthorizedException;
 use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\UnauthorizedExceptionModel;
-use App\Security\AuthServiceInterface;
+use App\Security\AuthorizationServiceInterface;
 use App\Security\Voter\ItemVoter;
-use App\Tag\TagServiceInterface;
+use App\Services\Tag\TagServiceInterface;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -36,8 +37,10 @@ use function array_map;
 #[OA\Tag(name: 'Tag')]
 final class TagController extends AbstractController
 {
+    use AuthorizesRequestsTrait;
+
     public function __construct(
-        private readonly AuthServiceInterface $authService,
+        private readonly AuthorizationServiceInterface $authorizationService,
         private readonly TagServiceInterface $tagService,
         private readonly SerializerInterface $serializer,
     ) {}
@@ -60,11 +63,7 @@ final class TagController extends AbstractController
     )]
     public function list(): Response
     {
-        $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted(ItemVoter::VIEW)) {
-            throw new ForbiddenException();
-        }
+        $this->assertGranted(ItemVoter::VIEW);
 
         $names = array_map(
             static fn (Tag $tag): string => $tag->getName(),

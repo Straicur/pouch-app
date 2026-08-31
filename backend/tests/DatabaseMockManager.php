@@ -12,9 +12,9 @@ use App\Security\ConfigService;
 use App\Security\CookieService;
 use App\Security\TokenService;
 use App\Tests\DTO\UserTestDTO;
-use App\Util\PasswordHasher;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\Cookie;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 class DatabaseMockManager
 {
@@ -36,11 +36,18 @@ class DatabaseMockManager
          * @var UserRepository $userRepository
          */
         $userRepository = $this->getService(UserRepository::class);
+        /**
+         * @var UserPasswordHasherInterface $passwordHasher
+         */
+        $passwordHasher = $this->getService(UserPasswordHasherInterface::class);
 
-        $user = new User(
-            $userTestDTO->getEmail(),
-            PasswordHasher::hash($userTestDTO->getPassword()),
-        );
+        // Post-review fix: used App\Util\PasswordHasher (hardcoded bcrypt,
+        // cost 15, regardless of environment) — the real hasher factory
+        // picks up when@test's much cheaper cost (security.yaml), so every
+        // test user created across the whole suite got measurably faster to
+        // create for free.
+        $user = new User($userTestDTO->getEmail(), '');
+        $user->setPassword($passwordHasher->hashPassword($user, $userTestDTO->getPassword()));
         $user->setRoles($userTestDTO->getRoles());
 
         $userRepository->saveUser($user);

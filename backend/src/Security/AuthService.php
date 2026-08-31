@@ -9,6 +9,7 @@ use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\Unauth
 use App\Repository\UserRepository;
 use Override;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 
@@ -18,6 +19,7 @@ final readonly class AuthService implements AuthServiceInterface
         private UserRepository $userRepository,
         private TokenStorageInterface $tokenStorage,
         private LoggerInterface $logger,
+        private UserPasswordHasherInterface $passwordHasher,
     ) {}
 
     #[Override]
@@ -29,12 +31,11 @@ final readonly class AuthService implements AuthServiceInterface
             throw new UnauthorizedException();
         }
 
-        $validCredentials = password_verify(
-            password: $password,
-            hash: $user->getPassword()
-        );
-
-        if (false === $validCredentials) {
+        // Post-review fix: used to call password_verify() directly — this
+        // goes through the same password_hashers config (security.yaml)
+        // everything else keyed on PasswordAuthenticatedUserInterface does,
+        // instead of assuming plain bcrypt.
+        if (false === $this->passwordHasher->isPasswordValid($user, $password)) {
             throw new UnauthorizedException();
         }
 

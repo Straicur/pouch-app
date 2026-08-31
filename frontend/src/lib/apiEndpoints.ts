@@ -23,6 +23,7 @@ export const ApiEndpoints = {
   CATEGORY_UNLOCK: (id: number) => `/api/categories/${id}/unlock`,
   CATEGORY_ACCESS_KEY: (id: number) => `/api/categories/${id}/access-key`,
   CATEGORY_EXPORT: (id: number) => `/api/categories/${id}/export`,
+  CATEGORY_EXPORT_TOKEN: (id: number) => `/api/categories/${id}/export-token`,
   TAGS: "/api/tags",
   ADMIN_STORAGE: "/api/admin/storage",
   ADMIN_STORAGE_LIMIT: (type: string) => `/api/admin/storage/limits/${type}`,

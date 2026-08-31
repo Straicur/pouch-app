@@ -311,9 +311,12 @@ w code review.
 - **Named arguments** tam, gdzie poprawiają czytelność wywołania — już tak
   robimy wszędzie przy tworzeniu DTO/Modeli (`new BadRequestExceptionModel(detail: $message, status: $code)`).
 - **Statyczne metody tylko dla czystych, bezstanowych narzędzi bez
-  zależności** — jak `PasswordHasher::hash()`. Jeśli metoda potrzebuje
+  zależności** — jak `UrlResolver::resolve()`. Jeśli metoda potrzebuje
   jakiejkolwiek współpracującej usługi (logger, repozytorium, inny serwis),
-  to serwis wstrzykiwany przez DI, nie statyczny helper.
+  to serwis wstrzykiwany przez DI, nie statyczny helper — tak jak hasła i
+  klucze dostępu idą dziś przez `Symfony\Component\PasswordHasher`
+  (`UserPasswordHasherInterface`/`PasswordHasherFactoryInterface`), nie
+  przez ręczny `password_hash()` w statycznej klasie.
 - **Command/Query Separation.** Metoda albo zmienia stan (command), albo
   zwraca dane (query) — nie oba naraz.
 - **DTO ≠ Entity.** Encje (`src/Entity`) niosą stan domeny + persistence.
@@ -348,12 +351,110 @@ $dto = $this->requestService->getRequestBodyContent($request, LoginRequestDTO::c
 
 ---
 
+## Struktura katalogów `src/`
+
+Reguła, nie tylko obserwacja — złamanie tego to błąd w review, tak jak
+reszta sekcji "Konwencje projektowe".
+
+- **Nowy moduł domenowy, który to głównie serwisy (interfejs +
+  implementacja, ewentualnie kilka pomocniczych klas obok), trafia pod
+  `src/Services/<Domena>/`, nie jako osobny folder wprost w `src/` nazwany
+  domeną.** Tak jak dziś:
+  ```
+  src/Services/
+      Item/
+          ItemServiceInterface.php, ItemService.php
+          OcrServiceInterface.php, OcrService.php
+          ThumbnailServiceInterface.php, ThumbnailService.php
+          StorageLimitServiceInterface.php, StorageLimitService.php
+          Validator/
+              FileValidator.php, ImageValidator.php, NoteValidator.php, UrlValidator.php
+          Collector/
+              ItemGarbageCollectorInterface.php, ItemGarbageCollector.php
+          Resolver/
+              UrlResolver.php
+          ValueObject/
+              ItemListFilter.php, ItemLifecycleOptions.php
+          Scraper/
+              OpenGraphScraperInterface.php, OpenGraphScraper.php
+              SafeUrlFetcherInterface.php, SafeUrlFetcher.php
+              ScrapedPage.php
+      Storage/
+          StorageServiceInterface.php, StorageService.php
+      Tag/
+          TagServiceInterface.php, TagService.php
+      Request/
+          RequestServiceInterface.php, RequestService.php
+      Category/
+          CategoryServiceInterface.php, CategoryService.php
+          CategoryExportServiceInterface.php, CategoryExportService.php
+      Audit/
+          AuditLoggerInterface.php, AuditLogger.php
+  ```
+  **Nie twórz** `src/Płatności/` czy `src/Payment/` dla nowej domeny — zawsze
+  `src/Services/Payment/`.
+  - Historia: do commitu, w którym powstała ta sekcja, `Item`, `Storage`,
+    `Tag` (serwisy) i `Service` (`RequestService` — liczba pojedyncza!)
+    były cztery osobne, niespójnie nazwane foldery wprost w `src/`. Scalone
+    w jedno `Services/` (liczba mnoga) właśnie po to, żeby nie było
+    jednocześnie `Service/` i `Services/` obok siebie.
+- **W module, który urósł na tyle, że widać w nim wyraźne "rodzaje" klas
+  (kilka walidatorów, kilka resolverów...), te rodzaje dostają własny
+  podfolder** — `Validator/`, `Collector/`, `Resolver/`, `ValueObject/`, tak
+  jak w `Item/` wyżej. Jeden samotny plik danego rodzaju (na razie tylko
+  jeden `UrlResolver.php`) i tak dostaje swój `Resolver/` — konsekwencja
+  ważniejsza niż "poczekajmy, aż będzie więcej". Nazwa podfolderu w liczbie
+  pojedynczej (`Validator/`, nie `Validators/`), zgodnie z resztą `src/`
+  (`DTO/`, `Enum/`).
+  - **`ValueObject/`, nie `DTO/`, dla wewnętrznych typów modułu**
+    (`ItemListFilter`, `ItemLifecycleOptions`) — świadome rozróżnienie, nie
+    synonim. DTO w tym projekcie ma jedno znaczenie: kształt requestu/
+    response'u na granicy API (`src/DTO/Request`, `src/DTO/Response` —
+    patrz "Konwencje projektowe" wyżej), z walidacją `#[Assert\...]` i
+    serializacją wprost pod JSON. `ItemListFilter`/`ItemLifecycleOptions`
+    nigdy nie dotykają requestu/response'u bezpośrednio — kontroler składa
+    je z już zwalidowanego DTO żądania i przekazuje do serwisu jako spójny
+    parametr domenowy (Parameter Object). Nazwanie ich "DTO" było mylące —
+    stąd `ValueObject/`.
+- **Wiadomości Messengera i ich handlery mieszkają razem, w jednym folderze
+  `src/Messenger/`** — nie w osobnych `src/Message/` i `src/MessageHandler/`
+  (tak to wyglądało wcześniej). Klasa message'a i jej handler to zwykle
+  para plików obok siebie w tym samym katalogu:
+  ```
+  src/Messenger/
+      ScrapeUrlMessage.php, ScrapeUrlMessageHandler.php
+      ProcessPhotoMessage.php, ProcessPhotoMessageHandler.php
+  ```
+  Message i jej handler są w tym samym namespace (`App\Messenger`) — handler
+  **nie** importuje swojego message'a przez `use`, referencja jest
+  bezpośrednia (ten sam namespace).
+- Foldery, które **nie** są modułami serwisów i zostają tam, gdzie są:
+  `Controller`, `Entity`, `Repository`, `DTO`, `Enum`, `Event`, `Security`,
+  `ExceptionManagement`, `Command`, `DataFixtures` — to już są sensowne,
+  jednoznaczne nazwy "rodzaju klasy", nie domeny biznesowej, więc reguła
+  wyżej ich nie dotyczy.
+  - To nie zwalnia ich z porządku w środku — ten sam pomysł co
+    `Validator/`/`Collector/`/`Resolver/` w module `Services/` dotyczy też
+    tych folderów: jak tylko widać w nich wyraźną grupę klas jednego
+    rodzaju, dostają podfolder. `Security/` ma dziś `AccessKey/` (Część 7),
+    `Voter/` i `Limiter/` (`AccessKeyRateLimiter(Interface)`,
+    `LoginRateLimiter(Interface)`, `RateLimiterGuard(Interface)` —
+    wcześniej sześć plików luzem wprost w `Security/`). `ControllerHelper/`
+    ma `Traits/` (`AuthorizesRequestsTrait` — trait delegujący do serwisu,
+    patrz `AuthorizationServiceInterface`, zamiast powielać
+    auth+voter w każdym kontrolerze) i `Factory/`
+    (`StreamedFileResponseFactory(Interface)` — try/finally streamowania
+    pliku tymczasowego z `@unlink()`, wcześniej wklejane osobno w
+    `CategoryController::export()` i `AdminController::backup()`).
+
+---
+
 ## Dependency Injection
 
 `config/services.yaml`: `autowire: true` + `autoconfigure: true`, `App\`
 rejestruje jako serwisy wszystko w `src/` **poza**: `Entity`, `Kernel.php`,
-`Query`, `DTO`, `Exception`, `Util`, `Enum` (te ostatnie trzy to obecnie
-puste, zarezerwowane katalogi).
+`Query` (dziś jeszcze nieużywany, zarezerwowany katalog), `DTO`, `Exception`,
+`Enum`.
 
 - Kod przeciwko interfejsom (patrz "Konwencje projektowe" wyżej) działa bez
   żadnej ręcznej konfiguracji, **dopóki interfejs ma dokładnie jedną
@@ -365,9 +466,9 @@ puste, zarezerwowane katalogi).
   `services.yaml` (`App\Foo\BarInterface: '@App\Foo\BarS3Implementation'`).
   To pierwsza rzecz do sprawdzenia, jeśli kontener nagle się nie buduje po
   dodaniu drugiej implementacji.
-- Klasy w `Util`, `Enum`, `DTO` nie są serwisami — nie mają zależności, nie
-  wstrzykuje się ich, tworzy się przez `new` (DTO) albo woła statycznie
-  (`PasswordHasher::hash()`).
+- Klasy w `Enum`, `DTO` nie są serwisami — nie mają zależności, nie
+  wstrzykuje się ich, tworzy się przez `new` (DTO) albo są zbiorem
+  case'ów (`Enum`).
 
 ## Testy
 

@@ -131,6 +131,7 @@ const pl = {
     empty: "Brak kategorii.",
     parentOf: "(podkategoria: {{parentName}})",
     exportButton: "Pobierz jako ZIP",
+    exportPreparing: "Przygotowywanie…",
     exportError: "Nie udało się pobrać eksportu kategorii.",
   },
   tags: {

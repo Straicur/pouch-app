@@ -2,7 +2,7 @@
 #
 # Backs onto the S3-compatible bucket configured via STORAGE_* (MinIO in dev/test,
 # see backend/.env for the vars and backend/README.md for where real values live).
-# Injects App\Storage\StorageService::$storage — see config/services.yaml.
+# Injects App\Services\Storage\StorageService::$storage — see config/services.yaml.
 flysystem:
     storages:
         item.storage:

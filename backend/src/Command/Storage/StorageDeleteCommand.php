@@ -5,7 +5,7 @@ declare(strict_types = 1);
 namespace App\Command\Storage;
 
 use App\Exception\StorageException;
-use App\Storage\StorageServiceInterface;
+use App\Services\Storage\StorageServiceInterface;
 use Override;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;

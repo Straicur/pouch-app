@@ -33,7 +33,7 @@ final readonly class CookieService implements CookieServiceInterface
             // Frontend and API are same-origin (SameSite's "site" is the
             // registrable domain, not the port, so localhost:5174 calling
             // localhost:8080 is already same-site) — Lax needs nothing else
-            // to keep working. See OriginCheckSubscriber for the second,
+            // to keep working. See OriginCheckListener for the second,
             // independent layer on top of this.
             sameSite: Cookie::SAMESITE_LAX
         );
@@ -57,7 +57,7 @@ final readonly class CookieService implements CookieServiceInterface
             // Frontend and API are same-origin (SameSite's "site" is the
             // registrable domain, not the port, so localhost:5174 calling
             // localhost:8080 is already same-site) — Lax needs nothing else
-            // to keep working. See OriginCheckSubscriber for the second,
+            // to keep working. See OriginCheckListener for the second,
             // independent layer on top of this.
             sameSite: Cookie::SAMESITE_LAX
         );

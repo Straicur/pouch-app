@@ -4,17 +4,18 @@ declare(strict_types = 1);
 
 namespace App\Tests\Security\AccessKey;
 
-use App\Category\CategoryServiceInterface;
+use App\Services\Category\CategoryServiceInterface;
 use App\Entity\Category;
-use App\Item\ItemServiceInterface;
+use App\Services\Item\ItemServiceInterface;
 use App\Repository\CategoryRepository;
 use App\Repository\ItemRepository;
 use App\Security\AccessKey\AccessKeyHasher;
 use App\Security\AccessKey\AccessKeyService;
-use App\Security\AccessKeyRateLimiterInterface;
+use App\Security\Limiter\AccessKeyRateLimiterInterface;
 use App\Security\SignedUrlServiceInterface;
 use PHPUnit\Framework\TestCase;
 use Symfony\Bundle\SecurityBundle\Security;
+use Symfony\Component\PasswordHasher\Hasher\PasswordHasherFactoryInterface;
 
 /**
  * findEffectiveKeyHolder() only ever walks the entity graph (Category::getParent()),
@@ -30,7 +31,7 @@ final class AccessKeyServiceTest extends TestCase
             itemService: $this->createStub(ItemServiceInterface::class),
             categoryRepository: $this->createStub(CategoryRepository::class),
             itemRepository: $this->createStub(ItemRepository::class),
-            accessKeyHasher: new AccessKeyHasher(),
+            accessKeyHasher: new AccessKeyHasher($this->createStub(PasswordHasherFactoryInterface::class)),
             signedUrlService: $this->createStub(SignedUrlServiceInterface::class),
             accessKeyRateLimiter: $this->createStub(AccessKeyRateLimiterInterface::class),
             security: $this->createStub(Security::class),

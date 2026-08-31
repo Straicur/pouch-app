@@ -4,7 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Controller\Api;
 
-use App\Category\CategoryExportServiceInterface;
+use App\Services\Category\CategoryExportServiceInterface;
 use App\DTO\Mapper\AdminMapper;
 use App\DTO\Mapper\ItemMapper;
 use App\DTO\Request\AdminExtendExpiryRequestDTO;
@@ -26,24 +26,24 @@ use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\Unauth
 use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\UnauthorizedExceptionModel;
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentException;
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentExceptionModel;
-use App\Item\ItemGarbageCollectorInterface;
-use App\Item\ItemLifecycleOptions;
-use App\Item\ItemServiceInterface;
-use App\Item\StorageLimitServiceInterface;
+use App\Services\Item\Collector\ItemGarbageCollectorInterface;
+use App\Services\Item\ValueObject\ItemLifecycleOptions;
+use App\Services\Item\ItemServiceInterface;
+use App\Services\Item\StorageLimitServiceInterface;
+use App\ControllerHelper\Traits\AuthorizesRequestsTrait;
+use App\ControllerHelper\Factory\StreamedFileResponseFactoryInterface;
 use App\Repository\AuditLogRepository;
 use App\Repository\GcRunLogRepository;
 use App\Repository\ItemRepository;
 use App\Repository\ItemVersionRepository;
-use App\Security\AuthServiceInterface;
-use App\Service\RequestServiceInterface;
+use App\Security\AuthorizationServiceInterface;
+use App\Services\Request\RequestServiceInterface;
 use DateInterval;
 use DateTimeImmutable;
 use Exception;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
-use RuntimeException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\HttpFoundation\HeaderUtils;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -52,15 +52,10 @@ use Symfony\Component\Serializer\Encoder\JsonEncoder;
 use Symfony\Component\Serializer\Exception\ExceptionInterface as SerializerExceptionInterface;
 use Symfony\Component\Serializer\SerializerInterface;
 
-use function fclose;
-use function fopen;
 use function in_array;
-use function is_resource;
 use function is_string;
 use function max;
 use function min;
-use function stream_copy_to_stream;
-use function unlink;
 
 /**
  * Part 10. Every action is ROLE_ADMIN-only — a flat role check via
@@ -77,8 +72,10 @@ use function unlink;
 #[OA\Tag(name: 'Admin')]
 final class AdminController extends AbstractController
 {
+    use AuthorizesRequestsTrait;
+
     public function __construct(
-        private readonly AuthServiceInterface $authService,
+        private readonly AuthorizationServiceInterface $authorizationService,
         private readonly RequestServiceInterface $requestService,
         private readonly ItemRepository $itemRepository,
         private readonly ItemVersionRepository $itemVersionRepository,
@@ -89,6 +86,7 @@ final class AdminController extends AbstractController
         private readonly ItemServiceInterface $itemService,
         private readonly CategoryExportServiceInterface $categoryExportService,
         private readonly SerializerInterface $serializer,
+        private readonly StreamedFileResponseFactoryInterface $streamedFileResponseFactory,
     ) {}
 
     /**
@@ -321,41 +319,16 @@ final class AdminController extends AbstractController
 
         $zipPath = $this->categoryExportService->buildFullBackupZip($request);
 
-        $response = new StreamedResponse(function () use ($zipPath): void {
-            $sourceStream = fopen($zipPath, 'rb');
-            if (false === is_resource($sourceStream)) {
-                throw new RuntimeException('Could not open the temporary backup archive for reading');
-            }
-
-            $outputStream = fopen('php://output', 'wb');
-            if (false === is_resource($outputStream)) {
-                fclose($sourceStream);
-
-                throw new RuntimeException('Could not open php://output for writing');
-            }
-
-            stream_copy_to_stream($sourceStream, $outputStream);
-            fclose($sourceStream);
-            fclose($outputStream);
-            unlink($zipPath);
-        });
-
-        $response->headers->set('Content-Type', 'application/zip');
-        $response->headers->set(
-            'Content-Disposition',
-            HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_ATTACHMENT, 'pouch-backup-' . new DateTimeImmutable()->format('Y-m-d') . '.zip'),
+        return $this->streamedFileResponseFactory->fromTemporaryFile(
+            localPath: $zipPath,
+            downloadName: 'pouch-backup-' . new DateTimeImmutable()->format('Y-m-d') . '.zip',
+            contentType: 'application/zip',
         );
-
-        return $response;
     }
 
     private function assertAdmin(): void
     {
-        $this->authService->getUserFromAccessToken();
-
-        if (false === $this->isGranted('ROLE_ADMIN')) {
-            throw new ForbiddenException();
-        }
+        $this->assertGranted('ROLE_ADMIN');
     }
 
     private function clampLimit(Request $request, int $default, int $max): int

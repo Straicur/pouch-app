@@ -6,7 +6,7 @@ namespace App\Repository;
 
 use App\Entity\Item;
 use App\Enum\ItemType;
-use App\Item\ItemListFilter;
+use App\Services\Item\ValueObject\ItemListFilter;
 use DateTimeImmutable;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
@@ -403,19 +403,31 @@ class ItemRepository extends ServiceEntityRepository
      * item-level key up front (bulk) to compute, before a paginated list
      * query runs, which item ids to exclude — rather than fetching a page
      * and filtering afterwards (see ItemController::list()'s own comment).
-     * Not filtered to active-only: a trashed item is already excluded by
-     * every list query's own `trashedAt IS NULL`, so it never matters here.
      *
-     * @return list<Item>
+     * Scalar id/version pairs, not full entities — this used to hydrate
+     * every matching Item in full (note content/OCR text included) on
+     * *every* GET /api/items, which is exactly the "load way more than a
+     * page needs" problem pagination exists to avoid in the first place.
+     * Filtered to active items only: a trashed item is already excluded by
+     * every list query's own `trashedAt IS NULL`, so a trashed item's key
+     * never needs to be in this set at all — an earlier version of this
+     * method still hydrated (and checked grants against) trashed items too.
+     *
+     * @return list<array{id: int, accessKeyVersion: int}>
      */
-    public function findAllWithOwnAccessKey(): array
+    public function findAllWithOwnAccessKeyForLockCheck(): array
     {
-        /** @var list<Item> $result */
-        $result = $this->createQueryBuilder('i')
+        /** @var list<array{id: mixed, accessKeyVersion: mixed}> $rows */
+        $rows = $this->createQueryBuilder('i')
+            ->select('i.id AS id', 'i.accessKeyVersion AS accessKeyVersion')
             ->where('i.accessKeyHash IS NOT NULL')
+            ->andWhere('i.trashedAt IS NULL')
             ->getQuery()
-            ->getResult();
+            ->getArrayResult();
 
-        return $result;
+        return array_map(static fn (array $row): array => [
+            'id'               => (int) $row['id'],
+            'accessKeyVersion' => (int) $row['accessKeyVersion'],
+        ], $rows);
     }
 }

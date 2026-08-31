@@ -5,7 +5,7 @@ declare(strict_types = 1);
 namespace App\Event\EventSubscriber;
 
 use App\ExceptionManagement\Exceptions\ApiException\TooManyRequestsException\TooManyRequestsException;
-use App\Security\RateLimiterGuardInterface;
+use App\Security\Limiter\RateLimiterGuardInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
 use Symfony\Component\HttpKernel\Event\RequestEvent;

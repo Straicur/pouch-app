@@ -6,6 +6,8 @@ namespace App\Tests\Controller\CategoryController;
 
 use App\Entity\Category;
 use App\Entity\User;
+use App\Repository\ItemRepository;
+use App\Services\Storage\StorageService;
 use App\Tests\DTO\UserTestDTO;
 use App\Tests\WebTest;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -14,6 +16,7 @@ use Symfony\Component\HttpFoundation\Response;
 use ZipArchive;
 
 use function file_put_contents;
+use function glob;
 use function json_decode;
 use function json_encode;
 use function str_ends_with;
@@ -50,7 +53,7 @@ class CategoryExportTest extends WebTest
         $this->setAuthCookie($this->databaseMockManager->loginUser($this->admin));
     }
 
-    private function uploadFile(int $categoryId, string $content, string $filename): void
+    private function uploadFile(int $categoryId, string $content, string $filename): array
     {
         $path = tempnam(sys_get_temp_dir(), 'pouch-export-test-');
         file_put_contents($path, $content);
@@ -63,6 +66,8 @@ class CategoryExportTest extends WebTest
             files: ['file' => new UploadedFile($path, $filename, 'text/plain', null, true)],
         );
         self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+
+        return json_decode((string) $this->webClient->getResponse()->getContent(), true);
     }
 
     private function createNote(int $categoryId, string $content): void
@@ -211,11 +216,14 @@ class CategoryExportTest extends WebTest
     /**
      * Post-review fix: a plain navigation (what the frontend's
      * triggerDownload.ts actually uses, so the ZIP streams) can't set the
-     * X-Pouch-Access-Grants header — the grant now has to be relayed via a
-     * "grants" query parameter instead, which CategoryController::export()
-     * puts back onto the header AccessKeyGuard reads.
+     * X-Pouch-Access-Grants header. The fix went through two shapes: first a
+     * "grants" query parameter relaying the grants directly (real content in
+     * browser history/proxy logs, unbounded size), now a short-lived, opaque
+     * token from POST .../export-token instead — minted from a normal AJAX
+     * request (header works fine there), then handed to the actual GET
+     * .../export on "?token=".
      */
-    public function testExportWithGrantViaQueryParamIncludesUnlockedContent(): void
+    public function testExportWithTokenFromGrantsIncludesUnlockedContent(): void
     {
         $root = $this->databaseMockManager->createCategory('Mixed');
         $locked = $this->databaseMockManager->createCategory('Locked', $root);
@@ -239,12 +247,22 @@ class CategoryExportTest extends WebTest
         self::assertResponseStatusCodeSame(Response::HTTP_OK);
         $grant = json_decode((string) $this->webClient->getResponse()->getContent(), true);
 
+        $this->auth();
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: "/api/categories/{$root->getId()}/export-token",
+            server: ['HTTP_X_POUCH_ACCESS_GRANTS' => (string) json_encode([$grant])],
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+        $tokenResponse = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        self::assertArrayHasKey('token', $tokenResponse);
+
         $this->entityManager->clear();
 
         $this->auth();
         $this->webClient->request(
             method: Request::METHOD_GET,
-            uri: "/api/categories/{$root->getId()}/export?grants=" . urlencode((string) json_encode([$grant])),
+            uri: "/api/categories/{$root->getId()}/export?token=" . urlencode($tokenResponse['token']),
         );
         self::assertResponseStatusCodeSame(Response::HTTP_OK);
 
@@ -252,6 +270,59 @@ class CategoryExportTest extends WebTest
 
         self::assertArrayHasKey('Mixed/Locked/secret.txt', $entries);
         self::assertSame('secret content', $entries['Mixed/Locked/secret.txt']);
+    }
+
+    /**
+     * A token minted for a *different* category (or, equivalently, a plain
+     * garbage string) must not unlock anything — the resource embedded in it
+     * won't match what export() expects, so it's silently ignored rather
+     * than trusted.
+     */
+    public function testExportIgnoresATokenMintedForADifferentCategory(): void
+    {
+        $root = $this->databaseMockManager->createCategory('Mixed');
+        $locked = $this->databaseMockManager->createCategory('Locked', $root);
+        $otherRoot = $this->databaseMockManager->createCategory('Unrelated');
+
+        $this->uploadFile($locked->getId(), 'secret content', 'secret.txt');
+
+        $this->auth();
+        $this->webClient->request(
+            method: Request::METHOD_PUT,
+            uri: "/api/categories/{$locked->getId()}/access-key",
+            content: json_encode(['key' => 'sekret123']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_NO_CONTENT);
+
+        $this->auth();
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: "/api/categories/{$locked->getId()}/unlock",
+            content: json_encode(['key' => 'sekret123']),
+        );
+        $grant = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+
+        // Minted for $otherRoot, not $root.
+        $this->auth();
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: "/api/categories/{$otherRoot->getId()}/export-token",
+            server: ['HTTP_X_POUCH_ACCESS_GRANTS' => (string) json_encode([$grant])],
+        );
+        $tokenResponse = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+
+        $this->entityManager->clear();
+
+        $this->auth();
+        $this->webClient->request(
+            method: Request::METHOD_GET,
+            uri: "/api/categories/{$root->getId()}/export?token=" . urlencode($tokenResponse['token']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+
+        $entries = $this->readZipEntries();
+
+        self::assertArrayNotHasKey('Mixed/Locked/secret.txt', $entries);
     }
 
     /**
@@ -285,5 +356,39 @@ class CategoryExportTest extends WebTest
 
         self::assertArrayHasKey('Backup root/Locked/secret.txt', $entries);
         self::assertSame('secret content', $entries['Backup root/Locked/secret.txt']);
+    }
+
+    /**
+     * Post-review fix: CategoryExportService::buildZipFromRoots() used to
+     * only clean up the temporary archive it builds ($zipPath) on the
+     * *success* path — a failure while actually assembling it (here: an
+     * item's storage object having vanished underneath it) left the empty/
+     * partial file sitting in the temp directory forever. Repeated failed
+     * exports/backups could quietly fill it up.
+     */
+    public function testFailedExportDoesNotLeaveATempFileBehind(): void
+    {
+        $root = $this->databaseMockManager->createCategory('WillFail');
+        $itemResponse = $this->uploadFile($root->getId(), 'content', 'file.txt');
+
+        $itemRepository = self::getContainer()->get(ItemRepository::class);
+        $item = $itemRepository->find($itemResponse['id']);
+        self::assertNotNull($item);
+        $storageKey = $item->getStorageKey();
+        self::assertNotNull($storageKey);
+
+        // The DB still thinks the file exists; the actual object underneath
+        // it doesn't — downloadToPath() inside buildZipFromRoots() throws.
+        self::getContainer()->get(StorageService::class)->delete($storageKey);
+
+        $tempFilesBefore = glob(sys_get_temp_dir() . '/pouch-export-*');
+        self::assertIsArray($tempFilesBefore);
+
+        $this->auth();
+        $this->webClient->request(method: Request::METHOD_GET, uri: "/api/categories/{$root->getId()}/export");
+        self::assertNotSame(Response::HTTP_OK, $this->webClient->getResponse()->getStatusCode());
+
+        $tempFilesAfter = glob(sys_get_temp_dir() . '/pouch-export-*');
+        self::assertSame($tempFilesBefore, $tempFilesAfter);
     }
 }

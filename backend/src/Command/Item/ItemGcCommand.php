@@ -5,7 +5,7 @@ declare(strict_types = 1);
 namespace App\Command\Item;
 
 use App\Entity\GcRunLog;
-use App\Item\ItemGarbageCollectorInterface;
+use App\Services\Item\Collector\ItemGarbageCollectorInterface;
 use DateInterval;
 use Override;
 use Symfony\Component\Console\Attribute\AsCommand;

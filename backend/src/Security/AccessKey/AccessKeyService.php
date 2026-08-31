@@ -4,16 +4,16 @@ declare(strict_types = 1);
 
 namespace App\Security\AccessKey;
 
-use App\Category\CategoryServiceInterface;
+use App\Services\Category\CategoryServiceInterface;
 use App\Entity\Category;
 use App\Entity\Item;
 use App\Entity\User;
 use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadRequestException;
 use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\UnauthorizedException;
-use App\Item\ItemServiceInterface;
+use App\Services\Item\ItemServiceInterface;
 use App\Repository\CategoryRepository;
 use App\Repository\ItemRepository;
-use App\Security\AccessKeyRateLimiterInterface;
+use App\Security\Limiter\AccessKeyRateLimiterInterface;
 use App\Security\SignedUrlServiceInterface;
 use LogicException;
 use Override;
