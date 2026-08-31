@@ -6,9 +6,6 @@ export interface WhoAmIResponse {
   email: string;
 }
 
-// TestRequestDTO requires a valid-looking email, but ignores its value — see TestController.
-const IGNORED_VALIDATION_PLACEHOLDER = "whoami@pouch.local";
-
 export const sessionApi = createApi({
   reducerPath: "sessionApi",
   baseQuery: axiosBaseQuery(),
@@ -16,9 +13,8 @@ export const sessionApi = createApi({
   endpoints: (builder) => ({
     whoAmI: builder.query<WhoAmIResponse, void>({
       query: () => ({
-        url: ApiEndpoints.TEST,
-        method: "POST",
-        data: { email: IGNORED_VALIDATION_PLACEHOLDER },
+        url: ApiEndpoints.WHOAMI,
+        method: "GET",
       }),
     }),
   }),

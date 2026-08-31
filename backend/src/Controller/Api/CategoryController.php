@@ -4,11 +4,8 @@ declare(strict_types = 1);
 
 namespace App\Controller\Api;
 
-use App\ControllerHelper\Traits\AuthorizesRequestsTrait;
 use App\ControllerHelper\Factory\StreamedFileResponseFactoryInterface;
-use App\Services\Audit\AuditLoggerInterface;
-use App\Services\Category\CategoryExportServiceInterface;
-use App\Services\Category\CategoryServiceInterface;
+use App\ControllerHelper\Traits\AuthorizesRequestsTrait;
 use App\DTO\Mapper\CategoryMapper;
 use App\DTO\Request\CategoryCreateRequestDTO;
 use App\DTO\Request\CategoryMoveRequestDTO;
@@ -27,13 +24,13 @@ use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\Unauth
 use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\UnauthorizedExceptionModel;
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentException;
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentExceptionModel;
-use App\Security\AccessKey\AccessKeyGuardInterface;
 use App\Security\AuthorizationServiceInterface;
-use App\Security\SignedUrlServiceInterface;
 use App\Security\Voter\CategoryVoter;
+use App\Services\Audit\AuditLoggerInterface;
+use App\Services\Category\CategoryExportServiceInterface;
+use App\Services\Category\CategoryExportTokenServiceInterface;
+use App\Services\Category\CategoryServiceInterface;
 use App\Services\Request\RequestServiceInterface;
-use DateTimeImmutable;
-use DateTimeInterface;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -44,15 +41,6 @@ use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Serializer\Encoder\JsonEncoder;
 use Symfony\Component\Serializer\Exception\ExceptionInterface as SerializerExceptionInterface;
 use Symfony\Component\Serializer\SerializerInterface;
-
-use function base64_decode;
-use function base64_encode;
-use function hash;
-use function is_array;
-use function is_int;
-use function is_string;
-use function json_decode;
-use function json_encode;
 
 /**
  * Every action checks auth first (401 if there's no valid access token at all),
@@ -79,9 +67,9 @@ final class CategoryController extends AbstractController
         private readonly AuthorizationServiceInterface $authorizationService,
         private readonly CategoryServiceInterface $categoryService,
         private readonly CategoryExportServiceInterface $categoryExportService,
+        private readonly CategoryExportTokenServiceInterface $categoryExportTokenService,
         private readonly AuditLoggerInterface $auditLogger,
         private readonly SerializerInterface $serializer,
-        private readonly SignedUrlServiceInterface $signedUrlService,
         private readonly StreamedFileResponseFactoryInterface $streamedFileResponseFactory,
     ) {}
 
@@ -316,13 +304,6 @@ final class CategoryController extends AbstractController
     }
 
     /**
-     * Post-review fix: mints the short-lived (EXPORT_TOKEN_TTL_SECONDS)
-     * token export()/backup() expect on "?token=" — see that param's own doc
-     * comment for why this replaced relaying grants directly in the URL.
-     * Called as a normal AJAX POST (not a navigation), so it can set the
-     * usual X-Pouch-Access-Grants header without issue; the token it returns
-     * is what then goes on the actual download link.
-     *
      * @throws UnauthorizedException
      * @throws ForbiddenException
      * @throws NotFoundException
@@ -350,16 +331,12 @@ final class CategoryController extends AbstractController
         // for an export that's guaranteed to fail once actually requested.
         $this->categoryService->getById($id);
 
-        $responseDTO = $this->issueExportToken($id, $user->getId(), $request);
+        $responseDTO = $this->categoryExportTokenService->issue($id, $user->getId(), $request);
 
         return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
     }
 
     /**
-     * Part 9. Streams a ZIP of the whole (sub)tree — see
-     * CategoryExportServiceInterface::buildZip() for what goes in and how
-     * Part 7 locks are handled (filtered out, not a hard failure).
-     *
      * @throws UnauthorizedException
      * @throws ForbiddenException
      * @throws NotFoundException
@@ -385,7 +362,7 @@ final class CategoryController extends AbstractController
     {
         $user = $this->assertGranted(CategoryVoter::VIEW);
 
-        $this->applyExportToken($request, $id, $user->getId());
+        $this->categoryExportTokenService->apply($request, $id, $user->getId());
 
         $category = $this->categoryService->getById($id);
         $zipPath = $this->categoryExportService->buildZip($id, $request);
@@ -395,93 +372,5 @@ final class CategoryController extends AbstractController
             downloadName: $category->getName() . '.zip',
             contentType: 'application/zip',
         );
-    }
-
-    /**
-     * Post-review fix: a plain navigation/download link (frontend's
-     * triggerDownload.ts, used so the ZIP streams instead of being buffered
-     * as a Blob) can't set the X-Pouch-Access-Grants header, so a grant
-     * earned earlier in the session was silently invisible to export() and
-     * CategoryExportService quietly skipped every locked item as if nothing
-     * had ever been unlocked.
-     *
-     * An earlier version of this fix relayed the grants themselves on a
-     * "?grants=" query parameter — technically no worse than the header
-     * they already travel on (each one's individually signed and scoped),
-     * but still real content sitting in browser history and proxy access
-     * logs, and unbounded in size (enough grants and the URL trips a
-     * request-line length limit). This mints a fixed-size, opaque,
-     * short-lived (EXPORT_TOKEN_TTL_SECONDS) token instead — the grants
-     * still ride inside it (HMAC-signed, not encrypted: they're the
-     * requesting user's own, not a secret from them), but the *token* is
-     * all that ever appears in the URL/logs/history, and it's worthless
-     * again a minute later.
-     */
-    private const int EXPORT_TOKEN_TTL_SECONDS = 60;
-
-    private function issueExportToken(int $categoryId, int $userId, Request $request): CategoryExportTokenResponseDTO
-    {
-        $grantsJson = $request->headers->get(AccessKeyGuardInterface::GRANTS_HEADER) ?? '[]';
-        $resource = $this->exportTokenResource($categoryId, $userId, $grantsJson);
-        $signed = $this->signedUrlService->sign($resource, self::EXPORT_TOKEN_TTL_SECONDS);
-
-        $token = base64_encode((string) json_encode([
-            'grants'    => $grantsJson,
-            'resource'  => $resource,
-            'expires'   => $signed['expires'],
-            'signature' => $signed['signature'],
-        ]));
-
-        return new CategoryExportTokenResponseDTO(
-            token: $token,
-            expiresAt: new DateTimeImmutable('@' . $signed['expires'])->format(DateTimeInterface::ATOM),
-        );
-    }
-
-    /**
-     * Decodes/verifies "?token=" (silently a no-op if it's missing, expired,
-     * tampered with, or was minted for a different category/user — same
-     * "just export without whatever grant should've applied" leniency
-     * export() already had for a missing/invalid grant) and, if valid,
-     * applies the grants it carries the same way the header normally would.
-     */
-    private function applyExportToken(Request $request, int $categoryId, int $userId): void
-    {
-        $token = $request->query->get('token');
-        if (null === $token || '' === $token) {
-            return;
-        }
-
-        $decoded = json_decode(base64_decode($token, true) ?: '', true);
-        if (false === is_array($decoded)) {
-            return;
-        }
-
-        $grantsJson = $decoded['grants'] ?? null;
-        $resource = $decoded['resource'] ?? null;
-        $expires = $decoded['expires'] ?? null;
-        $signature = $decoded['signature'] ?? null;
-
-        if (false === is_string($grantsJson) || false === is_string($resource) || false === is_int($expires) || false === is_string($signature)) {
-            return;
-        }
-
-        // The resource embeds a hash of $grantsJson — a token can't be
-        // replayed with substituted grants, or against a different category/
-        // user than it was minted for.
-        if ($resource !== $this->exportTokenResource($categoryId, $userId, $grantsJson)) {
-            return;
-        }
-
-        if (false === $this->signedUrlService->isValid($resource, $expires, $signature)) {
-            return;
-        }
-
-        $request->headers->set(AccessKeyGuardInterface::GRANTS_HEADER, $grantsJson);
-    }
-
-    private function exportTokenResource(int $categoryId, int $userId, string $grantsJson): string
-    {
-        return 'category-export:' . $categoryId . ':u' . $userId . ':' . hash('sha256', $grantsJson);
     }
 }

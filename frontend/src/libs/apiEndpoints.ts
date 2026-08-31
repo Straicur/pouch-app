@@ -3,7 +3,7 @@ export const ApiEndpoints = {
   LOGIN: "/api/login",
   LOGOUT: "/api/logout",
   REFRESH_TOKEN: "/api/auth/token/refresh",
-  TEST: "/api/test",
+  WHOAMI: "/api/whoami",
   ITEMS: "/api/items",
   ITEM: (id: number) => `/api/items/${id}`,
   ITEM_FILES: "/api/items/files",

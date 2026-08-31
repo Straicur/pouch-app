@@ -297,7 +297,27 @@ w code review.
   (`Response::HTTP_BAD_REQUEST`, nie `400`).
 - **Controller jest cienki.** Odpowiada tylko za: request → DTO (przez
   `RequestService`, patrz niżej), wywołanie serwisu/serwisów, zwrócenie
-  response. Logika domenowa mieszka w serwisach, nie w akcji kontrolera.
+  response. Logika domenowa mieszka w serwisach, nie w akcji kontrolera —
+  jeśli w kontrolerze przybywa prywatnych metod, które coś liczą/budują/
+  parsują (nie tylko wołają serwis i mapują wynik na response), to sygnał, że
+  ta logika ma wyjechać, nie zostać "bo to tylko kilka metod pomocniczych".
+  Dwa miejsca, gdzie to ląduje, zależnie od charakteru:
+  - **Logika domenowa/biznesowa** (cokolwiek, co dałoby się przetestować
+    samodzielnie, bez requestu/response'u — np. wystawianie i weryfikacja
+    podpisanego tokenu, jak `CategoryExportTokenService`) → nowy serwis pod
+    `src/Services/<Domena>/`, z interfejsem, jak każdy inny (patrz "Serwisy
+    programuje się przeciwko interfejsom" wyżej). Realny przykład: eksport
+    kategorii kiedyś miał `issueExportToken()`/`applyExportToken()`/
+    `exportTokenResource()` wprost w `CategoryController` — wydzielone do
+    `CategoryExportTokenServiceInterface`/`CategoryExportTokenService`.
+  - **Logika typowo kontrolerowa** — nie niesie reguł biznesowych, tylko
+    obsługuje mechanikę samego HTTP/kontrolera (budowanie response'u
+    określonego kształtu, streaming pliku z tymczasowym sprzątaniem,
+    delegacja auth+voter) → `src/ControllerHelper/` (patrz "Struktura
+    katalogów" wyżej — `Traits/AuthorizesRequestsTrait`,
+    `Factory/StreamedFileResponseFactory`). Rozróżnienie: gdyby tę logikę dało
+    się przetestować bez żadnego kontekstu requestu/response'u, to serwis, nie
+    `ControllerHelper`.
 - **`readonly class`** dla obiektów w pełni niemutowalnych (wszystkie
   properties `readonly`) — czytelniejsze niż `readonly` na każdej
   właściwości osobno, gdy dotyczy to całej klasy (typowo: DTO, value

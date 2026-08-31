@@ -263,8 +263,8 @@ final class AdminController extends AbstractController
     /**
      * @throws UnauthorizedException
      * @throws ForbiddenException
-     * @throws NotFoundException             if any itemId doesn't exist
-     * @throws BadRequestException           if the resulting expiry isn't in the future
+     * @throws NotFoundException
+     * @throws BadRequestException
      * @throws UnprocessableContentException
      * @throws SerializerExceptionInterface
      */

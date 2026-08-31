@@ -911,15 +911,6 @@ final class ItemController extends AbstractController
     }
 
     /**
-     * Part 9. Reuses the exact same signed-URL mechanism as download-link/
-     * thumbnail-link (product doc: "naturalne rozszerzenie mechanizmu
-     * podpisanych URL-i... tu tylko dłuższy TTL podpisu i świadome kliknięcie
-     * 'udostępnij'") — download()/thumbnail() themselves are untouched, a
-     * signature they accept doesn't care whether it came from here or from
-     * downloadLink()/thumbnailLink(). Requires an access key grant to
-     * *generate* (this is still an authenticated, in-app action), same as
-     * every other item-touching endpoint — but the resulting links need none,
-     * on purpose: that's the whole point of sharing outside the app.
      *
      * @throws UnauthorizedException
      * @throws ForbiddenException
@@ -962,12 +953,7 @@ final class ItemController extends AbstractController
     }
 
     /**
-     * The public, unauthenticated counterpart to get() — no auth/voter/key
-     * check (see the class docblock), deliberately a curated subset of
-     * fields (see PublicItemResponseDTO), reachable only with a valid
-     * signature minted by publicLink() above.
-     *
-     * @throws ForbiddenException           invalid or expired signature
+     * @throws ForbiddenException
      * @throws NotFoundException
      * @throws SerializerExceptionInterface
      */
