@@ -31,7 +31,9 @@ Monorepo: Symfony API backend + React SPA frontend, run together via Docker Comp
 
 Then:
 
-- Frontend (Vite dev server, HMR): `http://localhost:5173`
+- Frontend (Vite dev server, HMR): `http://localhost:5174` (host port only — port 5173
+  was already taken by another project's container on this machine; Vite itself still
+  listens on 5173 inside the container)
 - Backend API: `http://localhost:8111`, docs at `http://localhost:8111/api/doc`
 - MinIO console (S3-compatible object storage, for links/photos/files): `http://localhost:9001`
   (credentials from `.env`, default `pouch` / `pouch-dev-secret`)

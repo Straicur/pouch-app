@@ -56,7 +56,7 @@ help:
 start: env-setup up composer-install jwt-keypair test-env-jwt migrate-dev
 	@echo ""
 	@echo "Pouch is up:"
-	@echo "  frontend:      http://localhost:5173"
+	@echo "  frontend:      http://localhost:5174"
 	@echo "  backend:       http://localhost:8111  (docs: http://localhost:8111/api/doc)"
 	@echo "  minio console: http://localhost:9001"
 

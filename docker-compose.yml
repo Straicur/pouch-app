@@ -114,7 +114,10 @@ services:
         container_name: pouch_frontend
         restart: unless-stopped
         ports:
-            - "5173:5173"
+            # Host port 5174, not 5173 — 5173 is already taken by another
+            # project's container on this machine. Vite itself still listens
+            # on 5173 inside the container (see frontend/vite.config.ts).
+            - "5174:5173"
         environment:
             VITE_API_PROXY_TARGET: http://nginx:80
         depends_on:
