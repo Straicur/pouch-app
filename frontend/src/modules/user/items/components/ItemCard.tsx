@@ -218,21 +218,20 @@ function DownloadButton({ item }: DownloadButtonProps) {
   const [getDownloadLink, { isLoading }] = useGetItemDownloadLinkMutation();
 
   const handleDownload = async () => {
-    // Post-review fix: open the tab synchronously, inside the click handler
-    // — that's still counted as a direct user gesture. Setting its location
-    // only after the awaited request resolves (i.e. calling window.open()
-    // itself post-await) risks the browser's popup blocker stepping in,
-    // especially on Safari/iOS.
-    const tab = window.open("", "_blank", "noreferrer");
-
     try {
       const link = await getDownloadLink(item.id).unwrap();
-
-      if (null !== tab) {
-        tab.location.href = link.url;
-      }
+      // Post-review fix: window.open("", "_blank", "noreferrer") — the
+      // previous attempt at dodging the popup-blocker — doesn't actually
+      // work: "noreferrer" implies "noopener", and with "noopener" set,
+      // window.open()'s return value is always null (there's no window
+      // reference to hand back), so `tab.location.href = ...` never ran and
+      // the user was left staring at a permanently blank tab. The signed
+      // download URL itself responds with Content-Disposition: attachment
+      // (see ItemController::download()), so navigating the *current* tab
+      // triggers a download without leaving the app — no popup, no
+      // blocker, nothing that can silently no-op.
+      window.location.assign(link.url);
     } catch {
-      tab?.close();
       toastUtil.showToast(t("items.downloadError"), "error");
     }
   };

@@ -5,13 +5,20 @@ declare(strict_types = 1);
 namespace App\Tests\Item\Scraper;
 
 use App\Item\Scraper\OpenGraphScraper;
+use App\Item\Scraper\SafeUrlFetcher;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 class OpenGraphScraperTest extends TestCase
 {
+    private function scraper(HttpClientInterface $client): OpenGraphScraper
+    {
+        return new OpenGraphScraper(new SafeUrlFetcher($client));
+    }
+
     public function testExtractsOpenGraphTitleDescriptionImageAndVisibleText(): void
     {
         $html = <<<'HTML'
@@ -31,7 +38,7 @@ class OpenGraphScraperTest extends TestCase
             HTML;
 
         $client = new MockHttpClient(new MockResponse($html, ['response_headers' => ['content-type' => 'text/html']]));
-        $scraper = new OpenGraphScraper($client);
+        $scraper = $this->scraper($client);
 
         $scraped = $scraper->scrape('https://example.com/article');
 
@@ -47,7 +54,7 @@ class OpenGraphScraperTest extends TestCase
     {
         $html = '<html><head><title>Plain Title</title></head><body><p>Text</p></body></html>';
         $client = new MockHttpClient(new MockResponse($html, ['response_headers' => ['content-type' => 'text/html']]));
-        $scraper = new OpenGraphScraper($client);
+        $scraper = $this->scraper($client);
 
         $scraped = $scraper->scrape('https://example.com/');
 
@@ -55,15 +62,34 @@ class OpenGraphScraperTest extends TestCase
         self::assertNull($scraped->imageUrl);
     }
 
-    public function testResolvesRelativeImageUrlAgainstThePageOrigin(): void
+    public function testResolvesARootRelativeImageUrlAgainstTheOrigin(): void
     {
         $html = '<html><head><meta property="og:image" content="/img/cover.png"></head><body>text</body></html>';
         $client = new MockHttpClient(new MockResponse($html, ['response_headers' => ['content-type' => 'text/html']]));
-        $scraper = new OpenGraphScraper($client);
+        $scraper = $this->scraper($client);
 
         $scraped = $scraper->scrape('https://example.com/some/page');
 
         self::assertSame('https://example.com/img/cover.png', $scraped->imageUrl);
+    }
+
+    /**
+     * Post-review fix: a *document*-relative reference (no leading "/") used
+     * to be docked onto the origin unconditionally — "cover.jpg" on
+     * https://example.com/articles/123/page.html came out as
+     * https://example.com/cover.jpg instead of the correct
+     * https://example.com/articles/123/cover.jpg (RFC 3986 §5.3's "merge"
+     * step, which UrlResolver now actually implements).
+     */
+    public function testResolvesADocumentRelativeImageUrlAgainstTheCurrentPath(): void
+    {
+        $html = '<html><head><meta property="og:image" content="cover.jpg"></head><body>text</body></html>';
+        $client = new MockHttpClient(new MockResponse($html, ['response_headers' => ['content-type' => 'text/html']]));
+        $scraper = $this->scraper($client);
+
+        $scraped = $scraper->scrape('https://example.com/articles/123/page.html');
+
+        self::assertSame('https://example.com/articles/123/cover.jpg', $scraped->imageUrl);
     }
 
     /**
@@ -79,7 +105,7 @@ class OpenGraphScraperTest extends TestCase
         $client = new MockHttpClient(
             new MockResponse('', ['http_code' => 302, 'response_headers' => ['location' => 'http://169.254.169.254/latest/meta-data/']]),
         );
-        $scraper = new OpenGraphScraper($client);
+        $scraper = $this->scraper($client);
 
         $this->expectException(RuntimeException::class);
 
@@ -102,7 +128,7 @@ class OpenGraphScraperTest extends TestCase
 
             return new MockResponse($html, ['response_headers' => ['content-type' => 'text/html']]);
         });
-        $scraper = new OpenGraphScraper($client);
+        $scraper = $this->scraper($client);
 
         $scraped = $scraper->scrape('https://example.com/start');
 

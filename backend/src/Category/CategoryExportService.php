@@ -40,19 +40,19 @@ class CategoryExportService implements CategoryExportServiceInterface
     #[Override]
     public function buildZip(int $categoryId, Request $request): string
     {
-        return $this->buildZipFromRoots([$this->categoryService->getById($categoryId)], $request);
+        return $this->buildZipFromRoots([$this->categoryService->getById($categoryId)], $request, bypassLocks: false);
     }
 
     #[Override]
     public function buildFullBackupZip(Request $request): string
     {
-        return $this->buildZipFromRoots($this->categoryRepository->findRootCategories(), $request);
+        return $this->buildZipFromRoots($this->categoryRepository->findRootCategories(), $request, bypassLocks: true);
     }
 
     /**
      * @param list<Category> $roots each becomes its own top-level folder
      */
-    private function buildZipFromRoots(array $roots, Request $request): string
+    private function buildZipFromRoots(array $roots, Request $request, bool $bypassLocks): string
     {
         $zipPath = tempnam(sys_get_temp_dir(), 'pouch-export-');
         if (false === $zipPath) {
@@ -71,7 +71,7 @@ class CategoryExportService implements CategoryExportServiceInterface
 
         try {
             foreach ($roots as $root) {
-                $this->addCategoryToZip($zip, $root, '', $request, $tmpItemFiles);
+                $this->addCategoryToZip($zip, $root, '', $request, $tmpItemFiles, $bypassLocks);
             }
 
             $zip->close();
@@ -87,7 +87,7 @@ class CategoryExportService implements CategoryExportServiceInterface
     /**
      * @param list<string> $tmpItemFiles
      */
-    private function addCategoryToZip(ZipArchive $zip, Category $category, string $basePath, Request $request, array &$tmpItemFiles): void
+    private function addCategoryToZip(ZipArchive $zip, Category $category, string $basePath, Request $request, array &$tmpItemFiles, bool $bypassLocks): void
     {
         $dirPath = $basePath . $this->sanitize($category->getName()) . '/';
         // Ensures even an empty (sub)category still shows up in the archive
@@ -97,7 +97,7 @@ class CategoryExportService implements CategoryExportServiceInterface
         $usedNames = [];
 
         foreach ($this->itemRepository->findFiltered(new ItemListFilter(categoryId: $category->getId())) as $item) {
-            if (false === $this->accessKeyGuard->isItemUnlocked($item, $request)) {
+            if (false === $bypassLocks && false === $this->accessKeyGuard->isItemUnlocked($item, $request)) {
                 continue;
             }
 
@@ -105,7 +105,7 @@ class CategoryExportService implements CategoryExportServiceInterface
         }
 
         foreach ($category->getChildren() as $child) {
-            $this->addCategoryToZip($zip, $child, $dirPath, $request, $tmpItemFiles);
+            $this->addCategoryToZip($zip, $child, $dirPath, $request, $tmpItemFiles, $bypassLocks);
         }
     }
 

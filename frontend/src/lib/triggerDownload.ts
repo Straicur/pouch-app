@@ -1,3 +1,5 @@
+import { accessGrants } from "./accessGrants";
+
 // Category export / admin backup (Parts 9–10) stream the ZIP straight from
 // an authenticated endpoint.
 //
@@ -11,6 +13,23 @@
 // request already carries (see httpClient's baseURL — same origin), and both
 // endpoints set Content-Disposition: attachment, so the browser downloads
 // the file without leaving the current page or reloading the SPA.
+//
+// Post-review fix #2: a plain navigation can't carry the
+// X-Pouch-Access-Grants header httpClient's interceptor normally attaches —
+// without it, CategoryExportService silently treated every locked category/
+// item as if it had never been unlocked. The exact same (already signed,
+// already short-lived) grants ride along as a "grants" query parameter
+// instead; CategoryController::export() relays it back onto the header
+// AccessKeyGuard actually reads. Harmless to always include, even for the
+// admin backup endpoint, which ignores it (bypasses locks entirely).
 export const triggerDownload = (url: string): void => {
-  window.location.assign(url);
+  const grants = accessGrants.toHeaderValue();
+
+  if (undefined === grants) {
+    window.location.assign(url);
+    return;
+  }
+
+  const separator = url.includes("?") ? "&" : "?";
+  window.location.assign(`${url}${separator}grants=${encodeURIComponent(grants)}`);
 };

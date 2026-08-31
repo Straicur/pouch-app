@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace App\MessageHandler;
 
 use App\Item\Scraper\OpenGraphScraperInterface;
+use App\Item\Scraper\SafeUrlFetcherInterface;
 use App\Item\ThumbnailServiceInterface;
 use App\Message\ScrapeUrlMessage;
 use App\Repository\ItemRepository;
@@ -12,7 +13,6 @@ use App\Storage\StorageServiceInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Uid\Uuid;
-use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Throwable;
 
 use function explode;
@@ -49,7 +49,7 @@ final readonly class ScrapeUrlMessageHandler
         private OpenGraphScraperInterface $scraper,
         private ThumbnailServiceInterface $thumbnailService,
         private StorageServiceInterface $storageService,
-        private HttpClientInterface $httpClient,
+        private SafeUrlFetcherInterface $safeUrlFetcher,
         private LoggerInterface $logger,
     ) {}
 
@@ -88,6 +88,13 @@ final readonly class ScrapeUrlMessageHandler
     /**
      * A missing/unfetchable/non-image OG thumbnail isn't a scrape failure —
      * title/description/text are still useful without it.
+     *
+     * Post-review fix: this used to call httpClient->request() directly,
+     * with none of the SSRF protection OpenGraphScraper's own page fetch
+     * has — a page's og:image is exactly as attacker-controlled as the page
+     * itself, so it needs the same treatment (SafeUrlFetcher: DNS-resolved
+     * host check + IP pinning + re-validated on every redirect hop, not just
+     * this first request).
      */
     private function tryDownloadThumbnail(string $imageUrl, int $itemId): ?string
     {
@@ -95,7 +102,7 @@ final readonly class ScrapeUrlMessageHandler
         $thumbnailPath = null;
 
         try {
-            $response = $this->httpClient->request('GET', $imageUrl, ['timeout' => 10]);
+            $response = $this->safeUrlFetcher->fetch($imageUrl, ['timeout' => 10]);
             $contentType = $response->getHeaders()['content-type'][0] ?? '';
             $mimeType = explode(';', $contentType)[0];
 
@@ -120,7 +127,7 @@ final readonly class ScrapeUrlMessageHandler
 
             $downloadedBytes = 0;
 
-            foreach ($this->httpClient->stream($response, 10) as $chunk) {
+            foreach ($this->safeUrlFetcher->stream($response, 10) as $chunk) {
                 $content = $chunk->getContent();
                 $downloadedBytes += strlen($content);
 

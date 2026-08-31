@@ -44,20 +44,16 @@ export function VersionHistory({ itemId }: VersionHistoryProps) {
   };
 
   const handleDownload = async (version: number) => {
-    // Post-review fix: same reasoning as ItemCard's DownloadButton — open
-    // the tab synchronously during the click, then point it at the link
-    // once the request resolves, instead of calling window.open() after an
-    // await (popup-blocker risk).
-    const tab = window.open("", "_blank", "noreferrer");
-
     try {
       const link = await getVersionDownloadLink({ id: itemId, version }).unwrap();
-
-      if (null !== tab) {
-        tab.location.href = link.url;
-      }
+      // Post-review fix: see ItemCard's DownloadButton — window.open("",
+      // "_blank", "noreferrer") never actually worked ("noreferrer" implies
+      // "noopener", which makes window.open()'s return value always null,
+      // so the tab could never be pointed at the link). Same-tab navigation
+      // instead — the signed URL responds with Content-Disposition:
+      // attachment, so this downloads without leaving the app.
+      window.location.assign(link.url);
     } catch {
-      tab?.close();
       toastUtil.showToast(t("versions.downloadError"), "error");
     }
   };

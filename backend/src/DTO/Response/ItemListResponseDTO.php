@@ -5,12 +5,15 @@ declare(strict_types = 1);
 namespace App\DTO\Response;
 
 /**
- * Post-review fix: GET /api/items' paginated envelope — $total is the count
- * matching the filter *before* Part 7 lock-filtering removes any the caller
- * doesn't currently have a grant for (ItemController::list()), so a locked
- * item still counts towards pagination/"how many are there" the same way a
- * page of results that happens to contain one would look one item short
- * without ever being wrong about *why*.
+ * GET /api/items' paginated envelope. $total is ACL-aware — a locked
+ * category/item the caller has no valid grant for is excluded from the
+ * query before COUNT/OFFSET/LIMIT ever run (AccessKeyGuard::
+ * lockedCategoryIds()/lockedItemIdsWithOwnKey(), threaded through
+ * ItemController::list() into ItemRepository::findFilteredPage()) — an
+ * earlier version of this excluded locked items only *after* fetching a
+ * page, which both leaked how many hidden items existed (via $total) and
+ * could make a page come back short, or empty, while unlocked items sat on
+ * the next one.
  */
 class ItemListResponseDTO
 {

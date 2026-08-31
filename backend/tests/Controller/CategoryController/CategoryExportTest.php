@@ -28,16 +28,26 @@ class CategoryExportTest extends WebTest
 {
     private User $user;
 
+    private User $admin;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->user = $this->databaseMockManager->createUser(new UserTestDTO('export-user@example.com', 'zaq12wsx'));
+        $this->admin = $this->databaseMockManager->createUser(
+            new UserTestDTO('export-admin@example.com', 'zaq12wsx', ['ROLE_ADMIN'])
+        );
     }
 
     private function auth(): void
     {
         $this->setAuthCookie($this->databaseMockManager->loginUser($this->user));
+    }
+
+    private function authAsAdmin(): void
+    {
+        $this->setAuthCookie($this->databaseMockManager->loginUser($this->admin));
     }
 
     private function uploadFile(int $categoryId, string $content, string $filename): void
@@ -83,6 +93,14 @@ class CategoryExportTest extends WebTest
         self::assertResponseStatusCodeSame(Response::HTTP_OK);
         self::assertSame('application/zip', $this->webClient->getResponse()->headers->get('Content-Type'));
 
+        return $this->readZipEntries();
+    }
+
+    /**
+     * @return array<string, string> zip entry name => contents, for every non-directory entry
+     */
+    private function readZipEntries(): array
+    {
         $zipPath = tempnam(sys_get_temp_dir(), 'pouch-export-test-read-');
         file_put_contents($zipPath, (string) $this->webClient->getInternalResponse()->getContent());
 
@@ -188,5 +206,84 @@ class CategoryExportTest extends WebTest
 
         self::assertArrayHasKey('Collisions/same.md', $entries);
         self::assertArrayHasKey('Collisions/same (2).md', $entries);
+    }
+
+    /**
+     * Post-review fix: a plain navigation (what the frontend's
+     * triggerDownload.ts actually uses, so the ZIP streams) can't set the
+     * X-Pouch-Access-Grants header — the grant now has to be relayed via a
+     * "grants" query parameter instead, which CategoryController::export()
+     * puts back onto the header AccessKeyGuard reads.
+     */
+    public function testExportWithGrantViaQueryParamIncludesUnlockedContent(): void
+    {
+        $root = $this->databaseMockManager->createCategory('Mixed');
+        $locked = $this->databaseMockManager->createCategory('Locked', $root);
+
+        $this->uploadFile($locked->getId(), 'secret content', 'secret.txt');
+
+        $this->auth();
+        $this->webClient->request(
+            method: Request::METHOD_PUT,
+            uri: "/api/categories/{$locked->getId()}/access-key",
+            content: json_encode(['key' => 'sekret123']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_NO_CONTENT);
+
+        $this->auth();
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: "/api/categories/{$locked->getId()}/unlock",
+            content: json_encode(['key' => 'sekret123']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+        $grant = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+
+        $this->entityManager->clear();
+
+        $this->auth();
+        $this->webClient->request(
+            method: Request::METHOD_GET,
+            uri: "/api/categories/{$root->getId()}/export?grants=" . urlencode((string) json_encode([$grant])),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+
+        $entries = $this->readZipEntries();
+
+        self::assertArrayHasKey('Mixed/Locked/secret.txt', $entries);
+        self::assertSame('secret content', $entries['Mixed/Locked/secret.txt']);
+    }
+
+    /**
+     * Post-review fix: the admin's full backup (same buildZipFromRoots()
+     * codepath, `bypassLocks: true`) is a deliberately different action from
+     * an ordinary category export — it always includes everything, with no
+     * grant needed at all.
+     */
+    public function testAdminBackupIncludesLockedContentWithoutAnyGrant(): void
+    {
+        $root = $this->databaseMockManager->createCategory('Backup root');
+        $locked = $this->databaseMockManager->createCategory('Locked', $root);
+
+        $this->uploadFile($locked->getId(), 'secret content', 'secret.txt');
+
+        $this->auth();
+        $this->webClient->request(
+            method: Request::METHOD_PUT,
+            uri: "/api/categories/{$locked->getId()}/access-key",
+            content: json_encode(['key' => 'sekret123']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_NO_CONTENT);
+
+        $this->entityManager->clear();
+
+        $this->authAsAdmin();
+        $this->webClient->request(method: Request::METHOD_GET, uri: '/api/admin/backup');
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+
+        $entries = $this->readZipEntries();
+
+        self::assertArrayHasKey('Backup root/Locked/secret.txt', $entries);
+        self::assertSame('secret content', $entries['Backup root/Locked/secret.txt']);
     }
 }

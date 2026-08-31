@@ -488,6 +488,119 @@ realna weryfikacja (testy, PHPStan, migracja) czeka na kontenery.
 
 ---
 
+## Część 13 — Druga runda code review
+
+Osiem znalezisk (4 P1, 4 P2), wszystkie naprawione:
+
+- [x] **[P1] Pobieranie `og:image` nadal umożliwiało SSRF.**
+      `ScrapeUrlMessageHandler::tryDownloadThumbnail()` wołało
+      `httpClient->request()` wprost, bez żadnej z zabezpieczeń, jakie strona
+      dostała w Części 12. Nowy współdzielony `Item\Scraper\SafeUrlFetcher`
+      (+ `SafeUrlFetcherInterface`) — jedno miejsce na "bezpieczny fetch
+      dowolnego URL-a": wyłącza auto-podążanie za przekierowaniami
+      (`max_redirects: 0`), samodzielnie idzie za `Location`, na **każdym**
+      hopie woła `UrlValidator::assertValidAndPin()` (DNS + zakres IP) i
+      **przypina request do zweryfikowanego IP** przez opcję `resolve`
+      Symfony HttpClient — zamyka też lukę DNS rebindingu (czas między
+      sprawdzeniem a realnym połączeniem). Używane teraz zarówno przez
+      `OpenGraphScraper` (HTML), jak i `ScrapeUrlMessageHandler` (obrazek).
+      Test: `ScrapeUrlMessageHandlerTest::testOgImagePointingAtAPrivateAddressIsSkippedNotFetched`.
+- [x] **[P1] Uwierzytelnianie cookie było podatne na CSRF.** Dwie warstwy:
+      (1) `CookieService` — `SameSite=None` → `SameSite=Lax` (frontend/API są
+      same-origin, "site" w SameSite to domena, nie port, więc nic więcej nie
+      trzeba zmieniać). (2) nowy `OriginCheckSubscriber` — na każdym
+      POST/PUT/PATCH/DELETE sprawdza nagłówek `Origin` (albo `Referer` jako
+      fallback) przeciwko tej samej liście dozwolonych originów co
+      nelmio/cors-bundle (`CORS_ALLOW_ORIGIN`), 403 jeśli się nie zgadza.
+      Wyłączony w env testowym (`.env.test`, `CSRF_ORIGIN_CHECK_ENABLED=0`) —
+      ~150 istniejących testów funkcjonalnych nie wysyła `Origin`, ten sam
+      powód co bumpowanie rate limiterów tam. `OriginCheckSubscriberTest`
+      sprawdza go bezpośrednio (bez pełnego kernela HTTP).
+- [x] **[P1] Eksport i backup pomijały treść chronioną kluczem po cichu, bez
+      komunikatu.** Dwa osobne problemy: (a) `triggerDownload()` (Część 12)
+      to `window.location.assign()` — nawigacja nie może ustawić nagłówka
+      `X-Pouch-Access-Grants`, więc granty zdobyte wcześniej w sesji nigdy
+      nie docierały do backendu. Frontend teraz dokleja te same (już
+      podpisane, już krótkoterminowe) granty jako parametr `?grants=`;
+      `CategoryController::export()` przekłada go z powrotem na nagłówek,
+      który czyta `AccessKeyGuard` (stała `GRANTS_HEADER` przeniesiona na
+      `AccessKeyGuardInterface`, żeby kontroler nie zależał od
+      implementacji). (b) pełny backup admina (`AdminController::backup()`)
+      dostał jawną politykę: **zawsze zawiera wszystko**, bez wyjątków —
+      `CategoryExportService::buildZip()`/`buildFullBackupZip()` mają teraz
+      wewnętrzny `bypassLocks: bool` (`false`/`true` odpowiednio), ten sam
+      wzorzec co bypass admina przy resecie klucza. Testy:
+      `CategoryExportTest::testExportWithGrantViaQueryParamIncludesUnlockedContent`,
+      `testAdminBackupIncludesLockedContentWithoutAnyGrant`.
+- [x] **[P1] Usunięcie kategorii wciąż mogło osierocić pliki w storage.**
+      `ItemRepository::existsActiveInCategories()` (Część 12) filtrował do
+      `trashedAt IS NULL` — kategoria z samymi itemami w koszu (jeszcze nie
+      wyczyszczonymi przez GC) przechodziła usunięcie, a kaskada kasowała je
+      z bazy, zanim `ItemGarbageCollector::purgeTrash()` zdążył posprzątać
+      ich obiekty w S3/MinIO. Metoda przemianowana na
+      `existsInCategories()` i **nie filtruje już po `trashedAt` wcale** —
+      blokuje usunięcie, dopóki w poddrzewie zostaje jakikolwiek item,
+      niezależnie od stanu kosza. Test:
+      `CategoryControllerTest::testDeletingCategoryWithOnlyATrashedUnpurgedItemStillFails`.
+- [x] **[P2] Paginacja liczona przed ACL — puste strony, wyciek liczby
+      ukrytych elementów.** `ItemRepository::findFilteredPage()` liczyło i
+      stronicowało wszystkie pasujące itemy, a dopiero kontroler odsiewał te
+      bez grantu — strona mogła wyjść pusta mimo dostępnych itemów na
+      kolejnej, a `total` zdradzał istnienie zablokowanych danych. Nowe
+      `AccessKeyGuard::lockedCategoryIds()`/`lockedItemIdsWithOwnKey()`
+      (masowo, nie kategoria-po-kategorii) liczą, co jest zablokowane, **przed**
+      zapytaniem — `ItemController::list()` przekazuje te listy do
+      `findFilteredPage()`, które dokłada `NOT IN (...)` do `WHERE` przed
+      `COUNT`/`OFFSET`/`LIMIT`. Post-fetch filtr w kontrolerze zostaje jako
+      tania warstwa defense-in-depth, nie główny mechanizm. Testy: nowy
+      `ItemListPaginationTest` (4 przypadki, w tym
+      `testPageOneIsNotEmptyWhenTheNewestItemsAreLocked` — bezpośrednia
+      regresja opisanego scenariusza).
+- [x] **[P2] Pobieranie plików mogło kończyć się pustą kartą.** Poprawka z
+      Części 12 (`window.open("", "_blank", "noreferrer")` + ustawienie
+      `location.href` po `await`) była wadliwa — `noreferrer` implikuje
+      `noopener`, a przy `noopener` `window.open()` **zawsze** zwraca `null`,
+      więc `tab.location.href = ...` nigdy się nie wykonywało. Zamienione na
+      nawigację w bieżącej karcie (`window.location.assign(link.url)`) —
+      podpisany link ma `Content-Disposition: attachment`, więc pobieranie
+      startuje bez opuszczania aplikacji, bez ryzyka blokady popupów, bez
+      cichego no-opa. `ItemCard.tsx`'s `DownloadButton`,
+      `VersionHistory.tsx`'s `handleDownload`.
+- [x] **[P2] Niepoprawne rozwiązywanie względnych URL-i.** Stary resolver w
+      `OpenGraphScraper` doklejał ścieżkę względną zawsze do originu —
+      `og:image="cover.jpg"` na `https://example.com/articles/123/page.html`
+      dawało `.../cover.jpg` zamiast `.../articles/123/cover.jpg`. Nowy
+      `Item\UrlResolver` (statyczny, bezstanowy) implementuje uproszczony
+      RFC 3986 §5.3 — używany zarówno do `og:image`, jak i do rozwiązywania
+      `Location` przy przekierowaniach w `SafeUrlFetcher`. Test:
+      `OpenGraphScraperTest::testResolvesADocumentRelativeImageUrlAgainstTheCurrentPath`.
+- [x] **[P2] Obowiązkowe checki backendu nie przechodziły.** Dwa konkretne
+      PHPStan błędy w `ItemRepository::findFilteredPage()`'s wyszukiwarkowej
+      gałęzi naprawione: `array_map` nad `array_slice($orderedIds, ...)`
+      zastąpione pętlą z jawnym `isset()` (offset już niepewny dla PHPStan
+      przez ten łańcuch), co też usunęło zbędne opakowujące `array_values()`.
+      `array_filter` w `UrlValidator::resolve()` ma teraz jawny, ścisły
+      callback (był już tak napisany od Części 12, ale to dokładnie ten
+      wzorzec, o który chodziło). Trzy pliki cs-fixera z listy
+      (`OpenGraphScraper.php`, `CategoryServiceInterface.php`,
+      `ItemRepository.php`) zostały w międzyczasie **całkowicie przepisane**
+      w ramach napraw powyższych punktów — numery linii z CR już nie
+      odpowiadają obecnej treści; ręczny przegląd formatowania każdego z nich
+      nie znalazł oczywistych problemów, ale **realne potwierdzenie wymaga
+      odpalenia `make cs`**, nie zostało zasymulowane.
+
+**Weryfikacja:** frontend — `tsc -p tsconfig.app.json --noEmit` i
+`biome check --write src` czysto po każdej rundzie zmian. Backend —
+`make cs`/`make phpstan`/`make test-backend`/migracja **wciąż nie zostały
+uruchomione**: kontenery zatrzymane, brak zgody na ponowne włączenie. Kod
+przejrzany ręcznie (w tym każdy nowy/zmieniony plik pod kątem składni i
+zgodności typów), nowe/zaktualizowane testy opisane przy każdym punkcie —
+realna weryfikacja czeka na kontenery.
+
+**Test ręczny:** ⏳ nie wykonany — te same ograniczenia co w Części 11/12.
+
+---
+
 ## Opcjonalne do naprawy (niezależne od kolejności wyżej)
 
 Nie blokują żadnej części — zrobić przy okazji, kiedy akurat dotykamy powiązanego

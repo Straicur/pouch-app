@@ -26,7 +26,16 @@ final readonly class CookieService implements CookieServiceInterface
             path: '/',
             secure: true,
             httpOnly: true,
-            sameSite: Cookie::SAMESITE_NONE
+            // Post-review fix: was SAMESITE_NONE, which sends the cookie on
+            // cross-site requests too — a third-party page could trigger an
+            // authenticated state-changing request (e.g. AdminController's
+            // bodyless GC-trigger POST) and the browser would attach it.
+            // Frontend and API are same-origin (SameSite's "site" is the
+            // registrable domain, not the port, so localhost:5174 calling
+            // localhost:8080 is already same-site) — Lax needs nothing else
+            // to keep working. See OriginCheckSubscriber for the second,
+            // independent layer on top of this.
+            sameSite: Cookie::SAMESITE_LAX
         );
     }
 
@@ -41,7 +50,16 @@ final readonly class CookieService implements CookieServiceInterface
             path: '/',
             secure: true,
             httpOnly: true,
-            sameSite: Cookie::SAMESITE_NONE
+            // Post-review fix: was SAMESITE_NONE, which sends the cookie on
+            // cross-site requests too — a third-party page could trigger an
+            // authenticated state-changing request (e.g. AdminController's
+            // bodyless GC-trigger POST) and the browser would attach it.
+            // Frontend and API are same-origin (SameSite's "site" is the
+            // registrable domain, not the port, so localhost:5174 calling
+            // localhost:8080 is already same-site) — Lax needs nothing else
+            // to keep working. See OriginCheckSubscriber for the second,
+            // independent layer on top of this.
+            sameSite: Cookie::SAMESITE_LAX
         );
     }
 }

@@ -15,12 +15,13 @@ conflict: "Konflikt z istniejącymi danymi."
 unprocessable_content: "Przesłane dane są nieprawidłowe."
 too_many_requests: "Zbyt wiele prób. Spróbuj ponownie później."
 internal_server_error: "Wystąpił błąd wewnętrzny serwera."
+csrf.origin_not_allowed: "Żądanie odrzucone — nieprawidłowe źródło (Origin/Referer)."
 
 # Category
 category.not_found: "Nie znaleziono kategorii."
 category.move_cycle: "Nie można przenieść kategorii do niej samej ani do jednej z jej podkategorii."
 category.locked: "Ta kategoria jest chroniona kluczem dostępu."
-category.not_empty: "Ta kategoria (albo jedna z jej podkategorii) zawiera aktywne itemy — usuń lub przenieś je najpierw."
+category.not_empty: "Ta kategoria (albo jedna z jej podkategorii) wciąż zawiera itemy — w tym być może w koszu, oczekujące na wyczyszczenie — usuń lub przenieś je najpierw."
 
 # Item (all types)
 item.not_found: "Nie znaleziono itemu."

@@ -85,11 +85,15 @@ interface ItemServiceInterface
     public function list(ItemListFilter $filter): array;
 
     /**
-     * Paginated counterpart of list() — see ItemRepository::findFilteredPage().
+     * Paginated counterpart of list() — see ItemRepository::findFilteredPage(),
+     * including what $excludedCategoryIds/$excludedItemIds are for.
+     *
+     * @param list<int> $excludedCategoryIds
+     * @param list<int> $excludedItemIds
      *
      * @return array{items: list<Item>, total: int}
      */
-    public function listPage(ItemListFilter $filter, int $offset, int $limit): array;
+    public function listPage(ItemListFilter $filter, int $offset, int $limit, array $excludedCategoryIds = [], array $excludedItemIds = []): array;
 
     /** @throws NotFoundException */
     public function delete(int $id): void;

@@ -8,6 +8,8 @@ use App\Entity\Category;
 use App\Entity\Item;
 use App\Entity\User;
 use App\ExceptionManagement\Exceptions\ApiException\ForbiddenException\ForbiddenException;
+use App\Repository\CategoryRepository;
+use App\Repository\ItemRepository;
 use App\Security\SignedUrlServiceInterface;
 use Override;
 use Symfony\Bundle\SecurityBundle\Security;
@@ -23,18 +25,14 @@ use const JSON_THROW_ON_ERROR;
 
 final readonly class AccessKeyGuard implements AccessKeyGuardInterface
 {
-    /**
-     * Grants travel as a JSON array — a request can need more than one at
-     * once (a locked item inside a locked category). The app is stateless
-     * (security.yaml), so this is the only place a client-submitted key
-     * unlock is remembered between requests.
-     */
-    public const string GRANTS_HEADER = 'X-Pouch-Access-Grants';
+    // GRANTS_HEADER now lives on AccessKeyGuardInterface (inherited here) — see its own doc comment.
 
     public function __construct(
         private AccessKeyServiceInterface $accessKeyService,
         private SignedUrlServiceInterface $signedUrlService,
         private Security $security,
+        private CategoryRepository $categoryRepository,
+        private ItemRepository $itemRepository,
     ) {}
 
     /**
@@ -111,6 +109,56 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
         }
 
         return $this->hasValidItemGrant($item, $request);
+    }
+
+    #[Override]
+    public function lockedCategoryIds(Request $request): array
+    {
+        $categories = $this->categoryRepository->findAllOrderedByName();
+        $userId = $this->currentUserId();
+
+        // Memoized per holder — every category sharing an inherited key
+        // resolves to the same holder, so its grant only needs checking once
+        // no matter how many categories are in its subtree.
+        $holderIsLocked = [];
+        $locked = [];
+
+        foreach ($categories as $category) {
+            $holder = $this->accessKeyService->findEffectiveKeyHolder($category);
+            if (null === $holder) {
+                continue;
+            }
+
+            $holderId = $holder->getId();
+            if (false === isset($holderIsLocked[$holderId])) {
+                $holderIsLocked[$holderId] = null === $userId
+                    || false === $this->hasValidGrant($request, AccessKeyResource::forCategory($holderId, $holder->getAccessKeyVersion(), $userId));
+            }
+
+            if ($holderIsLocked[$holderId]) {
+                $locked[] = $category->getId();
+            }
+        }
+
+        return $locked;
+    }
+
+    #[Override]
+    public function lockedItemIdsWithOwnKey(Request $request): array
+    {
+        $userId = $this->currentUserId();
+        $locked = [];
+
+        foreach ($this->itemRepository->findAllWithOwnAccessKey() as $item) {
+            $isUnlocked = null !== $userId
+                && $this->hasValidGrant($request, AccessKeyResource::forItem($item->getId(), $item->getAccessKeyVersion(), $userId));
+
+            if (false === $isUnlocked) {
+                $locked[] = $item->getId();
+            }
+        }
+
+        return $locked;
     }
 
     private function hasValidItemGrant(Item $item, Request $request): bool

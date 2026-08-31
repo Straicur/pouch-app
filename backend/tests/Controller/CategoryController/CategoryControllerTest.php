@@ -272,7 +272,28 @@ class CategoryControllerTest extends WebTest
         self::assertResponseStatusCodeSame(Response::HTTP_CONFLICT);
     }
 
-    private function createNote(int $categoryId): void
+    /**
+     * Post-review fix: the check used to only look at *active* items
+     * (`trashedAt IS NULL`) — a category holding only trashed-but-not-yet-
+     * purged items sailed straight through, and the DB cascade deleted them
+     * before ItemGarbageCollector::purgeTrash() ever got a chance to clean
+     * up their storage objects.
+     */
+    public function testDeletingCategoryWithOnlyATrashedUnpurgedItemStillFails(): void
+    {
+        $category = $this->createCategory('Has a trashed item');
+        $item = $this->createNote($category['id']);
+
+        $this->webClient->request(method: Request::METHOD_DELETE, uri: sprintf('/api/items/%d', $item['id']));
+        self::assertResponseStatusCodeSame(Response::HTTP_NO_CONTENT);
+
+        $this->authAsAdmin();
+        $this->webClient->request(method: Request::METHOD_DELETE, uri: sprintf('/api/categories/%d', $category['id']));
+
+        self::assertResponseStatusCodeSame(Response::HTTP_CONFLICT);
+    }
+
+    private function createNote(int $categoryId): array
     {
         $this->authAsUser();
 
@@ -283,6 +304,8 @@ class CategoryControllerTest extends WebTest
         );
 
         self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+
+        return json_decode((string) $this->webClient->getResponse()->getContent(), true);
     }
 
     public function testDeleteMissingCategoryReturnsNotFound(): void

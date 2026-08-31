@@ -24,6 +24,7 @@ use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\Unauth
 use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\UnauthorizedExceptionModel;
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentException;
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentExceptionModel;
+use App\Security\AccessKey\AccessKeyGuardInterface;
 use App\Security\AuthServiceInterface;
 use App\Security\Voter\CategoryVoter;
 use App\Service\RequestServiceInterface;
@@ -334,7 +335,12 @@ final class CategoryController extends AbstractController
      */
     #[Route('/api/categories/{id}/export', name: 'category_export', requirements: ['id' => '\d+'], methods: [Request::METHOD_GET])]
     #[OA\Get(
-        description: 'Download a category (and its full subtree) as a ZIP, preserving folder structure',
+        description: 'Download a category (and its full subtree) as a ZIP, preserving folder structure. Access-key '
+            . 'grants can arrive either on the usual X-Pouch-Access-Grants header, or — since a plain browser '
+            . 'navigation/download link can\'t set custom headers — the same JSON on a "grants" query parameter.',
+        parameters: [
+            new OA\Parameter(name: 'grants', description: 'Same JSON array X-Pouch-Access-Grants carries, for navigational downloads', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+        ],
         responses: [
             new OA\Response(response: 200, description: 'The archive, streamed'),
         ]
@@ -351,6 +357,8 @@ final class CategoryController extends AbstractController
         if (false === $this->isGranted(CategoryVoter::VIEW)) {
             throw new ForbiddenException();
         }
+
+        $this->relayGrantsQueryParam($request);
 
         $category = $this->categoryService->getById($id);
         $zipPath = $this->categoryExportService->buildZip($id, $request);
@@ -381,5 +389,29 @@ final class CategoryController extends AbstractController
         );
 
         return $response;
+    }
+
+    /**
+     * Post-review fix: a plain navigation/download link (frontend's
+     * triggerDownload.ts, used so the ZIP streams instead of being buffered
+     * as a Blob — see the frontend's own docs) can't set the
+     * X-Pouch-Access-Grants header, so a grant earned earlier in the session
+     * was silently invisible here and CategoryExportService quietly skipped
+     * every locked item as if nothing had ever been unlocked. Each
+     * individual grant is already its own signed, expiring, resource-scoped
+     * token (AccessKeyGuard/SignedUrlService) — relaying the exact same
+     * ones via a query parameter instead of a header doesn't trust anything
+     * new, it just gives this one endpoint another way to receive them.
+     */
+    private function relayGrantsQueryParam(Request $request): void
+    {
+        if (true === $request->headers->has(AccessKeyGuardInterface::GRANTS_HEADER)) {
+            return;
+        }
+
+        $grantsParam = $request->query->get('grants');
+        if (null !== $grantsParam && '' !== $grantsParam) {
+            $request->headers->set(AccessKeyGuardInterface::GRANTS_HEADER, $grantsParam);
+        }
     }
 }

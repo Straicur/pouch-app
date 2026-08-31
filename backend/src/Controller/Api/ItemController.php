@@ -189,15 +189,26 @@ final class ItemController extends AbstractController
         $page = max(1, $request->query->getInt('page', 1));
         $pageSize = min(self::MAX_PAGE_SIZE, max(1, $request->query->getInt('pageSize', self::DEFAULT_PAGE_SIZE)));
 
-        $result = $this->itemService->listPage($filter, offset: ($page - 1) * $pageSize, limit: $pageSize);
+        // Post-review fix: locked categories/items used to be excluded
+        // *after* fetching a page — COUNT/OFFSET/LIMIT ran blind to Part 7
+        // locks, so a page could come back empty while unlocked items sat on
+        // the next one, and $total leaked how many hidden items existed.
+        // Computed once, up front, and passed into the query itself instead
+        // (see ItemRepository::findFilteredPage()'s own doc comment).
+        $excludedCategoryIds = $this->accessKeyGuard->lockedCategoryIds($request);
+        $excludedItemIds = $this->accessKeyGuard->lockedItemIdsWithOwnKey($request);
 
-        // Locked items are filtered out rather than 403ing the whole page —
-        // a list mixes items from different categories/locks, unlike get()/
-        // downloadLink() which are about one specific (and specifically
-        // requested) item. $total above is deliberately the pre-lock-filter
-        // count (see ItemListResponseDTO's own doc comment) — this can make
-        // a page come back with fewer than $pageSize items without $total
-        // being "wrong".
+        $result = $this->itemService->listPage(
+            $filter,
+            offset: ($page - 1) * $pageSize,
+            limit: $pageSize,
+            excludedCategoryIds: $excludedCategoryIds,
+            excludedItemIds: $excludedItemIds,
+        );
+
+        // Every returned item is already ACL-clean by construction — this is
+        // a cheap defense-in-depth double-check, not the primary mechanism
+        // anymore (see above).
         $unlockedItems = array_values(array_filter(
             $result['items'],
             fn (Item $item): bool => $this->accessKeyGuard->isItemUnlocked($item, $request),

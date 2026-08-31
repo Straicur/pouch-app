@@ -84,10 +84,12 @@ class CategoryService implements CategoryServiceInterface
         // S3/MinIO) never got a chance to see items wiped out that way, so
         // their files were orphaned in the bucket forever. Option (a) from
         // the roadmap: block the delete outright while it or any descendant
-        // still holds an active item — trash (or move) them out first, so
-        // GC gets its normal chance to purge their storage, then delete the
-        // now-empty category.
-        if ($this->itemRepository->existsActiveInCategories($this->collectSubtreeIds($category))) {
+        // still holds ANY item — including one already trashed but not yet
+        // purged (an earlier version of this check only looked at active
+        // items, which still let a category full of trashed-but-unpurged
+        // items through). Trash/move/wait-for-GC first, then delete the
+        // truly-empty category.
+        if ($this->itemRepository->existsInCategories($this->collectSubtreeIds($category))) {
             throw new ConflictException(message: 'category.not_empty');
         }
 

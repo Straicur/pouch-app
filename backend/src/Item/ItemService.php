@@ -214,9 +214,9 @@ class ItemService implements ItemServiceInterface
     }
 
     #[Override]
-    public function listPage(ItemListFilter $filter, int $offset, int $limit): array
+    public function listPage(ItemListFilter $filter, int $offset, int $limit, array $excludedCategoryIds = [], array $excludedItemIds = []): array
     {
-        return $this->itemRepository->findFilteredPage($filter, $offset, $limit);
+        return $this->itemRepository->findFilteredPage($filter, $offset, $limit, $excludedCategoryIds, $excludedItemIds);
     }
 
     #[Override]

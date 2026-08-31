@@ -124,10 +124,27 @@ class ItemRepository extends ServiceEntityRepository
      * slicing happens in PHP there instead, same as findFiltered()'s own
      * re-sort.
      *
+     * $excludedCategoryIds/$excludedItemIds (post-review fix): Part 7 locks
+     * excluded *after* COUNT/OFFSET/LIMIT used to run — ItemController::
+     * list() now computes what's locked first (AccessKeyGuard::
+     * lockedCategoryIds()/lockedItemIdsWithOwnKey()) and passes it in here,
+     * so the WHERE clause itself never counts or paginates a locked item.
+     * Fetching a page blind to locks could otherwise come back empty while
+     * unlocked items existed on the next one, and $total leaked how many
+     * hidden items existed.
+     *
+     * @param list<int> $excludedCategoryIds
+     * @param list<int> $excludedItemIds
+     *
      * @return array{items: list<Item>, total: int}
      */
-    public function findFilteredPage(ItemListFilter $filter, int $offset, int $limit): array
-    {
+    public function findFilteredPage(
+        ItemListFilter $filter,
+        int $offset,
+        int $limit,
+        array $excludedCategoryIds = [],
+        array $excludedItemIds = [],
+    ): array {
         $qb = $this->createQueryBuilder('i')
             ->where('i.trashedAt IS NULL');
 
@@ -145,6 +162,16 @@ class ItemRepository extends ServiceEntityRepository
                 ->andWhere('t.name IN (:tagNames)')
                 ->setParameter('tagNames', $filter->tags)
                 ->distinct();
+        }
+
+        if ([] !== $excludedCategoryIds) {
+            $qb->andWhere('i.category NOT IN (:excludedCategoryIds)')
+                ->setParameter('excludedCategoryIds', $excludedCategoryIds);
+        }
+
+        if ([] !== $excludedItemIds) {
+            $qb->andWhere('i.id NOT IN (:excludedItemIds)')
+                ->setParameter('excludedItemIds', $excludedItemIds);
         }
 
         if (null === $filter->query) {
@@ -179,10 +206,23 @@ class ItemRepository extends ServiceEntityRepository
         // Every id in $rankedIds that also survived the category/favorite/
         // tags filters above, still in relevance order.
         $orderedIds = array_values(array_filter($rankedIds, static fn (int $id): bool => isset($itemsById[$id])));
-        $pageIds = array_slice($orderedIds, $offset, $limit);
+
+        // Not array_map() over array_slice($orderedIds, ...) — PHPStan can't
+        // see through that chain that every id it'd produce is guaranteed to
+        // be a key of $itemsById (true by construction: $orderedIds was
+        // already filtered to ids isset() in it), so it flags the offset
+        // access as possibly undefined. An explicit isset() per id here says
+        // the same thing in a way it can verify, and builds an already-list
+        // array directly — no separate array_values() call needed after.
+        $items = [];
+        foreach (array_slice($orderedIds, $offset, $limit) as $id) {
+            if (isset($itemsById[$id])) {
+                $items[] = $itemsById[$id];
+            }
+        }
 
         return [
-            'items' => array_values(array_map(static fn (int $id): Item => $itemsById[$id], $pageIds)),
+            'items' => $items,
             'total' => count($orderedIds),
         ];
     }
@@ -304,14 +344,20 @@ class ItemRepository extends ServiceEntityRepository
     /**
      * Post-review fix: CategoryService::delete() calls this before removing a
      * category, across the whole subtree it and its descendants form —
-     * deleting a category with active items still in it would otherwise
-     * cascade at the DB level (ON DELETE CASCADE) without
-     * ItemGarbageCollector::purgeTrash() ever getting a chance to see them,
-     * orphaning their storage objects in S3/MinIO forever.
+     * deleting a category with any item still in it would otherwise cascade
+     * at the DB level (ON DELETE CASCADE) without ItemGarbageCollector::
+     * purgeTrash() ever getting a chance to see them, orphaning their
+     * storage objects in S3/MinIO forever.
+     *
+     * Deliberately *not* filtered to `trashedAt IS NULL` (an earlier version
+     * of this method was) — a trashed-but-not-yet-purged item still has a
+     * live storage object sitting in the bucket right up until GC's next run
+     * actually deletes it; only after purgeTrash() has run is a category
+     * truly safe to remove.
      *
      * @param list<int> $categoryIds
      */
-    public function existsActiveInCategories(array $categoryIds): bool
+    public function existsInCategories(array $categoryIds): bool
     {
         if ([] === $categoryIds) {
             return false;
@@ -319,8 +365,7 @@ class ItemRepository extends ServiceEntityRepository
 
         $count = $this->createQueryBuilder('i')
             ->select('COUNT(i.id)')
-            ->where('i.trashedAt IS NULL')
-            ->andWhere('i.category IN (:categoryIds)')
+            ->where('i.category IN (:categoryIds)')
             ->setParameter('categoryIds', $categoryIds)
             ->setMaxResults(1)
             ->getQuery()
@@ -347,6 +392,27 @@ class ItemRepository extends ServiceEntityRepository
             ->setParameter('from', $from)
             ->setParameter('until', $until)
             ->orderBy('i.expiresAt', 'ASC')
+            ->getQuery()
+            ->getResult();
+
+        return $result;
+    }
+
+    /**
+     * Post-review fix: AccessKeyGuard::lockedItemIdsWithOwnKey() needs every
+     * item-level key up front (bulk) to compute, before a paginated list
+     * query runs, which item ids to exclude — rather than fetching a page
+     * and filtering afterwards (see ItemController::list()'s own comment).
+     * Not filtered to active-only: a trashed item is already excluded by
+     * every list query's own `trashedAt IS NULL`, so it never matters here.
+     *
+     * @return list<Item>
+     */
+    public function findAllWithOwnAccessKey(): array
+    {
+        /** @var list<Item> $result */
+        $result = $this->createQueryBuilder('i')
+            ->where('i.accessKeyHash IS NOT NULL')
             ->getQuery()
             ->getResult();
 
