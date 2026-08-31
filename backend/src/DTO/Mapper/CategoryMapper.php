@@ -19,6 +19,7 @@ final class CategoryMapper
             id: $category->getId(),
             name: $category->getName(),
             parentId: $category->getParent()?->getId(),
+            hasAccessKey: null !== $category->getAccessKeyHash(),
         );
     }
 

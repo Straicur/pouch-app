@@ -9,6 +9,7 @@ import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { RootLayout } from "./pages/RootLayout";
 import { CategoriesPage } from "./pages/user/categories/CategoriesPage";
+import { FavoritesPage } from "./pages/user/favorites/FavoritesPage";
 import { ItemsPage } from "./pages/user/items/ItemsPage";
 import { UserLayout } from "./pages/user/UserLayout";
 
@@ -27,6 +28,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="items" replace /> },
           { path: "items", element: <ItemsPage /> },
+          { path: "favorites", element: <FavoritesPage /> },
           { path: "categories", element: <CategoriesPage /> },
         ],
       },

@@ -31,6 +31,13 @@ class ItemResponseDTO
         private readonly ?string $expiresAt,
         private readonly ?string $trashedAt,
         private readonly string $createdAt,
+        // Część 13 — czy ten item ma ustawiony własny klucz dostępu.
+        // Świadomie tylko tutaj (pełny detal, GET /api/items/{id}), nie na
+        // ItemSummaryResponseDTO — do listy nie trzeba wiedzieć, czy klucz
+        // istnieje, tylko czy request jest nim odblokowany (locked).
+        // AccessKeyPanel używa tego, żeby pokazać "Ustaw klucz" albo
+        // "Zmień/Usuń klucz", zamiast zawsze oferować oba warianty naraz.
+        private readonly bool $hasAccessKey,
     ) {}
 
     public function getId(): int
@@ -139,5 +146,10 @@ class ItemResponseDTO
     public function getCreatedAt(): string
     {
         return $this->createdAt;
+    }
+
+    public function isHasAccessKey(): bool
+    {
+        return $this->hasAccessKey;
     }
 }

@@ -2,12 +2,19 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toastUtil } from "../../../libs/toastUtil";
 import { useGetStorageReportQuery, useSetStorageLimitMutation } from "../../../store/api/adminApi";
+import { Button } from "../../../ui/catalyst/button";
+import { Input } from "../../../ui/catalyst/form/input";
+import { Heading, Subheading } from "../../../ui/catalyst/heading";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../ui/catalyst/table";
 
 const formatSize = (bytes: number): string => {
   return bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-// Part 10: "podgląd zużycia (per typ), globalne limity wagowe".
+// Part 10: "podgląd zużycia (per typ), globalne limity wagowe". Tylko
+// agregaty — celowo brak tu listy/usuwania pojedynczych plików, bo backend
+// nie ma jeszcze endpointu do tego (zarządzanie pojedynczymi itemami jako
+// admin, patrz ROADMAP.md "Wielu użytkowników / zarządzanie kontami").
 export function StoragePage() {
   const { t } = useTranslation();
   const { data: report } = useGetStorageReportQuery();
@@ -30,46 +37,51 @@ export function StoragePage() {
   };
 
   return (
-    <section className="admin-section">
-      <h1>{t("admin.storage.title")}</h1>
+    <section className="flex flex-col gap-4">
+      <Heading variant="page">{t("admin.storage.title")}</Heading>
 
-      <table className="admin-table">
-        <thead>
-          <tr>
-            <th>{t("admin.storage.type")}</th>
-            <th>{t("admin.storage.totalBytes")}</th>
-            <th>{t("admin.storage.itemCount")}</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableHead>
+          <TableRow>
+            <TableHeader>{t("admin.storage.type")}</TableHeader>
+            <TableHeader>{t("admin.storage.totalBytes")}</TableHeader>
+            <TableHeader>{t("admin.storage.itemCount")}</TableHeader>
+          </TableRow>
+        </TableHead>
+        <TableBody>
           {report?.byType.map((row) => (
-            <tr key={row.type}>
-              <td>{t(`items.type.${row.type}`)}</td>
-              <td>{formatSize(row.totalBytes)}</td>
-              <td>{row.itemCount}</td>
-            </tr>
+            <TableRow key={row.type}>
+              <TableCell>{t(`items.type.${row.type}`)}</TableCell>
+              <TableCell>{formatSize(row.totalBytes)}</TableCell>
+              <TableCell>{row.itemCount}</TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
       {undefined !== report && (
-        <p>{t("admin.storage.archivedVersions", { size: formatSize(report.archivedVersionsBytes) })}</p>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          {t("admin.storage.archivedVersions", { size: formatSize(report.archivedVersionsBytes) })}
+        </p>
       )}
 
-      <h2>{t("admin.storage.limitsTitle")}</h2>
-      <ul className="admin-limits-list">
+      <Subheading>{t("admin.storage.limitsTitle")}</Subheading>
+      <ul className="flex flex-col gap-2">
         {report?.limits.map((limit) => (
-          <li key={limit.type}>
-            <span>{t(`items.type.${limit.type}`)}</span>
-            <span>{t("admin.storage.currentLimit", { size: formatSize(limit.maxSizeBytes) })}</span>
-            <input
+          <li key={limit.type} className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="w-24 text-zinc-950 dark:text-white">{t(`items.type.${limit.type}`)}</span>
+            <span className="text-zinc-500 dark:text-zinc-400">
+              {t("admin.storage.currentLimit", { size: formatSize(limit.maxSizeBytes) })}
+            </span>
+            <Input
               type="number"
               placeholder={t("admin.storage.newLimitPlaceholder")}
               value={limitEdits[limit.type] ?? ""}
               onChange={(event) => setLimitEdits({ ...limitEdits, [limit.type]: event.target.value })}
+              className="w-32"
             />
-            <button type="button" onClick={() => handleSaveLimit(limit.type)} disabled={isSavingLimit}>
+            <Button size="small" variant="outline" onClick={() => handleSaveLimit(limit.type)} disabled={isSavingLimit}>
               {t("admin.storage.saveLimit")}
-            </button>
+            </Button>
           </li>
         ))}
       </ul>

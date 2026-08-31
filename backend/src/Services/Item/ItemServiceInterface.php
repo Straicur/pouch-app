@@ -16,8 +16,15 @@ use DateTimeImmutable;
 interface ItemServiceInterface
 {
     /**
+     * Część 13: $content is an optional free-text description stored the
+     * same way a NOTE item's body is (Item::$noteContent) — unlike a NOTE,
+     * it's set once at creation and not editable afterwards through
+     * updateNoteContent() (that stays NOTE-only, see its own guard).
+     *
+     * @param list<string> $tags
+     *
      * @throws NotFoundException   if the category doesn't exist
-     * @throws BadRequestException if the file/TTL input is invalid
+     * @throws BadRequestException if the file/TTL/content/tags input is invalid
      * @throws ConflictException   if a non-trashed item with identical content already exists
      */
     public function createFile(
@@ -27,6 +34,8 @@ interface ItemServiceInterface
         string $mimeType,
         int $size,
         ItemLifecycleOptions $options,
+        ?string $content = null,
+        array $tags = [],
     ): Item;
 
     /**
@@ -60,13 +69,16 @@ interface ItemServiceInterface
     ): Item;
 
     /**
+     * @param list<string> $tags
+     *
      * @throws NotFoundException   if the category doesn't exist
-     * @throws BadRequestException if the content is blank/too long
+     * @throws BadRequestException if the content/tags are invalid
      */
     public function createNote(
         int $categoryId,
         string $content,
         ItemLifecycleOptions $options,
+        array $tags = [],
     ): Item;
 
     /**
@@ -78,8 +90,21 @@ interface ItemServiceInterface
      */
     public function updateNoteContent(int $id, string $content): Item;
 
-    /** @throws NotFoundException */
+    /**
+     * Unscoped by pouch — also reached with no authenticated user at all by
+     * the signed-URL-only actions (see ItemController's own docblock).
+     *
+     * @throws NotFoundException if $id doesn't exist or is already trashed
+     */
     public function getById(int $id): Item;
+
+    /**
+     * Same as getById(), scoped to the current session's pouch. Use for
+     * anything reached only by an authenticated session.
+     *
+     * @throws NotFoundException if $id doesn't exist, is already trashed, or belongs to another pouch
+     */
+    public function getByIdInCurrentPouch(int $id): Item;
 
     /**
      * @return list<Item>
@@ -88,14 +113,13 @@ interface ItemServiceInterface
 
     /**
      * Paginated counterpart of list() — see ItemRepository::findFilteredPage(),
-     * including what $excludedCategoryIds/$excludedItemIds are for.
+     * including what $excludedCategoryIds is for.
      *
      * @param list<int> $excludedCategoryIds
-     * @param list<int> $excludedItemIds
      *
      * @return array{items: list<Item>, total: int}
      */
-    public function listPage(ItemListFilter $filter, int $offset, int $limit, array $excludedCategoryIds = [], array $excludedItemIds = []): array;
+    public function listPage(ItemListFilter $filter, int $offset, int $limit, array $excludedCategoryIds = []): array;
 
     /** @throws NotFoundException */
     public function delete(int $id): void;

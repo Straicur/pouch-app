@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useListAuditLogQuery } from "../../../store/api/adminApi";
+import { Heading } from "../../../ui/catalyst/heading";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../ui/catalyst/table";
 
 // AuditLogEntry["action"] mirrors the backend's snake_case values (see
 // AuditLoggerInterface) — pl.ts's own keys stay camelCase (project
@@ -15,32 +17,32 @@ export function AuditLogPage() {
   const { data: entries } = useListAuditLogQuery({ limit: 50 });
 
   return (
-    <section className="admin-section">
-      <h1>{t("admin.auditLog.title")}</h1>
-      <table className="admin-table">
-        <thead>
-          <tr>
-            <th>{t("admin.auditLog.when")}</th>
-            <th>{t("admin.auditLog.action")}</th>
-            <th>{t("admin.auditLog.resource")}</th>
-            <th>{t("admin.auditLog.user")}</th>
-            <th>{t("admin.auditLog.ip")}</th>
-          </tr>
-        </thead>
-        <tbody>
+    <section className="flex flex-col gap-4">
+      <Heading variant="page">{t("admin.auditLog.title")}</Heading>
+      <Table>
+        <TableHead>
+          <TableRow>
+            <TableHeader>{t("admin.auditLog.when")}</TableHeader>
+            <TableHeader>{t("admin.auditLog.action")}</TableHeader>
+            <TableHeader>{t("admin.auditLog.resource")}</TableHeader>
+            <TableHeader>{t("admin.auditLog.user")}</TableHeader>
+            <TableHeader>{t("admin.auditLog.ip")}</TableHeader>
+          </TableRow>
+        </TableHead>
+        <TableBody>
           {entries?.map((entry) => (
-            <tr key={entry.id}>
-              <td>{new Date(entry.createdAt).toLocaleString()}</td>
-              <td>{t(`admin.auditLog.actionLabel.${auditActionLabelKey(entry.action)}`)}</td>
-              <td>
+            <TableRow key={entry.id}>
+              <TableCell>{new Date(entry.createdAt).toLocaleString()}</TableCell>
+              <TableCell>{t(`admin.auditLog.actionLabel.${auditActionLabelKey(entry.action)}`)}</TableCell>
+              <TableCell>
                 {t(`admin.auditLog.resourceLabel.${entry.resourceType}`)} #{entry.resourceId}
-              </td>
-              <td>{entry.userEmail ?? t("admin.auditLog.systemUser")}</td>
-              <td>{entry.ip ?? "—"}</td>
-            </tr>
+              </TableCell>
+              <TableCell>{entry.userEmail ?? t("admin.auditLog.systemUser")}</TableCell>
+              <TableCell>{entry.ip ?? "—"}</TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </section>
   );
 }

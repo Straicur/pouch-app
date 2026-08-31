@@ -12,11 +12,12 @@ namespace App\Services\Item\ValueObject;
 final readonly class ItemListFilter
 {
     /**
-     * @param list<string> $tags already-normalized (trim + lowercase) tag
-     *                           names — an item matches if it has *any* of them
+     * @param list<int>    $categoryIds an item matches if its category is *any* of these
+     * @param list<string> $tags        already-normalized (trim + lowercase) tag
+     *                                  names — an item matches if it has *any* of them
      */
     public function __construct(
-        public ?int $categoryId = null,
+        public array $categoryIds = [],
         public bool $favoriteOnly = false,
         public array $tags = [],
         public ?string $query = null,

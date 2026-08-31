@@ -9,15 +9,6 @@ use DateTimeImmutable;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
-/**
- * Part 10's GC dashboard: "podgląd automatycznego czyszczenia" + "logi tego,
- * co i kiedy zostało usunięte". One row per full GC cycle (expire-overdue +
- * purge-trash together — see ItemGarbageCollectorInterface::run(), the one
- * thing that writes these) — $trigger distinguishes the real cron
- * (`app:item:gc`) from an admin's manual "Run GC Now". *Which* items were
- * purged is deliberately not repeated here — that's exactly what
- * AuditLog::ACTION_PURGE rows already capture, per item, at the same moment.
- */
 #[ORM\Entity(repositoryClass: GcRunLogRepository::class)]
 #[ORM\Table(name: 'gc_run_log')]
 class GcRunLog

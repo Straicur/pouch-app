@@ -313,7 +313,7 @@ final class CategoryController extends AbstractController
     #[OA\Post(
         description: 'Mints a short-lived, one-purpose token authorizing GET .../export to see whatever this '
             . 'request currently has valid access-key grants for — the actual download then happens via a plain '
-            . 'navigation, which can\'t carry the X-Pouch-Access-Grants header itself.',
+            . "navigation, which can't carry the X-Pouch-Access-Grants header itself.",
         responses: [
             new OA\Response(response: 200, description: 'Success', content: new Model(type: CategoryExportTokenResponseDTO::class)),
         ]

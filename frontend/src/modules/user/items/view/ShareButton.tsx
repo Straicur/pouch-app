@@ -3,10 +3,21 @@ import { useTranslation } from "react-i18next";
 import { toastUtil } from "../../../../libs/toastUtil";
 import { useGetPublicLinkMutation } from "../../../../store/api/itemApi";
 import type { PublicLink } from "../../../../store/types/item";
+import { Button } from "../../../../ui/catalyst/button";
+import { Input } from "../../../../ui/catalyst/form/input";
 
 interface ShareButtonProps {
   itemId: number;
 }
+
+// Post-review fix (Część 13): the primary, copyable link used to always be
+// $viewUrl — an's item's raw JSON metadata, no HTML at all — so visiting it
+// for a FILE/PHOTO showed a blank page full of JSON instead of downloading
+// anything, which is what "udostępnij" actually implies for those types.
+// Now the primary link is $downloadUrl when the item has one (file content
+// to actually download); $viewUrl (metadata) is offered as a secondary link,
+// and becomes primary itself for types with nothing to download (note/url).
+const primaryLink = (link: PublicLink): string => link.downloadUrl ?? link.viewUrl;
 
 // Part 9 — a deliberate, one-click action (product doc: "świadome kliknięcie
 // 'udostępnij'"), not something offered automatically on every item; the
@@ -37,25 +48,33 @@ export function ShareButton({ itemId }: ShareButtonProps) {
 
   if (null === link) {
     return (
-      <button type="button" onClick={handleShare} disabled={isLoading}>
+      <Button size="small" variant="outline" onClick={handleShare} disabled={isLoading}>
         {isLoading ? t("share.generating") : t("share.button")}
-      </button>
+      </Button>
     );
   }
 
   return (
-    <div className="share-link">
-      <p>{t("share.expiresAt", { date: new Date(link.expiresAt).toLocaleString() })}</p>
-      <div className="share-link-row">
-        <input type="text" readOnly value={link.viewUrl} onFocus={(event) => event.target.select()} />
-        <button type="button" onClick={() => handleCopy(link.viewUrl)}>
+    <div className="flex flex-col gap-2">
+      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+        {t("share.expiresAt", { date: new Date(link.expiresAt).toLocaleString() })}
+      </p>
+      <div className="flex items-center gap-2">
+        <Input type="text" readOnly value={primaryLink(link)} onFocus={(event) => event.target.select()} />
+        <Button size="small" onClick={() => handleCopy(primaryLink(link))}>
           {t("share.copyButton")}
-        </button>
+        </Button>
       </div>
+      {/* $viewUrl (metadata) only shown separately when it isn't already the
+          primary link above (i.e. there's an actual downloadUrl too). */}
       {null !== link.downloadUrl && (
-        <a href={link.downloadUrl} target="_blank" rel="noreferrer">
-          {t("share.downloadLink")}
-        </a>
+        <button
+          type="button"
+          onClick={() => handleCopy(link.viewUrl)}
+          className="w-fit text-xs text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+        >
+          {t("share.copyMetadataLink")}
+        </button>
       )}
     </div>
   );

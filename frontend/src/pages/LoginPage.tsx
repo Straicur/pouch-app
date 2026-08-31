@@ -5,6 +5,10 @@ import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 import i18n from "../libs/i18n";
 import { useLoginMutation } from "../store/api/authApi";
+import { Button } from "../ui/catalyst/button";
+import { ErrorMessage, Field, FieldGroup, Fieldset, Label } from "../ui/catalyst/form/fieldset";
+import { Input } from "../ui/catalyst/form/input";
+import { Heading } from "../ui/catalyst/heading";
 
 // Defined at module scope (zod needs the schema before any component/hook
 // runs), so — unlike everything else in this file — these two messages go
@@ -40,23 +44,33 @@ export function LoginPage() {
   };
 
   return (
-    <main className="login-page">
-      <form className="login-form" onSubmit={handleSubmit(onSubmit)} noValidate>
-        <h1>{t("auth.loginTitle")}</h1>
+    <main className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
+      <form className="w-full max-w-sm" onSubmit={handleSubmit(onSubmit)} noValidate>
+        <Heading variant="page" className="mb-6 text-center">
+          {t("auth.loginTitle")}
+        </Heading>
 
-        <label htmlFor="email">{t("auth.emailLabel")}</label>
-        <input id="email" type="email" autoComplete="username" {...register("email")} />
-        {undefined !== errors.email && <p className="field-error">{errors.email.message}</p>}
+        <Fieldset>
+          <FieldGroup>
+            <Field>
+              <Label htmlFor="email">{t("auth.emailLabel")}</Label>
+              <Input id="email" type="email" autoComplete="username" {...register("email")} />
+              {undefined !== errors.email && <ErrorMessage>{errors.email.message}</ErrorMessage>}
+            </Field>
 
-        <label htmlFor="password">{t("auth.passwordLabel")}</label>
-        <input id="password" type="password" autoComplete="current-password" {...register("password")} />
-        {undefined !== errors.password && <p className="field-error">{errors.password.message}</p>}
+            <Field>
+              <Label htmlFor="password">{t("auth.passwordLabel")}</Label>
+              <Input id="password" type="password" autoComplete="current-password" {...register("password")} />
+              {undefined !== errors.password && <ErrorMessage>{errors.password.message}</ErrorMessage>}
+            </Field>
 
-        {undefined !== errors.root && <p className="form-error">{errors.root.message}</p>}
+            {undefined !== errors.root && <ErrorMessage>{errors.root.message}</ErrorMessage>}
 
-        <button type="submit" disabled={isLoading}>
-          {isLoading ? t("auth.loginButtonLoading") : t("auth.loginButton")}
-        </button>
+            <Button type="submit" disabled={isLoading} fullWidth>
+              {isLoading ? t("auth.loginButtonLoading") : t("auth.loginButton")}
+            </Button>
+          </FieldGroup>
+        </Fieldset>
       </form>
     </main>
   );

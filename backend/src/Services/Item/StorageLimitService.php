@@ -58,7 +58,7 @@ final readonly class StorageLimitService implements StorageLimitServiceInterface
     public function getAllMaxSizeBytes(): array
     {
         $limits = [];
-        foreach (self::DEFAULT_MAX_SIZE_BYTES as $type => $default) {
+        foreach (array_keys(self::DEFAULT_MAX_SIZE_BYTES) as $type) {
             $limits[$type] = $this->getMaxSizeBytes(ItemType::from($type));
         }
 

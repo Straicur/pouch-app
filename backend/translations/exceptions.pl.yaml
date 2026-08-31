@@ -20,6 +20,7 @@ csrf.origin_not_allowed: "Żądanie odrzucone — nieprawidłowe źródło (Orig
 # Category
 category.not_found: "Nie znaleziono kategorii."
 category.move_cycle: "Nie można przenieść kategorii do niej samej ani do jednej z jej podkategorii."
+category.max_depth: "Kategoria może mieć podkategorie tylko na jednym poziomie — podkategoria nie może mieć własnej podkategorii."
 category.locked: "Ta kategoria jest chroniona kluczem dostępu."
 category.not_empty: "Ta kategoria (albo jedna z jej podkategorii) wciąż zawiera itemy — w tym być może w koszu, oczekujące na wyczyszczenie — usuń lub przenieś je najpierw."
 category.export_token_invalid: "Token eksportu jest nieprawidłowy lub wygasł."

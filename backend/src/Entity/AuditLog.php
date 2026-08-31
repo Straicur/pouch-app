@@ -9,25 +9,6 @@ use DateTimeImmutable;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
-/**
- * Part 10: "dziennik zdarzeń: kto, kiedy, z jakiego IP podejrzał/pobrał/
- * usunął item albo zmienił klucz dostępu". Append-only — nothing ever
- * updates or deletes a row here (not even when the underlying resource is
- * later purged/deleted, which is exactly the kind of event this exists to
- * remember) — so $resourceId is a plain int, not a real foreign key: the
- * resource it refers to may well be gone by the time anyone reads this row.
- *
- * $userId is nullable for actions with no logged-in actor — GC purges are
- * system-triggered, and a Part 9 public link's download has no auth token
- * at all — $ip is kept either way. Scope is deliberately bounded to what the
- * roadmap actually enumerates (view/download/delete/key_change/purge on
- * categories/items), not literally every request: logging every GET would
- * make this table's own size the thing that needs garbage collecting, which
- * the roadmap's own tech-requirements note flags as a real concern
- * ("warto pomyśleć o retencji/limicie wielkości tej tabeli") — retention
- * itself isn't implemented yet, deliberately left for whenever that becomes
- * an actual problem rather than a hypothetical one.
- */
 #[ORM\Entity(repositoryClass: AuditLogRepository::class)]
 #[ORM\Table(name: 'audit_log')]
 #[ORM\Index(name: 'idx_audit_log_created_at', fields: ['createdAt'])]

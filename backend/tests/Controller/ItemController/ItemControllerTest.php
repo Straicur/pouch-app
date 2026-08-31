@@ -76,6 +76,22 @@ class ItemControllerTest extends WebTest
         self::assertSame('no-name-given.txt', $item['name']);
     }
 
+    public function testUploadWithOptionalContentSetsNoteContent(): void
+    {
+        $item = $this->uploadFile('content', 'described.txt', ['content' => 'A short description']);
+
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+        self::assertSame('A short description', $item['noteContent']);
+    }
+
+    public function testUploadWithoutContentLeavesNoteContentNull(): void
+    {
+        $item = $this->uploadFile('content', 'undescribed.txt');
+
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+        self::assertNull($item['noteContent']);
+    }
+
     public function testUploadWithKeepForeverHasNoExpiry(): void
     {
         $item = $this->uploadFile('content', 'forever.txt', ['keepForever' => '1']);
@@ -174,6 +190,54 @@ class ItemControllerTest extends WebTest
         self::assertResponseStatusCodeSame(Response::HTTP_OK);
         $body = json_decode((string) $this->webClient->getResponse()->getContent(), true);
         self::assertContains($item['id'], array_column($body['items'], 'id'));
+    }
+
+    public function testUploadWithTagsAttachesNormalizedTags(): void
+    {
+        $item = $this->uploadFile('content', 'tagged.txt', ['tags' => 'Foo, bar , FOO']);
+
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+        self::assertSame(['foo', 'bar'], $item['tags']);
+    }
+
+    public function testGetItemExposesHasAccessKey(): void
+    {
+        $item = $this->uploadFile('content', 'maybe-locked.txt');
+
+        $this->authAsUser();
+        $this->webClient->request(method: Request::METHOD_GET, uri: sprintf('/api/items/%d', $item['id']));
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+        $body = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        self::assertFalse($body['hasAccessKey']);
+
+        $this->authAsUser();
+        $this->webClient->request(
+            method: Request::METHOD_PUT,
+            uri: sprintf('/api/items/%d/access-key', $item['id']),
+            content: json_encode(['key' => 'sekret123']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_NO_CONTENT);
+
+        // Setting a key doesn't auto-grant the setter — GET is now locked
+        // for this same session until it actually unlocks with that key.
+        $this->authAsUser();
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: sprintf('/api/items/%d/unlock', $item['id']),
+            content: json_encode(['key' => 'sekret123']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+        $grant = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+
+        $this->authAsUser();
+        $this->webClient->request(
+            method: Request::METHOD_GET,
+            uri: sprintf('/api/items/%d', $item['id']),
+            server: ['HTTP_X_POUCH_ACCESS_GRANTS' => json_encode([$grant])],
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+        $body = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        self::assertTrue($body['hasAccessKey']);
     }
 
     public function testGetMissingItemReturnsNotFound(): void

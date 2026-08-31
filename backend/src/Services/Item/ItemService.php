@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace App\Services\Item;
 
-use App\Services\Category\CategoryServiceInterface;
 use App\Entity\Item;
 use App\Entity\ItemVersion;
 use App\Enum\ItemProcessingStatus;
@@ -17,12 +16,14 @@ use App\Messenger\ProcessPhotoMessage;
 use App\Messenger\ScrapeUrlMessage;
 use App\Repository\ItemRepository;
 use App\Repository\ItemVersionRepository;
-use App\Services\Item\ValueObject\ItemLifecycleOptions;
-use App\Services\Item\ValueObject\ItemListFilter;
+use App\Services\Category\CategoryServiceInterface;
 use App\Services\Item\Validator\FileValidator;
 use App\Services\Item\Validator\ImageValidator;
 use App\Services\Item\Validator\NoteValidator;
 use App\Services\Item\Validator\UrlValidator;
+use App\Services\Item\ValueObject\ItemLifecycleOptions;
+use App\Services\Item\ValueObject\ItemListFilter;
+use App\Services\Pouch\CurrentPouchResolverInterface;
 use App\Services\Storage\StorageServiceInterface;
 use App\Services\Tag\TagServiceInterface;
 use DateInterval;
@@ -73,6 +74,7 @@ class ItemService implements ItemServiceInterface
         private readonly TranslatorInterface $translator,
         private readonly Connection $connection,
         private readonly LoggerInterface $logger,
+        private readonly CurrentPouchResolverInterface $currentPouchResolver,
     ) {}
 
     #[Override]
@@ -83,6 +85,8 @@ class ItemService implements ItemServiceInterface
         string $mimeType,
         int $size,
         ItemLifecycleOptions $options,
+        ?string $content = null,
+        array $tags = [],
     ): Item {
         $category = $this->categoryService->getById($categoryId);
         $this->fileValidator->assertValid($originalFilename, $mimeType, $size);
@@ -99,6 +103,13 @@ class ItemService implements ItemServiceInterface
 
         $storageKey = $this->uploadToStorage($tmpPath, $originalFilename);
         $item->setFileData($originalFilename, $mimeType, $size, $storageKey, $contentHash);
+
+        if (null !== $content && '' !== trim($content)) {
+            $this->noteValidator->assertValid($content);
+            $item->setNoteContent($content);
+        }
+
+        $item->setTags($this->tagService->resolveTags($tags));
 
         $this->saveNewItemOrConflict($item);
 
@@ -168,6 +179,7 @@ class ItemService implements ItemServiceInterface
         int $categoryId,
         string $content,
         ItemLifecycleOptions $options,
+        array $tags = [],
     ): Item {
         $category = $this->categoryService->getById($categoryId);
         $this->noteValidator->assertValid($content);
@@ -181,6 +193,7 @@ class ItemService implements ItemServiceInterface
             processingStatus: ItemProcessingStatus::COMPLETED,
         );
         $item->setNoteContent($content);
+        $item->setTags($this->tagService->resolveTags($tags));
 
         $this->itemRepository->save($item);
 
@@ -215,15 +228,34 @@ class ItemService implements ItemServiceInterface
     }
 
     #[Override]
+    public function getByIdInCurrentPouch(int $id): Item
+    {
+        $item = $this->getById($id);
+
+        // Another pouch's item looks exactly like a missing one — never 403.
+        if ($item->getCategory()->getPouch()->getId() !== $this->currentPouchResolver->resolve()->getId()) {
+            throw new NotFoundException(message: 'item.not_found');
+        }
+
+        return $item;
+    }
+
+    #[Override]
     public function list(ItemListFilter $filter): array
     {
         return $this->itemRepository->findFiltered($filter);
     }
 
     #[Override]
-    public function listPage(ItemListFilter $filter, int $offset, int $limit, array $excludedCategoryIds = [], array $excludedItemIds = []): array
+    public function listPage(ItemListFilter $filter, int $offset, int $limit, array $excludedCategoryIds = []): array
     {
-        return $this->itemRepository->findFilteredPage($filter, $offset, $limit, $excludedCategoryIds, $excludedItemIds);
+        return $this->itemRepository->findFilteredPage(
+            $filter,
+            $offset,
+            $limit,
+            $excludedCategoryIds,
+            pouchId: $this->currentPouchResolver->resolve()->getId(),
+        );
     }
 
     #[Override]

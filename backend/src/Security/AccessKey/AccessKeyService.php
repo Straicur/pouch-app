@@ -4,17 +4,17 @@ declare(strict_types = 1);
 
 namespace App\Security\AccessKey;
 
-use App\Services\Category\CategoryServiceInterface;
 use App\Entity\Category;
 use App\Entity\Item;
 use App\Entity\User;
 use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadRequestException;
 use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\UnauthorizedException;
-use App\Services\Item\ItemServiceInterface;
 use App\Repository\CategoryRepository;
 use App\Repository\ItemRepository;
 use App\Security\Limiter\AccessKeyRateLimiterInterface;
 use App\Security\SignedUrlServiceInterface;
+use App\Services\Category\CategoryServiceInterface;
+use App\Services\Item\ItemServiceInterface;
 use LogicException;
 use Override;
 use Symfony\Bundle\SecurityBundle\Security;
@@ -77,6 +77,7 @@ final readonly class AccessKeyService implements AccessKeyServiceInterface
     {
         $category = $this->categoryService->getById($categoryId);
         $category->setAccessKeyHash(null !== $key ? $this->accessKeyHasher->hash($key) : null);
+
         $this->categoryRepository->save($category);
 
         return $category;
@@ -85,8 +86,9 @@ final readonly class AccessKeyService implements AccessKeyServiceInterface
     #[Override]
     public function setItemKey(int $itemId, ?string $key): Item
     {
-        $item = $this->itemService->getById($itemId);
+        $item = $this->itemService->getByIdInCurrentPouch($itemId);
         $item->setAccessKeyHash(null !== $key ? $this->accessKeyHasher->hash($key) : null);
+
         $this->itemRepository->save($item);
 
         return $item;
@@ -115,7 +117,7 @@ final readonly class AccessKeyService implements AccessKeyServiceInterface
     {
         $this->accessKeyRateLimiter->consume($request);
 
-        $item = $this->itemService->getById($itemId);
+        $item = $this->itemService->getByIdInCurrentPouch($itemId);
         $itemKeyHash = $item->getAccessKeyHash();
 
         if (null === $itemKeyHash) {

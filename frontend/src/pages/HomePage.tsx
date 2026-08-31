@@ -1,10 +1,18 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { toastUtil } from "../libs/toastUtil";
 import { useLogoutMutation } from "../store/api/authApi";
 import { useWhoAmIQuery } from "../store/api/sessionApi";
 
+// Część 13: "/" nie ma już własnej treści — od razu pokazuje to, co
+// "/user/items" (życzenie usera: pod "/" ma być widoczne to samo co pod
+// "/user/items", nie osobna, okrojona strona). Wciąż jednak nie jest to
+// zwykłe <Navigate> wprost w routes.tsx: sesja musi się najpierw rozstrzygnąć
+// (401 → /login, chwilowe "nic" podczas ładowania — patrz FRONTEND.md,
+// "Layouty i trasy", ostatni akapit — to świadomie inne zachowanie niż
+// ProtectedRoute), błąd połączenia z backendem dostaje własny komunikat
+// zamiast ślepego przekierowania.
 export function HomePage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -20,9 +28,6 @@ export function HomePage() {
   }, [status, navigate]);
 
   const handleLogout = async () => {
-    // .unwrap() matters here — the bare trigger's Promise resolves even on
-    // a failed request, so without it a failed logout still navigated to
-    // /login looking like a success while the server-side session survived.
     try {
       await logout().unwrap();
       await navigate("/login", { replace: true });
@@ -35,14 +40,18 @@ export function HomePage() {
     return null;
   }
 
+  if (undefined !== data) {
+    return <Navigate to="/user/items" replace />;
+  }
+
   return (
-    <main className="home-page">
-      <h1>{t("common.appName")}</h1>
-      {undefined !== data && <p>{t("home.loggedInAs", { email: data.email })}</p>}
-      {undefined !== error && 401 !== status && <p className="form-error">{t("home.connectionError")}</p>}
-      <Link to="/user">{t("home.userAreaLink")}</Link>
-      <Link to="/admin">{t("home.adminLink")}</Link>
-      <button type="button" onClick={handleLogout}>
+    <main className="flex flex-col gap-4">
+      <p className="text-red-600 dark:text-red-400">{t("home.connectionError")}</p>
+      <button
+        type="button"
+        onClick={handleLogout}
+        className="w-fit text-sm text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+      >
         {t("auth.logoutButton")}
       </button>
     </main>

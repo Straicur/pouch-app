@@ -21,6 +21,15 @@ class ItemCreateNoteRequestDTO
         #[Assert\Choice(callback: [TtlPreset::class, 'values'], message: 'invalid_choice')]
         private readonly ?string $ttlPreset = null,
         private readonly ?string $expiresAt = null,
+        /**
+         * @var list<string>
+         */
+        #[Assert\Count(max: 20, maxMessage: 'tag.too_many')]
+        #[Assert\All([
+            new Assert\Type('string', message: 'tag.invalid_type'),
+            new Assert\Length(max: 50, maxMessage: 'tag.too_long'),
+        ])]
+        private readonly array $tags = [],
     ) {}
 
     public function getCategoryId(): int
@@ -51,5 +60,13 @@ class ItemCreateNoteRequestDTO
     public function getExpiresAt(): ?string
     {
         return $this->expiresAt;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getTags(): array
+    {
+        return $this->tags;
     }
 }

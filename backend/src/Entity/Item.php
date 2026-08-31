@@ -13,21 +13,8 @@ use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
-/**
- * One entity for every item type (see ItemType). Fields only some types use
- * (e.g. $url for URL items, $storageKey for file/photo) are nullable rather
- * than split into per-type tables — simple while there are only three types
- * and no field is expensive to carry around unused.
- *
- * File/photo uploads are COMPLETED immediately; URL and photo items start
- * PENDING and are finished asynchronously (see ScrapeUrlMessageHandler /
- * ProcessPhotoMessageHandler) since scraping/OCR can't block the request.
- */
 #[ORM\Entity(repositoryClass: ItemRepository::class)]
 #[ORM\Table(name: 'item')]
-// content_hash's index is a hand-written partial unique index (active items
-// only — see Version20260830190000), which Doctrine's attributes can't
-// express, so it's intentionally not declared here.
 #[ORM\Index(name: 'idx_item_expires_at', fields: ['expiresAt'])]
 #[ORM\Index(name: 'idx_item_trashed_at', fields: ['trashedAt'])]
 class Item
@@ -53,8 +40,6 @@ class Item
     #[ORM\Column(name: 'processing_error', type: Types::TEXT, nullable: true)]
     private ?string $processingError = null;
 
-    // --- file / photo primary asset (null for URL items) ---
-
     #[ORM\Column(name: 'original_filename', type: Types::STRING, length: 255, nullable: true)]
     private ?string $originalFilename = null;
 
@@ -70,8 +55,6 @@ class Item
     #[ORM\Column(name: 'content_hash', type: Types::STRING, length: 64, nullable: true)]
     private ?string $contentHash = null;
 
-    // --- photo/URL secondary asset + metadata ---
-
     #[ORM\Column(name: 'thumbnail_storage_key', type: Types::STRING, length: 512, unique: true, nullable: true)]
     private ?string $thumbnailStorageKey = null;
 
@@ -84,19 +67,9 @@ class Item
     #[ORM\Column(name: 'page_description', type: Types::TEXT, nullable: true)]
     private ?string $pageDescription = null;
 
-    /**
-     * OpenGraph page snapshot text (URL items) or OCR output (photo items) —
-     * shared column since both are "the searchable text this item produced",
-     * feeding the same Part 6 tsvector index either way.
-     */
     #[ORM\Column(name: 'extracted_text', type: Types::TEXT, nullable: true)]
     private ?string $extractedText = null;
 
-    /**
-     * Note items only — the raw markdown source, user-writable and editable
-     * after the fact (product doc). Its own field, not $extractedText: this is
-     * the note's actual content, not text derived *from* something else.
-     */
     #[ORM\Column(name: 'note_content', type: Types::TEXT, nullable: true)]
     private ?string $noteContent = null;
 

@@ -6,6 +6,7 @@ namespace App\Tests\Security\AccessKey;
 
 use App\Services\Category\CategoryServiceInterface;
 use App\Entity\Category;
+use App\Entity\Pouch;
 use App\Services\Item\ItemServiceInterface;
 use App\Repository\CategoryRepository;
 use App\Repository\ItemRepository;
@@ -38,30 +39,38 @@ final class AccessKeyServiceTest extends TestCase
         );
     }
 
+    private function pouch(): Pouch
+    {
+        return new Pouch('Test pouch');
+    }
+
     public function testSubcategoryWithoutOwnKeyInheritsFromParent(): void
     {
-        $root = new Category('Root');
+        $pouch = $this->pouch();
+        $root = new Category('Root', $pouch);
         $root->setAccessKeyHash('root-hash');
-        $child = new Category('Child', $root);
+        $child = new Category('Child', $pouch, $root);
 
         self::assertSame($root, $this->service()->findEffectiveKeyHolder($child));
     }
 
     public function testSubcategoryInheritsFromGrandparentThroughAnUnkeyedParent(): void
     {
-        $grandparent = new Category('Grandparent');
+        $pouch = $this->pouch();
+        $grandparent = new Category('Grandparent', $pouch);
         $grandparent->setAccessKeyHash('grandparent-hash');
-        $parent = new Category('Parent', $grandparent);
-        $child = new Category('Child', $parent);
+        $parent = new Category('Parent', $pouch, $grandparent);
+        $child = new Category('Child', $pouch, $parent);
 
         self::assertSame($grandparent, $this->service()->findEffectiveKeyHolder($child));
     }
 
     public function testSubcategoryWithItsOwnKeyDoesNotInheritFromParent(): void
     {
-        $root = new Category('Root');
+        $pouch = $this->pouch();
+        $root = new Category('Root', $pouch);
         $root->setAccessKeyHash('root-hash');
-        $child = new Category('Child', $root);
+        $child = new Category('Child', $pouch, $root);
         $child->setAccessKeyHash('child-hash');
 
         self::assertSame($child, $this->service()->findEffectiveKeyHolder($child));
@@ -69,8 +78,9 @@ final class AccessKeyServiceTest extends TestCase
 
     public function testNoKeyAnywhereInTheChainReturnsNull(): void
     {
-        $root = new Category('Root');
-        $child = new Category('Child', $root);
+        $pouch = $this->pouch();
+        $root = new Category('Root', $pouch);
+        $child = new Category('Child', $pouch, $root);
 
         self::assertNull($this->service()->findEffectiveKeyHolder($child));
     }

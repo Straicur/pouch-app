@@ -10,6 +10,7 @@ use App\ExceptionManagement\Exceptions\ApiException\ConflictException\ConflictEx
 use App\ExceptionManagement\Exceptions\ApiException\NotFoundException\NotFoundException;
 use App\Repository\CategoryRepository;
 use App\Repository\ItemRepository;
+use App\Services\Pouch\CurrentPouchResolverInterface;
 use Override;
 
 class CategoryService implements CategoryServiceInterface
@@ -17,20 +18,23 @@ class CategoryService implements CategoryServiceInterface
     public function __construct(
         private readonly CategoryRepository $categoryRepository,
         private readonly ItemRepository $itemRepository,
+        private readonly CurrentPouchResolverInterface $currentPouchResolver,
     ) {}
 
     #[Override]
     public function list(): array
     {
-        return $this->categoryRepository->findAllOrderedByName();
+        return $this->categoryRepository->findAllForPouchOrderedByName($this->currentPouchResolver->resolve());
     }
 
     #[Override]
     public function getById(int $id): Category
     {
         $category = $this->categoryRepository->find($id);
+        $currentPouchId = $this->currentPouchResolver->resolve()->getId();
 
-        if (null === $category) {
+        // Another pouch's category looks exactly like a missing one — never 403.
+        if (null === $category || $category->getPouch()->getId() !== $currentPouchId) {
             throw new NotFoundException(message: 'category.not_found');
         }
 
@@ -41,8 +45,9 @@ class CategoryService implements CategoryServiceInterface
     public function create(string $name, ?int $parentId): Category
     {
         $parent = $this->resolveParent($parentId);
+        $this->assertMaxDepth($parent);
 
-        $category = new Category($name, $parent);
+        $category = new Category($name, $this->currentPouchResolver->resolve(), $parent);
         $this->categoryRepository->save($category);
 
         return $category;
@@ -66,6 +71,15 @@ class CategoryService implements CategoryServiceInterface
         $parent = $this->resolveParent($parentId);
 
         $this->assertNoCycle($category, $parent);
+        $this->assertMaxDepth($parent);
+
+        // A category with its own children can't become a subcategory
+        // itself — that would put its children at depth 3, past the
+        // "kategoria główna + jedna podkategoria" limit assertMaxDepth()
+        // enforces for $parent alone.
+        if (null !== $parent && [] !== $category->getChildren()->toArray()) {
+            throw new BadRequestException(message: 'category.max_depth');
+        }
 
         $category->setParent($parent);
         $this->categoryRepository->save($category);
@@ -118,6 +132,18 @@ class CategoryService implements CategoryServiceInterface
         }
 
         return $this->getById($parentId);
+    }
+
+    // Część 13: kategorie mogą mieć co najwyżej jeden poziom zagnieżdżenia
+    // (kategoria główna + jej bezpośrednie podkategorie) — podkategoria nie
+    // może mieć własnej podkategorii. $parent tu to już *rozwiązany* nowy
+    // rodzic (po resolveParent()), więc "$parent ma rodzica" znaczy "$parent
+    // sam jest podkategorią".
+    private function assertMaxDepth(?Category $parent): void
+    {
+        if (null !== $parent && null !== $parent->getParent()) {
+            throw new BadRequestException(message: 'category.max_depth');
+        }
     }
 
     private function assertNoCycle(Category $category, ?Category $newParent): void

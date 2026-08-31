@@ -28,7 +28,28 @@ class WhoAmIControllerTest extends WebTest
 
         self::assertResponseIsSuccessful();
         self::assertJsonStringEqualsJsonString(
-            (string) json_encode(['email' => $userDTO->getEmail()]),
+            (string) json_encode(['email' => $userDTO->getEmail(), 'isAdmin' => false]),
+            (string) $this->webClient->getResponse()->getContent(),
+        );
+    }
+
+    public function testWhoAmIReturnsIsAdminForAnAdminAccount(): void
+    {
+        $userDTO = new UserTestDTO('whoami-admin@example.com', 'zaq12wsx', ['ROLE_ADMIN']);
+        $user = $this->databaseMockManager->createUser($userDTO);
+        $authCookie = $this->databaseMockManager->loginUser($user);
+
+        $this->webClient->request(
+            method: Request::METHOD_GET,
+            uri: '/api/whoami',
+            server: [
+                CookieService::ACCESS_TOKEN => $authCookie->getValue(),
+            ],
+        );
+
+        self::assertResponseIsSuccessful();
+        self::assertJsonStringEqualsJsonString(
+            (string) json_encode(['email' => $userDTO->getEmail(), 'isAdmin' => true]),
             (string) $this->webClient->getResponse()->getContent(),
         );
     }

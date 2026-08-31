@@ -5,15 +5,17 @@ declare(strict_types = 1);
 namespace App\DTO\Response;
 
 /**
- * GET /api/items' paginated envelope. $total is ACL-aware — a locked
- * category/item the caller has no valid grant for is excluded from the
- * query before COUNT/OFFSET/LIMIT ever run (AccessKeyGuard::
- * lockedCategoryIds()/lockedItemIdsWithOwnKey(), threaded through
- * ItemController::list() into ItemRepository::findFilteredPage()) — an
- * earlier version of this excluded locked items only *after* fetching a
- * page, which both leaked how many hidden items existed (via $total) and
- * could make a page come back short, or empty, while unlocked items sat on
- * the next one.
+ * GET /api/items' paginated envelope. $total is ACL-aware for *category*
+ * locks — a locked category the caller has no valid grant for is excluded
+ * from the query before COUNT/OFFSET/LIMIT ever run (AccessKeyGuard::
+ * lockedCategoryIds(), threaded through ItemController::list() into
+ * ItemRepository::findFilteredPage()) — an earlier version of this excluded
+ * locked items only *after* fetching a page, which both leaked how many
+ * hidden items existed (via $total) and could make a page come back short,
+ * or empty, while unlocked items sat on the next one. An item locked only by
+ * its own key is a separate case (Część 13) — it's still counted/paginated
+ * normally, just redacted to a locked summary (see ItemMapper::
+ * toLockedSummaryResponseDTO()).
  */
 class ItemListResponseDTO
 {

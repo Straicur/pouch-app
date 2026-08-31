@@ -4,6 +4,7 @@ import { axiosBaseQuery } from "./baseQuery";
 
 export interface WhoAmIResponse {
   email: string;
+  isAdmin: boolean;
 }
 
 export const sessionApi = createApi({

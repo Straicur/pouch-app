@@ -15,15 +15,27 @@ Patrz `frontend/package.json` (źródło prawdy — jeśli się rozjedzie z tą 
 - TypeScript 5.6
 - Vite 5
 
-Bez SASS/SCSS — zwykły CSS zostaje domyślnym wyborem dla większości aplikacji.
-**Wyjątek: Tailwind v4** (`@tailwindcss/vite`, konfiguracja CSS-first w
-`src/index.css`) wszedł w Części 11, ale świadomie *scoped* — tylko
-`src/ui/catalyst/` (przeniesiony z `e-rezerwacja-frontend` `SidebarLayout` +
-`Navbar`/`Sidebar`, patrz tamtejszy `README.md`) i miejsca, które go używają
-(`UserLayout`, `AdminLayout`). Reszta aplikacji (karty itemów, formularze, tabele
-admina) zostaje na plain CSS — to nie jest zapowiedź pełnej migracji, patrz "Do
-ustalenia" niżej. Nowy kod **poza** `src/ui/catalyst/` pisz w plain CSS, nie Tailwind,
-dopóki ta decyzja nie zostanie podjęta świadomie dla całej aplikacji.
+Bez SASS/SCSS. **Tailwind v4** (`@tailwindcss/vite`, konfiguracja CSS-first w
+`src/index.css`) wszedł w Części 11 *scoped* tylko do `src/ui/catalyst/` — od Części 13
+to już nieaktualne: **Catalyst UI/Tailwind jest standardem dla całej aplikacji**,
+plain CSS nie jest już domyślnym wyborem dla nowego kodu. `src/ui/catalyst/`
+(przeniesiony i rozbudowany z `e-rezerwacja-frontend`'owego
+`libs/catalyst-ui`/`libs/ui`, patrz tamtejszy `README.md`) trzyma komponenty —
+`button`, `dialog`, `dropdown`, `badge`, `text`, `heading`, `form/*`
+(`fieldset`/`input`/`textarea`/`select`/`checkbox`/`radio`/`switch`) obok
+wcześniejszych `link`/`navbar`/`sidebar*`/`touch-target`. Dwie świadome różnice
+względem źródła, konsekwentnie w każdym portowanym pliku: brak wymaganego
+`dataTestId` (projekt nie ma konwencji `data-testid`) i stockowa paleta
+Tailwinda (`zinc`/`blue`/...) zamiast rebrandowanych tokenów źródła
+(`bg-primary`/`gray-01`/`gray-02`/`gray-03` itd.) — `src/ui/catalyst/README.md`
+ma pełny opis. Istniejące plain-CSS strony (`src/index.css`) migrują stopniowo,
+nie jednym commitem — nowy/przerabiany kod idzie od razu przez Catalyst.
+
+**Tryb jasny/ciemny** (`src/libs/theme.ts`) steruje klasą `.dark` na `<html>`
+(`@custom-variant dark (&:where(.dark, .dark *));` w `index.css`, patrz jego
+komentarz) zamiast samego `prefers-color-scheme` — zapisany w `localStorage`,
+`themeUtil.init()` wołane raz w `main.tsx`. Przełącznik: `ThemeSwitch`
+(`src/modules/shared/view/ThemeSwitch.tsx`) w `SidebarFooter` obu layoutów.
 
 ## Jak uruchomić
 
@@ -105,9 +117,10 @@ src/
   zakłada się dopiero, gdy faktycznie powstanie taki plik.
 - Komponent użyty w więcej niż jednym module danego obszaru → `modules/<obszar>/shared/`
   (przykład: `AccessKeyPanel` używany przez `items` i `categories`). Komponent
-  współdzielony między `user` i `admin` (jeszcze taki nie istnieje) → `src/providers/`
-  jeśli to cross-cutting owijacz drzewa, albo nowy `src/modules/shared/` dla zwykłego
-  komponentu — do ustalenia w momencie, gdy faktycznie powstanie pierwszy taki przypadek.
+  współdzielony między `user` i `admin` → **`src/modules/shared/`** (rozstrzygnięte
+  w Części 13, pierwszy przykład: `modules/shared/view/ThemeSwitch.tsx`, w
+  `SidebarFooter` obu layoutów) — `src/providers/` zostaje tylko dla cross-cutting
+  owijaczy drzewa (patrz niżej), nie zwykłych komponentów widoku.
 - `<Obszar>Layout.tsx` (`UserLayout.tsx`, `AdminLayout.tsx`) odpowiada za nawigację i
   jedno wspólne sprawdzenie dostępu (patrz "Layouty i trasy" niżej) — moduły w środku
   nie duplikują tego sprawdzenia.
@@ -448,17 +461,3 @@ Reacta, nie tego komponentu. Te przypadki nadal muszą mieć własny `try/catch`
 "Każda funkcja `async`, która woła API, obsługuje błąd" wyżej) — `ErrorBoundary` jest
 ostatnią linią obrony dla tego, co nieobsłużony `try/catch` by przegapił, nie
 zamiennikiem dla obsługi błędów w komponentach.
-
----
-
-## Do ustalenia
-
-- SASS vs zwykły CSS na dłuższą metę — teraz dodatkowo skomplikowane przez Tailwind
-  (patrz "Wersje kluczowych komponentów"): czy Tailwind zostaje trwale ograniczony do
-  `src/ui/catalyst/`, czy z czasem przejmuje resztę aplikacji, a plain CSS/SASS
-  przestaje być tematem — świadoma decyzja do podjęcia, nie coś, co ten dokument
-  rozstrzyga przy okazji.
-- Czy panel admina/usera doczeka się realnego wykorzystania reszty przeniesionego
-  Catalyst UI (`libs/catalyst-ui` w `e-rezerwacja-frontend` ma m.in. `dialog`,
-  `combobox`, `table`) — dziś przeniesiony jest tylko to, czego potrzebuje
-  `SidebarLayout`.

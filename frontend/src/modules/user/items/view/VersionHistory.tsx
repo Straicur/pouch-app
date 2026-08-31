@@ -1,4 +1,4 @@
-import { type ChangeEvent, useState } from "react";
+import { type ChangeEvent, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { getApiErrorBody } from "../../../../libs/apiError";
 import { toastUtil } from "../../../../libs/toastUtil";
@@ -7,6 +7,7 @@ import {
   useListVersionsQuery,
   useOverwriteFileMutation,
 } from "../../../../store/api/itemApi";
+import { Button } from "../../../../ui/catalyst/button";
 
 interface VersionHistoryProps {
   itemId: number;
@@ -17,14 +18,17 @@ const formatSize = (bytes: number): string => {
 };
 
 // Part 8 — FILE items only (ItemService::overwriteFile() rejects any other
-// type). The current content is already shown by ItemCard itself; this is
-// purely the "what it used to be" history, per GET .../versions' own doc.
+// type). The current content is already shown by ItemDetailsModal itself;
+// this is purely the "what it used to be" history, per GET .../versions'
+// own doc. Część 13 post-review fix: shown directly, no expand/collapse
+// toggle anymore — everything in the details modal appears without extra
+// clicking.
 export function VersionHistory({ itemId }: VersionHistoryProps) {
   const { t } = useTranslation();
   const { data: versions } = useListVersionsQuery(itemId);
   const [overwriteFile, { isLoading: isUploading }] = useOverwriteFileMutation();
   const [getVersionDownloadLink] = useGetVersionDownloadLinkMutation();
-  const [isExpanded, setIsExpanded] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -59,36 +63,42 @@ export function VersionHistory({ itemId }: VersionHistoryProps) {
   };
 
   return (
-    <div className="version-history">
-      <button type="button" className="version-history-toggle" onClick={() => setIsExpanded(!isExpanded)}>
+    <div className="flex flex-col gap-2">
+      <p className="text-sm font-medium text-zinc-950 dark:text-white">
         {t("versions.toggle", { count: versions?.length ?? 0 })}
-      </button>
+      </p>
 
-      {isExpanded && (
-        <div className="version-history-body">
-          <label className="version-history-upload">
-            {isUploading ? t("versions.uploading") : t("versions.uploadNewLabel")}
-            <input type="file" onChange={handleUpload} disabled={isUploading} />
-          </label>
+      <Button
+        size="small"
+        variant="outline"
+        className="w-fit"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={isUploading}
+      >
+        {isUploading ? t("versions.uploading") : t("versions.uploadNewLabel")}
+      </Button>
+      <input type="file" ref={fileInputRef} onChange={handleUpload} disabled={isUploading} className="hidden" />
 
-          {undefined !== versions && versions.length > 0 && (
-            <ul className="version-history-list">
-              {versions.map((version) => (
-                <li key={version.version}>
-                  <span>
-                    {t("versions.entryLabel", { version: version.version, filename: version.originalFilename })}
-                  </span>
-                  <span className="version-history-size">{formatSize(version.size)}</span>
-                  <button type="button" onClick={() => handleDownload(version.version)}>
-                    {t("versions.download")}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+      {undefined !== versions && versions.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          {versions.map((version) => (
+            <li key={version.version} className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+              <span>{t("versions.entryLabel", { version: version.version, filename: version.originalFilename })}</span>
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">{formatSize(version.size)}</span>
+              <button
+                type="button"
+                onClick={() => handleDownload(version.version)}
+                className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+              >
+                {t("versions.download")}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
-          {undefined !== versions && 0 === versions.length && <p>{t("versions.empty")}</p>}
-        </div>
+      {undefined !== versions && 0 === versions.length && (
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">{t("versions.empty")}</p>
       )}
     </div>
   );

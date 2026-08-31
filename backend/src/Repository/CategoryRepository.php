@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace App\Repository;
 
 use App\Entity\Category;
+use App\Entity\Pouch;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -38,9 +39,9 @@ class CategoryRepository extends ServiceEntityRepository
     /**
      * @return list<Category>
      */
-    public function findAllOrderedByName(): array
+    public function findAllForPouchOrderedByName(Pouch $pouch): array
     {
-        return array_values($this->findBy([], ['name' => 'ASC']));
+        return array_values($this->findBy(['pouch' => $pouch], ['name' => 'ASC']));
     }
 
     /**

@@ -22,10 +22,10 @@ use App\Security\AuthorizationServiceInterface;
  * every controller in this app already promotes its dependencies with that
  * exact naming discipline (see `$authService`/`$serializer` everywhere
  * else), so this isn't a new, fragile assumption, just formalizing an
- * existing one. `@property-read` below gives PHPStan/IDEs the same
+ * existing one. `@property` below gives PHPStan/IDEs the same
  * visibility a real property declaration would.
  *
- * @property-read AuthorizationServiceInterface $authorizationService
+ * @property AuthorizationServiceInterface $authorizationService
  */
 trait AuthorizesRequestsTrait
 {

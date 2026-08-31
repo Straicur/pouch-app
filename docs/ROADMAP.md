@@ -744,6 +744,252 @@ nigdy nie dotyka hashera). Żadna zmiana kontraktu publicznego
 
 ---
 
+## Część 16 — Wiele użytkowników / zarządzanie kontami
+
+Zgłoszone przez usera przy okazji przeglądu panelu admina: dziś projekt jest
+faktycznie jednoosobowy (jeden "pouch") mimo że ma już role
+(`ROLE_GUEST`/`ROLE_USER`/`ROLE_ADMIN`, `security.yaml`) i trzy konta w
+fixtures. Żadna encja domenowa (`Category`, `Item`) nie miała pola
+właściciela — `ItemVoter`'s własny docblock mówił to wprost: *"unlike
+categories, item deletion isn't admin-only — there's no per-item ownership
+yet to distinguish 'your item' from 'someone else's'"*.
+
+Decyzja usera: zamiast prostego `ownerId` na `Category`/`Item`, nadrzędna
+encja **`Pouch`** — "system", do którego należy user i cała jego reszta
+danych, z miejscem na przyszłe ustawienia. Rejestracja: tylko admin dodaje
+konta (nie ma jeszcze — patrz "Krok 2" niżej).
+
+### Krok 1 — encja `Pouch` + izolacja danych (zrobione)
+
+- [x] **`Pouch`** (`src/Entity/Pouch.php`, `id`/`name`/`createdAt`) — `User`
+      i `Category` dostały `#[ORM\ManyToOne] Pouch $pouch` (nullable: false).
+      `Item` celowo **nie** dostał własnej kolumny pouch — jego pouch to
+      pouch jego kategorii (`item.category.pouch`), tak jak jego lock (Część 7)
+      też idzie przez kategorię.
+- [x] **Migracja** (`Version20260831190537`, ręcznie pisana jak
+      `Version20260831190000` — Doctrine nie ogarnia NOT NULL FK z backfillem
+      samo) — jeden domyślny pouch ("Domyślny pouch"), wszystkie istniejące
+      konta/kategorie do niego przypisane. Zero widocznej zmiany dla
+      istniejącego usera (dalej ten sam pouch co wcześniej).
+- [x] **`CurrentPouchResolverInterface`/`CurrentPouchResolver`**
+      (`src/Services/Pouch/`) — "jaki pouch ma bieżący request", współdzielone
+      przez `CategoryService`/`ItemService` (Security → User → Pouch).
+- [x] **Izolacja**: `CategoryService::list()/getById()/create()` i
+      `ItemService::listPage()`/nowe `getByIdInCurrentPouch()` filtrują po
+      pouchu bieżącego usera — cudzy zasób (kategoria albo item) wygląda
+      dokładnie jak nieistniejący (404, nigdy 403 — nie zdradzamy, że coś
+      istnieje w cudzym pouchu). Testy: `CategoryPouchIsolationTest`,
+      `ItemPouchIsolationTest` — dwóch userów w różnych pouchach, sprawdzone
+      że jeden nie widzi/nie może dopisać do/nie może zmienić danych drugiego.
+- [ ] **Znana, świadomie nie domknięta luka**: `ItemService::getById()` (bez
+      `InCurrentPouch`) zostaje **nieopatentowany** dla działań innych niż
+      `get()`/`listPage()` — `updateNote()`/`updateTags()`/ulubione/`delete()`/
+      `overwriteFile()`/historia wersji/klucz dostępu itemu wciąż nie sprawdzają
+      pouch przy bezpośrednim odwołaniu po id. Powód: te metody dzielą
+      `getById()` z `download()`/`thumbnail()`/`versionDownload()`/`publicView()`
+      — jedynymi akcjami w całym `ItemController`, które celowo działają **bez
+      żadnej autoryzacji sesji** (signed URL to własny, niezależny kanał
+      autoryzacji, patrz `ItemController`'s docblock) i przez to nie mają
+      żadnego "bieżącego pouch" do sprawdzenia. Rozdzielenie tych dróg (osobna
+      pouch-scoped wersja każdej mutującej metody) to następny, odrębny krok —
+      dziś praktyczne ryzyko jest niskie (trzeba zgadnąć cudzy numeryczny id
+      itemu), ale to nie jest to samo co realna izolacja.
+- [ ] **Sugestia usera na domknięcie powyższej luki**: zamiast ręcznie
+      dopisywać `WHERE pouch_id = :id` (albo `getByIdInCurrentPouch()`) do
+      każdej metody repozytorium/serwisu z osobna, jeden współdzielony
+      **Doctrine SQL Filter** (`PouchFilter`, włączany raz per request przez
+      `CurrentPouchResolver` — ten sam wzorzec co `WorkshopFilter` z innych
+      projektów) dopisywałby warunek automatycznie do każdego zapytania po
+      encji scope'owanej Pouchem. Nowy kod/repozytorium dostaje izolację "za
+      darmo" bez pamiętania o niej przy każdym nowym query, zamiast
+      polegać na tym, że ktoś nie zapomni wywołać właściwej metody (dokładnie
+      to zawiodło w luce wyżej). Wymaga jawnego `suspend()`/`restore()` tam,
+      gdzie operacja świadomie ma przejść przez wszystkie pouche naraz (panel
+      admina, Krok 3 niżej) — i przemyślenia, czy filtr na `Item` da się
+      wyrazić przez join do `category.pouch`, skoro `Item` sam nie ma
+      kolumny `pouch_id` (patrz decyzja w Kroku 1 wyżej).
+- [ ] **Storage/GC/Backup/Audit Log/Expiring (`AdminController`) zostają
+      świadomie globalne, nie per-pouch** — "Krok 3" niżej.
+
+### Code review Kroku 1 — do naprawy jutro (nie zaczęte)
+
+Zewnętrzny code review Kroku 1 — 5 znalezisk, review uznał zmianę za
+niegotową do merge w obecnym stanie. Nie naprawiać teraz, tylko spisać do
+jutra razem z resztą Kroku 1/domknięcia izolacji Pouch.
+
+- [ ] **[P1] Izolację Pouch można ominąć przez większość endpointów itemów** —
+      `ItemService::getById()` (`backend/src/Services/Item/ItemService.php:219`)
+      zostaje bez ograniczenia do bieżącego Pouch, a wersja izolowana
+      (`getByIdInCurrentPouch()`) jest używana tylko przy zwykłym
+      `GET /api/items/{id}`. Mutacje, usuwanie, historia wersji oraz
+      generowanie download/public linków nadal korzystają z niescope'owanego
+      odczytu, np. `backend/src/Controller/Api/ItemController.php:666`.
+      Użytkownik znający lub enumerujący numeryczne ID może m.in. usunąć
+      cudzy item, zmienić notatkę/tagi/ulubione, nadpisać cudzy plik, albo
+      wygenerować podpisany/publiczny link do cudzego itemu — brak access
+      key na itemie oznacza, że guard tego nie zatrzyma. Wszystkie endpointy
+      wymagające sesji powinny korzystać z pouch-scoped lookup; osobna,
+      niescope'owana ścieżka może zostać wyłącznie dla już podpisanych URL-i
+      (patrz `PouchFilter`, wyżej, i jego rekomendowane wyjątki).
+- [ ] **[P1] Globalne wykrywanie duplikatów ujawnia dane z innych Pouchy** —
+      `ItemService.php:401` wyszukuje hash globalnie, a odpowiedź konfliktu
+      ujawnia ID i nazwę znalezionego itemu (`ItemService.php:458`). Globalny
+      indeks unikalny dodatkowo uniemożliwia dwóm Pouchom niezależne
+      przechowywanie tego samego pliku. Dedup powinien być ograniczony do
+      Pouch — przy obecnym modelu bez `pouch_id` na `Item` wymaga to zmiany
+      modelu (join do kategorii) lub rezygnacji z globalnej unikalności; sam
+      indeks PostgreSQL nie zapewni unikalności przez join.
+- [ ] **[P1] Endpoint tagów ujawnia tagi ze wszystkich Pouchy** —
+      `TagRepository.php:41` (`findAllOrderedByName()`) zwraca tagi powiązane
+      ze wszystkimi aktywnymi itemami, niezależnie od kategorii/Pouch. Każdy
+      zalogowany user może poznać nazwy tagów innych userów przez
+      `GET /api/tags`. Repozytorium powinno filtrować przez
+      Item → Category → Pouch — potwierdza też decyzję z Części 17: `Tag`
+      docelowo ma być zasobem należącym do Pouch, nie współdzielonym między
+      tenantami.
+- [ ] **[P1] Błędy HTTP scrapera są traktowane jako sukces** —
+      `SafeUrlFetcher.php:53` zwraca odpowiedź także dla statusów 4xx/5xx;
+      scraper przetwarza wtedy puste body i oznacza item jako `COMPLETED`
+      zamiast `FAILED`. Potwierdzone deterministycznie przez
+      `testFetchFailureMarksItemFailedWithoutThrowing` (oczekiwano `FAILED`,
+      otrzymano `COMPLETED` — ten sam test, który wcześniej uznaliśmy za
+      "pre-istniejący flaky", okazuje się realnym bugiem, nie flakiem).
+      Fetcher albo scraper powinien rzucać wyjątek dla statusu ≥ 400.
+- [ ] **[P2] Modal szczegółów pokazuje spinner bez końca po błędzie API** —
+      `ItemDetailsModal.tsx:193` odczytuje wyłącznie `data` z
+      `useGetItemQuery`. Każde 404/403/zerwane połączenie daje
+      `item === undefined`, więc renderuje się bezterminowo `LoadingIndicator`
+      (`ItemDetailsModal.tsx:204`). Trzeba rozróżnić `isLoading` od `error` i
+      pokazać komunikat oraz możliwość zamknięcia/ponowienia.
+- [ ] **Zgodność z CLAUDE.md** — nowy kod wielokrotnie łamie zasadę zakazu
+      komentarzy opisujących etapy/historię zmian (`docs/engineering/
+      project-rules.md`, "Zakres i jakość zmiany" — brak komentarzy
+      narracyjnych). Komentarze zaczynające się od "Część 13", "Część 14",
+      "Post-review fix" (np. `ItemDetailsModal.tsx:190`) — kilkadziesiąt
+      wystąpień w `backend/src`/`frontend/src`. Skrócić do aktualnego,
+      niehistorycznego "dlaczego" albo usunąć.
+
+### Krok 2 — panel admina: konta i pouche (nie zaczęte)
+
+- [ ] **Rejestracja**: tylko admin dodaje konta (potwierdzone) — nowy
+      `UserController`/`Services/User/` (email, hasło tymczasowe albo link do
+      ustawienia hasła, rola, do którego pouch przypisać/czy założyć nowy).
+- [ ] **Panel admina: lista/zarządzanie kontami** — zmiana roli,
+      zablokowanie/usunięcie konta, reset hasła przez admina, przegląd pouchy
+      (nazwa, ile ma userów/kategorii/itemów).
+- [ ] Frontend: nowa strona w `/admin` do tego wszystkiego.
+
+### Krok 3 — reszta panelu admina "per pouch" (nie zaczęte)
+
+- [ ] **`StoragePage`/Backup/GC/Audit Log/Expiring** dziś operują na całym
+      systemie (wszystkie pouche naraz) — świadomie zostawione tak w Kroku 1.
+      Do ustalenia: admin nadal widzi/zarządza wszystkim (typowy model
+      "superadmina" w multi-tenant) czy dochodzi filtr "per pouch" w samym
+      panelu.
+- [ ] **Zarządzanie itemami/plikami per pouch** — user zgłosił, że
+      `StoragePage` pokazuje tylko zagregowane liczby (per typ), bez
+      możliwości przejrzenia/usunięcia pojedynczych plików. `DELETE
+      /api/items/{id}` już istnieje i ma teraz przycisk w `ItemDetailsModal`
+      (Część 13/14) — ale to działanie usera na własnym itemie, nie
+      admin-owe "przejrzyj/usuń cudze pliki po pouchach".
+
+### Dalej, nie zaczęte
+
+- [ ] **RODO/eksport i usunięcie danych użytkownika** — "usuń moje konto i
+      wszystkie moje dane"/"pobierz wszystkie moje dane" (Część 9 ma już
+      eksport kategorii jako ZIP — częściowo reużywalne).
+- [ ] **Współdzielenie między kontami** — dziś `AccessKeyGuard`
+      (Część 7)/publiczne linki (Część 9) to jedyne formy "udostępniania", obie
+      nie wymagają drugiego konta. Prawdziwy multi-user może chcieć
+      "udostępnij Jankowi tę kategorię" zamiast tylko anonimowego linku —
+      prawdopodobnie: dodać drugiego usera do tego samego pouch, albo osobny
+      mechanizm współdzielenia między pouchami.
+
+---
+
+## Część 17 — Tagi jako pełnoprawny zasób + 4 usprawnienia wyszukiwarki (nie zaczęte)
+
+Zgłoszone przez usera w tej samej rozmowie co ranking pól/prefix-matching/
+kategorie i tagi jako twarde filtry (już zrobione — patrz
+`ItemRepository::searchMatchingIds()`/`buildPrefixTsQuery()`,
+`ItemListFilter`, `ItemFilters.tsx`). Spisane tu zamiast dokończone od razu —
+zabrakło tokenów w tamtej sesji, i w międzyczasie okazało się, że pierwszy
+punkt zależy od jeszcze niedomkniętej Części 16 (patrz niżej).
+
+- [ ] **Tagi: prosty CRUD + strona w panelu bocznym**, analogicznie do
+      `CategoriesPage`. Dziś `TagController` jest read-only — `GET /api/tags`
+      zwraca tylko nazwy tagów faktycznie użytych na jakimś aktywnym itemie
+      (do filtra/autouzupełniania), a same tagi powstają wyłącznie przy
+      okazji tagowania itemu (`TagService::resolveTags()`,
+      `TagRepository::findOrCreateByNames()`). Do zrobienia: `create`/
+      `rename`/`delete` (mirror `CategoryController`/`CategoryService` —
+      nowy `TagVoter` z tymi samymi progami ról co `CategoryVoter`:
+      `CREATE`/`RENAME` = `ROLE_USER`, `DELETE` = `ROLE_ADMIN`), nowy endpoint
+      zwracający **wszystkie** tagi, nie tylko "w użyciu" (np.
+      `GET /api/tags/all`), do samego zarządzania — plus wpis w sidebarze i
+      nowa `TagsPage`.
+  - **Decyzja usera w tej rozmowie**: tagi mają być scope'owane per Pouch,
+    tak jak `Category` (Część 16), nie globalne. `Tag` dziś nie ma żadnej
+    relacji do `Category`/`Pouch` (współdzielony przez `item_tag`, bez
+    własnej kolumny) — wymaga nowej migracji dodającej `tag.pouch_id`, tym
+    samym wzorcem backfill co `Version20260831190537.php` dla
+    `category`/`user`. Jeśli do tego czasu powstanie `PouchFilter` (patrz
+    Część 16, Krok 1, ostatni punkt), tagi powinny iść przez ten sam filtr,
+    nie przez osobny ręczny warunek.
+  - **Zależność, nie blocker**: sensowne dopiero, gdy Część 16 (izolacja
+    itemów po Pouchu, w tym znana luka z Kroku 1) jest stabilna — inaczej
+    dokłada się kolejny zasób do modelu, który sam jeszcze nie domyka
+    izolacji do końca.
+  - [ ] **Lista itemów "skacze" (zmienia kolejność) po kliknięciu gwiazdki** —
+    zgłoszone przez usera. `ItemRepository`'s `ORDER BY` (`findFiltered()`,
+    `findFilteredPage()`, i `rank DESC, i.created_at DESC` w
+    `searchMatchingIds()`) sortuje tylko po `i.createdAt`, bez żadnego
+    deterministycznego drugiego klucza. `created_at` to `TIMESTAMP(0)`
+    (precyzja sekundy), więc kilka itemów utworzonych w tej samej sekundzie
+    (typowe dla fixtures, ale zdarza się i przy realnym użyciu) to
+    remis — a Postgres nie gwarantuje stałej kolejności remisów między
+    dwoma wywołaniami tego samego zapytania. `markFavorite`/
+    `unmarkFavorite` invalidują tag `Item` w RTK Query, co odpala refetch
+    bieżącej strony z tymi samymi filtrami — i ten refetch potrafi
+    zwrócić remisy w innej kolejności niż poprzednio, co user widzi jako
+    "elementy zmieniają kolejność". Naprawa: dodać stały drugi klucz
+    sortowania (np. `i.id DESC`) do wszystkich trzech `ORDER BY` wyżej.
+- [ ] **Wyszukiwarka — 4 dodatkowe usprawnienia** (poza już zrobionym
+      rankingiem/prefix-matchingiem/twardymi filtrami kategorii/tagów):
+  1. **URL jako przeszukiwalne pole** — `item.search_vector` dziś nie
+     zawiera `url` (tylko `page_title`/`page_description`/`extracted_text`),
+     więc wpisanie samej domeny (np. "github") nie trafi linku, jeśli
+     scrapowany tytuł jej nie zawiera. Dorzucić `url` do wagi D w kolejnej
+     migracji (ten sam wzorzec drop+recreate co `Version20260831190000.php`).
+  2. **Komunikat pustego wyniku dopasowany do kontekstu** — `items.empty`
+     ("Brak itemów do pokazania") pokazuje się identycznie przy braku
+     itemów w ogóle i przy zerowym trafieniu wyszukiwania; potrzebny osobny
+     klucz i18n (np. `items.emptySearch`, z `{{query}}`), używany gdy
+     `filters.q` jest ustawione.
+  3. **Podświetlanie dopasowanego fragmentu** (`ts_headline`) — dziś karta
+     itemu nie pokazuje *dlaczego* coś trafiło, jeśli dopasowanie jest w
+     OCR-u/opisie strony, nie w nazwie. Wymaga nowego pola w
+     `ItemSummaryResponseDTO` (snippet, budowany tylko gdy `q` aktywne) —
+     **bez `dangerouslySetInnerHTML` na froncie**: `ts_headline` niesie
+     surowy tekst usera (notatka/OCR), więc podświetlenie musi iść przez
+     sentinel (parę niedrukowalnych znaków zamiast `<mark>`) i bezpieczne
+     renderowanie jako segmenty tekstu w Reakcie — inaczej to realny wektor
+     stored-XSS w pouchach współdzielonych z innymi kontami (Część 16:
+     "rodzina/zespół", nie jedno konto).
+  4. **Tolerancja literówek** (`pg_trgm`) — dziś literówka w zapytaniu =
+     zero wyników (`to_tsquery` wymaga dokładnego prefiksu). Propozycja:
+     fallback na `similarity()`/trigram tylko gdy główne zapytanie
+     (`buildPrefixTsQuery()`) zwróci pustą listę, żeby nie komplikować/nie
+     spowalniać najczęstszej ścieżki. Wymaga `CREATE EXTENSION IF NOT
+     EXISTS pg_trgm` + indeksu trigramowego.
+
+**Nie blokuje** niczego wcześniejszego — oba wątki to rozszerzenia istniejącej,
+już działającej wyszukiwarki/tagowania, nie naprawa czegoś zepsutego. Punkt
+"tagi" **zależy** od Części 16 (patrz wyżej), punkty wyszukiwarki są od niej
+niezależne i mogą ruszyć w dowolnej kolejności.
+
+---
+
 ## Opcjonalne do naprawy (niezależne od kolejności wyżej)
 
 Nie blokują żadnej części — zrobić przy okazji, kiedy akurat dotykamy powiązanego
@@ -799,3 +1045,132 @@ kopertę `{items, ...}`) — **`make cs`/`make phpstan`/`make test-backend` nie 
 jeszcze uruchomione**, z tego samego powodu co Część 12: kontenery zatrzymane, brak
 zgody na ponowne włączenie od tamtej pory. Frontend: `tsc --noEmit` i
 `biome check --write` czysto.
+
+---
+
+## Część 18 — Etap stabilizacyjny przed dalszym rozwojem (nie zaczęte)
+
+Zewnętrzny przegląd całego projektu (nie zgłoszenie usera z konkretnym
+bugiem, jak Części 16/17 — ocena stanu całości). Ogólny wniosek: fundamenty
+są solidne jak na projekt hobbystyczny (sensowny model domenowy, podział
+backend/frontend, DTO, testy funkcjonalne, kolejka do ciężkich zadań, MinIO,
+TTL/GC, audit log, spójna obsługa błędów) — to nie wygląda jak typowy CRUD.
+Największy problem to nie brak funkcji, tylko rozjazd między deklarowaną
+jakością a faktycznym domknięciem niektórych mechanizmów. Przed dokładaniem
+kolejnych modułów wskazany etap stabilizacyjny, nie kolejne funkcje.
+
+### 1. Domknąć izolację Pouch (absolutny priorytet)
+
+Kontynuacja Części 16/17 — każda operacja użytkownika powinna być
+automatycznie ograniczona do jego Pouch, nie tylko `get()`/`listPage()`:
+
+- [ ] Aktualizacja i usuwanie itemów.
+- [ ] Generowanie publicznych i download linków.
+- [ ] Historia wersji.
+- [ ] Access keys.
+- [ ] Tagi.
+- [ ] Wykrywanie duplikatów (`findByContentHash`).
+
+Rekomendacja: jeden centralny mechanizm zamiast pamiętania o
+`getByIdInCurrentPouch()` w każdym endpoincie osobno — Doctrine filter (patrz
+`PouchFilter` w Części 16, Krok 1) może być dobrym rozwiązaniem, ale trzeba
+bardzo jawnie obsłużyć wyjątki, gdzie filtr **nie** powinien działać: worker
+Messengera (`ScrapeUrlMessageHandler`/`ProcessPhotoMessageHandler` — brak
+requestu/sesji), GC (`ItemGarbageCollector` — działa na wszystkich pouchach
+naraz), panel admina (Część 16, Krok 3 — świadomie cross-pouch), i podpisane
+linki (`download()`/`thumbnail()`/`versionDownload()`/`publicView()` —
+własny, niezależny kanał autoryzacji, patrz Część 16's znana luka).
+
+### 2. Uprościć kod i dokumentację
+
+Projekt jest dobrze udokumentowany, ale miejscami dokumentuje historię
+powstawania zamiast aktualnej architektury — dużo komentarzy w kodzie typu
+"Część 13"/"Post-review fix", a `ROADMAP.md` pełni jednocześnie rolę planu,
+changeloga i dokumentacji technicznej.
+
+- [ ] **`ROADMAP.md`** — wyłącznie przyszłe prace.
+- [ ] **`CHANGELOG.md`** (nowy) — zakończone etapy, przeniesione z `ROADMAP.md`.
+- [ ] **`docs/engineering/architecture.md`** (już istnieje — patrz jego
+      nagłówek) — dociągnąć jako miejsce na aktualne decyzje/invariants, nie
+      historię ich podjęcia.
+- [ ] Kod — tylko krótkie komentarze wyjaśniające nieoczywiste "dlaczego",
+      nie referencje do numeru części/rundy code review.
+
+### 3. Znacznie rozbudować testy frontendu
+
+Backend ma ponad 200 testów, frontend tylko 2 (`LoginPage.test.tsx`) — to
+największa dysproporcja jakościowa projektu. Najbardziej wartościowe
+scenariusze (zachowanie użytkownika, nie każdy komponent Catalyst z osobna):
+
+- [ ] Otwieranie modalu szczegółów itemu i obsługa błędu API.
+- [ ] Odblokowywanie itemu (access key).
+- [ ] Dodawanie pliku/notatki (`AddItemModal`).
+- [ ] Filtry z debounce (`ItemFilters` — patrz Część 17).
+- [ ] Przełączanie ulubionych.
+- [ ] Usuwanie z potwierdzeniem (`ConfirmDialog`).
+- [ ] Odświeżanie cache RTK Query po mutacji.
+
+### 4. Dodać testy bezpieczeństwa jako osobną kategorię
+
+Dla aplikacji przechowującej prywatne materiały: tabelaryczny zestaw testów
+"user A nie może wykonać operacji na zasobie usera B", przechodzący przez
+**wszystkie** endpointy itemu, nie tylko listę i szczegóły (uzupełnia
+`ItemPouchIsolationTest`/`CategoryPouchIsolationTest` z Części 16 o resztę
+operacji z punktu 1 wyżej). Dodatkowo:
+
+- [ ] SSRF dla przekierowań i nietypowych adresów (rozszerzenie
+      `OpenGraphScraperTest` z Części 12 o więcej przypadków brzegowych).
+- [ ] Access grant przypisany do innego użytkownika.
+- [ ] Manipulowanie podpisanym URL-em (zmieniony `expires`/`signature`/id).
+- [ ] Upload tego samego pliku w dwóch różnych Pouchach (czy
+      `content_hash`'a unikalny indeks nie blokuje tego między pouchami).
+- [ ] Wycieki przez tagi, wyszukiwarkę i `total` w paginacji (czy widać, że
+      coś istnieje w cudzym pouchu, nawet jeśli samej treści nie widać).
+
+### 5. Generować kontrakt frontendu z OpenAPI
+
+Typy odpowiedzi, enumy i UUID-y błędów (`ExceptionUuid`/`ApiErrorBody` w
+`libs/apiError.ts` — patrz `FRONTEND.md`'s "Error handling", ostatni punkt,
+gdzie to już jest zapisane jako świadomy dług) są dziś częściowo przepisywane
+ręcznie z backendowego `ExceptionUuidEnum`. Coraz bardziej podatne na
+rozjazdy przy każdej zmianie backendu.
+
+- [ ] Wygenerowany klient albo przynajmniej typy wprost z
+      `nelmio/api-doc-bundle`'owego `/api/doc.json` — jeden kontrakt
+      backend–frontend, mniej ręcznego utrzymania, wcześniejsze wykrycie
+      breaking changes (np. w CI).
+
+### 6. Poprawić operacyjność
+
+Przed realnym używaniem projektu do ważnych danych — backup bez regularnie
+sprawdzanego restore'u jest tylko nadzieją, nie zabezpieczeniem:
+
+- [ ] Automatyczny backup PostgreSQL i MinIO (dziś `BackupPage`/`AdminController`
+      robi to ręcznie na żądanie, nie na harmonogramie — patrz Część 10).
+- [ ] Test odtwarzania backupu (nie tylko jego tworzenia).
+- [ ] Health checks dla DB, MinIO i kolejki Messengera.
+- [ ] Monitoring failed messages / dead-letter queue (Messenger).
+- [ ] Retencja audit logów (dziś rosną bez limitu — patrz `AuditLogger`).
+- [ ] Limity liczby requestów też poza logowaniem/access key (dziś rate
+      limiting jest tylko na `LoginRateLimiter`/`AccessKeyRateLimiter` —
+      patrz Część 7).
+- [ ] Procedura rotacji kluczy JWT i sekretów (`JWT_PASSPHRASE`/
+      `JWT_PRIVATE_TOKEN`/`JWT_PUBLIC_TOKEN` — patrz `BACKEND.md`'s "Pułapki
+      tego projektu").
+
+### Produktowo (pomysły na kolejne funkcje, po etapie stabilizacyjnym)
+
+- [ ] Szybkie dodawanie materiałów z telefonu — PWA/share target.
+- [ ] Import z przeglądarki / rozszerzenie "zapisz do Pouch".
+- [ ] Porządne zarządzanie tagami per Pouch (patrz Część 17).
+- [ ] Kosz z możliwością ręcznego przywracania (dziś trash → GC jest
+      jednokierunkowe do momentu `purgeTrash()`, ale nie ma UI do
+      "przywróć z kosza" przed tym).
+- [ ] Widok ostatnich/nieprzeczytanych elementów.
+- [ ] Zapisane wyszukiwania lub inteligentne kolekcje.
+- [ ] Eksport i pełna przenośność danych (rozszerzenie eksportu kategorii z
+      Części 9 na cały pouch).
+
+**Nie blokuje** Części 17 punkty wyszukiwarki (niezależne od Pouch) — blokuje
+natomiast punkt "tagi" z Części 17, oraz każdą kolejną funkcję dotykającą
+izolacji między kontami.

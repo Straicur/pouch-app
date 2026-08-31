@@ -58,14 +58,4 @@ interface AccessKeyGuardInterface
      * @return list<int>
      */
     public function lockedCategoryIds(Request $request): array;
-
-    /**
-     * Post-review fix: same idea as lockedCategoryIds(), for items with
-     * their *own* key (independent of any category-level lock, which
-     * lockedCategoryIds() already covers) — every item id that has an
-     * access key set and no valid grant for it in $request.
-     *
-     * @return list<int>
-     */
-    public function lockedItemIdsWithOwnKey(Request $request): array;
 }

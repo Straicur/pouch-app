@@ -4,8 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Controller\Api;
 
-use App\Services\Audit\AuditLoggerInterface;
-use App\Services\Category\CategoryServiceInterface;
+use App\ControllerHelper\Traits\AuthorizesRequestsTrait;
 use App\DTO\Mapper\ItemMapper;
 use App\DTO\Request\ItemCreateNoteRequestDTO;
 use App\DTO\Request\ItemCreateRequestDTO;
@@ -15,6 +14,7 @@ use App\DTO\Request\ItemUpdateTagsRequestDTO;
 use App\DTO\Response\DownloadLinkResponseDTO;
 use App\DTO\Response\ItemListResponseDTO;
 use App\DTO\Response\ItemResponseDTO;
+use App\DTO\Response\ItemSummaryResponseDTO;
 use App\DTO\Response\ItemVersionResponseDTO;
 use App\DTO\Response\PublicItemLinkResponseDTO;
 use App\DTO\Response\PublicItemResponseDTO;
@@ -32,15 +32,16 @@ use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\Unauth
 use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\UnauthorizedExceptionModel;
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentException;
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentExceptionModel;
-use App\Services\Item\ValueObject\ItemLifecycleOptions;
-use App\Services\Item\ValueObject\ItemListFilter;
-use App\Services\Item\ItemServiceInterface;
-use App\ControllerHelper\Traits\AuthorizesRequestsTrait;
 use App\Security\AccessKey\AccessKeyGuardInterface;
 use App\Security\AuthorizationServiceInterface;
 use App\Security\ConfigServiceInterface;
 use App\Security\SignedUrlServiceInterface;
 use App\Security\Voter\ItemVoter;
+use App\Services\Audit\AuditLoggerInterface;
+use App\Services\Category\CategoryServiceInterface;
+use App\Services\Item\ItemServiceInterface;
+use App\Services\Item\ValueObject\ItemLifecycleOptions;
+use App\Services\Item\ValueObject\ItemListFilter;
 use App\Services\Request\RequestServiceInterface;
 use App\Services\Storage\StorageServiceInterface;
 use DateTimeImmutable;
@@ -117,12 +118,12 @@ final class ItemController extends AbstractController
 
     /**
      * Post-review fix: GET /api/items' pagination defaults/cap — see
-     * ItemRepository::findFilteredPage(). 50 keeps a default page well under
-     * a real "several MB" response even with sizeable note bodies; 200 is a
-     * hard ceiling so `?pageSize=999999` can't be used to route around
-     * pagination entirely.
+     * ItemRepository::findFilteredPage(). 24 keeps a default page well under
+     * a real "several MB" response even with sizeable note bodies, and lines
+     * up with ItemGrid's card layout; 200 is a hard ceiling so
+     * `?pageSize=999999` can't be used to route around pagination entirely.
      */
-    private const int DEFAULT_PAGE_SIZE = 50;
+    private const int DEFAULT_PAGE_SIZE = 24;
 
     private const int MAX_PAGE_SIZE = 200;
 
@@ -150,12 +151,12 @@ final class ItemController extends AbstractController
             . 'or full-text searched across name, tags, note content, OCR text and OpenGraph title/description. '
             . 'Each item is a summary (no $extractedText) — GET /api/items/{id} for the full item.',
         parameters: [
-            new OA\Parameter(name: 'categoryId', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
+            new OA\Parameter(name: 'categoryIds', description: 'Comma-separated category ids, matches any', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'favorite', in: 'query', required: false, schema: new OA\Schema(type: 'boolean')),
             new OA\Parameter(name: 'tags', description: 'Comma-separated tag names, matches any', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'q', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'q', description: 'Free-text, ranked search — meaningful from 2 characters', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'page', description: '1-based, defaults to 1', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
-            new OA\Parameter(name: 'pageSize', description: 'Defaults to 50, capped at 200', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
+            new OA\Parameter(name: 'pageSize', description: 'Defaults to 24, capped at 200', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
         ],
         responses: [
             new OA\Response(
@@ -169,52 +170,58 @@ final class ItemController extends AbstractController
     {
         $this->assertGranted(ItemVoter::VIEW);
 
-        $categoryId = $request->query->get('categoryId');
         $tags = $request->query->get('tags');
         $query = $request->query->get('q');
 
         $filter = new ItemListFilter(
-            categoryId: null !== $categoryId ? (int) $categoryId : null,
+            categoryIds: $this->parseCommaSeparatedIntegers($request->query->get('categoryIds')),
             favoriteOnly: $request->query->getBoolean('favorite'),
-            tags: null !== $tags && '' !== $tags
-                ? array_values(array_filter(
-                    array_map(static fn (string $tag): string => mb_strtolower(trim($tag)), explode(',', $tags)),
-                    static fn (string $tag): bool => '' !== $tag,
-                ))
-                : [],
+            tags: $this->parseCommaSeparatedTags($tags),
             query: null !== $query && '' !== trim($query) ? trim($query) : null,
         );
 
         $page = max(1, $request->query->getInt('page', 1));
         $pageSize = min(self::MAX_PAGE_SIZE, max(1, $request->query->getInt('pageSize', self::DEFAULT_PAGE_SIZE)));
 
-        // Post-review fix: locked categories/items used to be excluded
-        // *after* fetching a page — COUNT/OFFSET/LIMIT ran blind to Part 7
-        // locks, so a page could come back empty while unlocked items sat on
-        // the next one, and $total leaked how many hidden items existed.
-        // Computed once, up front, and passed into the query itself instead
-        // (see ItemRepository::findFilteredPage()'s own doc comment).
+        // Post-review fix: locked categories used to be excluded *after*
+        // fetching a page — COUNT/OFFSET/LIMIT ran blind to Part 7 locks, so
+        // a page could come back empty while unlocked items sat on the next
+        // one, and $total leaked how many hidden items existed. Computed
+        // once, up front, and passed into the query itself instead (see
+        // ItemRepository::findFilteredPage()'s own doc comment). An item
+        // locked only by its own key stays in the query — Część 13, see the
+        // mapping loop below.
         $excludedCategoryIds = $this->accessKeyGuard->lockedCategoryIds($request);
-        $excludedItemIds = $this->accessKeyGuard->lockedItemIdsWithOwnKey($request);
 
         $result = $this->itemService->listPage(
             $filter,
             offset: ($page - 1) * $pageSize,
             limit: $pageSize,
             excludedCategoryIds: $excludedCategoryIds,
-            excludedItemIds: $excludedItemIds,
         );
 
-        // Every returned item is already ACL-clean by construction — this is
-        // a cheap defense-in-depth double-check, not the primary mechanism
-        // anymore (see above).
-        $unlockedItems = array_values(array_filter(
+        // Every returned item's *category* is already ACL-clean by
+        // construction — this is a cheap defense-in-depth double-check, not
+        // the primary mechanism anymore (see above). Own-key locks are
+        // handled separately below, not filtered out here.
+        $visibleItems = array_values(array_filter(
             $result['items'],
-            fn (Item $item): bool => $this->accessKeyGuard->isItemUnlocked($item, $request),
+            fn (Item $item): bool => $this->accessKeyGuard->isCategoryUnlocked($item->getCategory(), $request),
         ));
 
+        // Część 13: an item locked by its own key no longer disappears from
+        // the list entirely — it appears redacted to a name-only summary, so
+        // the frontend can offer an inline unlock instead of requiring the
+        // id to already be known some other way.
+        $summaries = array_map(
+            fn (Item $item): ItemSummaryResponseDTO => $this->accessKeyGuard->isItemOwnKeyUnlocked($item, $request)
+                ? ItemMapper::toSummaryResponseDTO($item)
+                : ItemMapper::toLockedSummaryResponseDTO($item),
+            $visibleItems,
+        );
+
         $responseDTO = new ItemListResponseDTO(
-            items: ItemMapper::toSummaryResponseDTOList($unlockedItems),
+            items: $summaries,
             total: $result['total'],
             page: $page,
             pageSize: $pageSize,
@@ -249,7 +256,7 @@ final class ItemController extends AbstractController
     {
         $user = $this->assertGranted(ItemVoter::VIEW);
 
-        $item = $this->itemService->getById($id);
+        $item = $this->itemService->getByIdInCurrentPouch($id);
         $this->accessKeyGuard->assertItemUnlocked($item, $request);
         $this->auditLogger->log(AuditLoggerInterface::ACTION_VIEW, AuditLoggerInterface::RESOURCE_ITEM, $id, $user, $request);
 
@@ -278,8 +285,9 @@ final class ItemController extends AbstractController
                     new OA\Property(property: 'file', type: 'string', format: 'binary'),
                     new OA\Property(property: 'categoryId', type: 'integer'),
                     new OA\Property(property: 'name', type: 'string', nullable: true),
+                    new OA\Property(property: 'content', description: 'Optional free-text description', type: 'string', nullable: true),
                     new OA\Property(property: 'keepForever', type: 'boolean'),
-                    new OA\Property(property: 'ttlPreset', type: 'string', enum: ['1h', '7d', '30d'], nullable: true),
+                    new OA\Property(property: 'ttlPreset', type: 'string', enum: ['1h', '1d', '7d', '30d'], nullable: true),
                     new OA\Property(property: 'expiresAt', type: 'string', format: 'date-time', nullable: true),
                 ],
             ),
@@ -311,6 +319,8 @@ final class ItemController extends AbstractController
             mimeType: $file->getMimeType() ?? 'application/octet-stream',
             size: $this->fileSize($file),
             options: $this->toLifecycleOptions($createRequestDTO),
+            content: $createRequestDTO->getContent(),
+            tags: $createRequestDTO->getTags(),
         );
 
         return $this->createdResponse($item);
@@ -337,7 +347,7 @@ final class ItemController extends AbstractController
                     new OA\Property(property: 'categoryId', type: 'integer'),
                     new OA\Property(property: 'name', type: 'string', nullable: true),
                     new OA\Property(property: 'keepForever', type: 'boolean'),
-                    new OA\Property(property: 'ttlPreset', type: 'string', enum: ['1h', '7d', '30d'], nullable: true),
+                    new OA\Property(property: 'ttlPreset', type: 'string', enum: ['1h', '1d', '7d', '30d'], nullable: true),
                     new OA\Property(property: 'expiresAt', type: 'string', format: 'date-time', nullable: true),
                 ],
             ),
@@ -463,6 +473,7 @@ final class ItemController extends AbstractController
                 ttlPreset: null !== $createRequestDTO->getTtlPreset() ? TtlPreset::from($createRequestDTO->getTtlPreset()) : null,
                 customExpiresAt: $this->parseCustomExpiresAt($createRequestDTO->getExpiresAt()),
             ),
+            tags: $createRequestDTO->getTags(),
         );
 
         return $this->createdResponse($item);
@@ -501,7 +512,7 @@ final class ItemController extends AbstractController
         $this->assertGranted(ItemVoter::EDIT);
 
         $updateRequestDTO = $this->requestService->getRequestBodyContent($request, ItemUpdateNoteRequestDTO::class);
-        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
+        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getByIdInCurrentPouch($id), $request);
 
         $item = $this->itemService->updateNoteContent($id, $updateRequestDTO->getContent());
 
@@ -539,7 +550,7 @@ final class ItemController extends AbstractController
         $this->assertGranted(ItemVoter::EDIT);
 
         $updateRequestDTO = $this->requestService->getRequestBodyContent($request, ItemUpdateTagsRequestDTO::class);
-        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
+        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getByIdInCurrentPouch($id), $request);
 
         $item = $this->itemService->replaceTags($id, $updateRequestDTO->getTags());
 
@@ -604,7 +615,7 @@ final class ItemController extends AbstractController
     {
         $this->assertGranted(ItemVoter::EDIT);
 
-        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
+        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getByIdInCurrentPouch($id), $request);
 
         $item = $this->itemService->setFavorite($id, $favorite);
 
@@ -630,7 +641,7 @@ final class ItemController extends AbstractController
     {
         $user = $this->assertGranted(ItemVoter::DELETE);
 
-        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
+        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getByIdInCurrentPouch($id), $request);
 
         $this->itemService->delete($id);
         $this->auditLogger->log(AuditLoggerInterface::ACTION_DELETE, AuditLoggerInterface::RESOURCE_ITEM, $id, $user, $request);
@@ -656,7 +667,7 @@ final class ItemController extends AbstractController
     {
         $this->assertGranted(ItemVoter::DOWNLOAD);
 
-        $item = $this->itemService->getById($id);
+        $item = $this->itemService->getByIdInCurrentPouch($id);
         $this->accessKeyGuard->assertItemUnlocked($item, $request);
 
         if (null === $item->getStorageKey()) {
@@ -723,7 +734,7 @@ final class ItemController extends AbstractController
     {
         $this->assertGranted(ItemVoter::DOWNLOAD);
 
-        $item = $this->itemService->getById($id);
+        $item = $this->itemService->getByIdInCurrentPouch($id);
         $this->accessKeyGuard->assertItemUnlocked($item, $request);
 
         if (null === $item->getThumbnailStorageKey()) {
@@ -792,7 +803,7 @@ final class ItemController extends AbstractController
     {
         $this->assertGranted(ItemVoter::EDIT);
 
-        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
+        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getByIdInCurrentPouch($id), $request);
 
         $file = $this->extractUploadedFile($request);
 
@@ -832,7 +843,7 @@ final class ItemController extends AbstractController
     {
         $this->assertGranted(ItemVoter::VIEW);
 
-        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
+        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getByIdInCurrentPouch($id), $request);
 
         $versions = ItemMapper::toVersionResponseDTOList($this->itemService->listVersions($id));
 
@@ -861,7 +872,7 @@ final class ItemController extends AbstractController
     {
         $this->assertGranted(ItemVoter::DOWNLOAD);
 
-        $item = $this->itemService->getById($id);
+        $item = $this->itemService->getByIdInCurrentPouch($id);
         $this->accessKeyGuard->assertItemUnlocked($item, $request);
 
         // Also confirms the version exists, before minting a link for it.
@@ -911,7 +922,6 @@ final class ItemController extends AbstractController
     }
 
     /**
-     *
      * @throws UnauthorizedException
      * @throws ForbiddenException
      * @throws NotFoundException
@@ -929,7 +939,7 @@ final class ItemController extends AbstractController
     {
         $this->assertGranted(ItemVoter::DOWNLOAD);
 
-        $item = $this->itemService->getById($id);
+        $item = $this->itemService->getByIdInCurrentPouch($id);
         $this->accessKeyGuard->assertItemUnlocked($item, $request);
 
         $view = $this->publicSignedUrl('item_public_view', $this->publicViewSignatureResource($id), ['id' => $id]);
@@ -1031,9 +1041,11 @@ final class ItemController extends AbstractController
         $dto = new ItemCreateRequestDTO(
             categoryId: $request->request->getInt('categoryId'),
             name: $this->nullableString($request->request->get('name')),
+            content: $this->nullableString($request->request->get('content')),
             keepForever: $request->request->getBoolean('keepForever'),
             ttlPreset: $this->nullableString($request->request->get('ttlPreset')),
             expiresAt: $this->nullableString($request->request->get('expiresAt')),
+            tags: $this->parseCommaSeparatedTags($request->request->get('tags')),
         );
         $this->requestService->validate($dto);
 
@@ -1175,6 +1187,44 @@ final class ItemController extends AbstractController
         }
 
         return is_scalar($value) ? (string) $value : null;
+    }
+
+    /**
+     * Shared by list()'s `tags` filter and parseItemCreateRequestDTO()'s
+     * `tags` field (Część 13) — same comma-separated-string-to-normalized-list
+     * parsing either way.
+     *
+     * @return list<string>
+     */
+    private function parseCommaSeparatedTags(mixed $raw): array
+    {
+        $value = $this->nullableString($raw);
+
+        if (null === $value || '' === $value) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            array_map(static fn (string $tag): string => mb_strtolower(trim($tag)), explode(',', $value)),
+            static fn (string $tag): bool => '' !== $tag,
+        ));
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function parseCommaSeparatedIntegers(mixed $raw): array
+    {
+        $value = $this->nullableString($raw);
+
+        if (null === $value || '' === $value) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            array_map(static fn (string $id): int => (int) trim($id), explode(',', $value)),
+            static fn (int $id): bool => 0 < $id,
+        ));
     }
 
     /**

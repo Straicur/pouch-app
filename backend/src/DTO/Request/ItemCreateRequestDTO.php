@@ -19,6 +19,11 @@ class ItemCreateRequestDTO
         private readonly int $categoryId,
         #[Assert\Length(max: 255, maxMessage: 'max_length')]
         private readonly ?string $name,
+        // Część 13 — optional free-text description, only actually used by
+        // createFile() today (see ItemServiceInterface::createFile()'s own
+        // doc comment); harmless as null for createUrl()/createPhoto(),
+        // which just ignore it.
+        private readonly ?string $content,
         private readonly bool $keepForever,
         #[Assert\Choice(callback: [TtlPreset::class, 'values'], message: 'invalid_choice')]
         private readonly ?string $ttlPreset,
@@ -26,6 +31,17 @@ class ItemCreateRequestDTO
         // an invalid format fails as a 400 (bad request), not a 422 (a
         // validation library reading the format wrong would be misleading).
         private readonly ?string $expiresAt,
+        // Część 13 — same deal as $content: only createFile() actually uses
+        // this today, harmless as [] for createUrl()/createPhoto().
+        /**
+         * @var list<string>
+         */
+        #[Assert\Count(max: 20, maxMessage: 'tag.too_many')]
+        #[Assert\All([
+            new Assert\Type('string', message: 'tag.invalid_type'),
+            new Assert\Length(max: 50, maxMessage: 'tag.too_long'),
+        ])]
+        private readonly array $tags = [],
     ) {}
 
     public function getCategoryId(): int
@@ -36,6 +52,11 @@ class ItemCreateRequestDTO
     public function getName(): ?string
     {
         return $this->name;
+    }
+
+    public function getContent(): ?string
+    {
+        return $this->content;
     }
 
     public function isKeepForever(): bool
@@ -51,5 +72,13 @@ class ItemCreateRequestDTO
     public function getExpiresAt(): ?string
     {
         return $this->expiresAt;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getTags(): array
+    {
+        return $this->tags;
     }
 }

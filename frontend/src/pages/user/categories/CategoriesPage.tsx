@@ -1,32 +1,59 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { LoadingIndicator } from "../../../modules/shared/view/LoadingIndicator";
+import { CategoryForm } from "../../../modules/user/categories/forms/CategoryForm";
 import { CategoryRow } from "../../../modules/user/categories/view/CategoryRow";
 import { useListCategoriesQuery } from "../../../store/api/categoryApi";
+import { Button } from "../../../ui/catalyst/button";
+import { Dialog, DialogTitle } from "../../../ui/catalyst/dialog";
+import { Heading } from "../../../ui/catalyst/heading";
 
-// Part 7's category-level keys and Part 9's "pobierz całą kategorię" both
-// needed *some* place to list categories — categoryApi's own comment already
-// flagged "no tree navigation UI yet" as future work this would become.
-// Deliberately still flat (no indentation/tree), just enough to name a
-// category's parent for context.
+// Część 13: kategorie w drzewie (kategoria główna + jej bezpośrednie
+// podkategorie — CategoryService ogranicza głębokość do tego jednego
+// poziomu), zamiast płaskiej listy z dopiskiem "(podkategoria: X)".
 export function CategoriesPage() {
   const { t } = useTranslation();
   const { data: categories, isLoading, error } = useListCategoriesQuery();
-  const categoriesById = new Map((categories ?? []).map((category) => [category.id, category]));
+  const [isAddRootOpen, setIsAddRootOpen] = useState(false);
+
+  const roots = (categories ?? []).filter((category) => null === category.parentId);
+  const childrenByParentId = new Map<number, typeof roots>();
+  for (const category of categories ?? []) {
+    if (null === category.parentId) {
+      continue;
+    }
+
+    const siblings = childrenByParentId.get(category.parentId) ?? [];
+    siblings.push(category);
+    childrenByParentId.set(category.parentId, siblings);
+  }
 
   return (
-    <div className="categories-page">
-      <h1>{t("nav.categories")}</h1>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <Heading>{t("nav.categories")}</Heading>
+        <Button onClick={() => setIsAddRootOpen(true)}>{t("categories.addCategoryButton")}</Button>
+      </div>
 
-      {isLoading && <p>{t("common.loading")}</p>}
-      {undefined !== error && <p className="form-error">{t("categories.fetchError")}</p>}
+      {isLoading && <LoadingIndicator />}
+      {undefined !== error && <p className="text-red-600 dark:text-red-400">{t("categories.fetchError")}</p>}
       {undefined !== categories && 0 === categories.length && <p>{t("categories.empty")}</p>}
 
       {undefined !== categories && categories.length > 0 && (
-        <ul className="category-list">
-          {categories.map((category) => (
-            <CategoryRow key={category.id} category={category} categoriesById={categoriesById} />
+        <ul className="flex flex-col gap-3">
+          {roots.map((root) => (
+            <CategoryRow key={root.id} category={root} subcategories={childrenByParentId.get(root.id) ?? []} />
           ))}
         </ul>
       )}
+
+      <Dialog open={isAddRootOpen} onClose={setIsAddRootOpen}>
+        <DialogTitle>{t("categories.addCategoryTitle")}</DialogTitle>
+        {/* Keyed on open state so react-hook-form's internal values reset on
+            every re-open, instead of carrying over from a previous submit —
+            the dialog itself stays mounted for its close transition. */}
+        <CategoryForm key={String(isAddRootOpen)} parentId={null} onSuccess={() => setIsAddRootOpen(false)} />
+      </Dialog>
     </div>
   );
 }

@@ -4,13 +4,13 @@ declare(strict_types = 1);
 
 namespace App\Services\Item\Collector;
 
-use App\Services\Audit\AuditLoggerInterface;
 use App\Entity\GcRunLog;
 use App\Entity\ItemVersion;
 use App\Exception\StorageException;
 use App\Repository\GcRunLogRepository;
 use App\Repository\ItemRepository;
 use App\Repository\ItemVersionRepository;
+use App\Services\Audit\AuditLoggerInterface;
 use App\Services\Storage\StorageServiceInterface;
 use DateInterval;
 use DateTimeImmutable;

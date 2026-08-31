@@ -34,11 +34,16 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(name: 'password', type: Types::STRING, length: 512, nullable: false)]
     private string $password;
 
-    public function __construct(string $email, string $password)
+    #[ORM\ManyToOne(targetEntity: Pouch::class)]
+    #[ORM\JoinColumn(name: 'pouch_id', referencedColumnName: 'pouch_id', nullable: false)]
+    private Pouch $pouch;
+
+    public function __construct(string $email, string $password, Pouch $pouch)
     {
         $this->email = $email;
         $this->roles = ['ROLE_USER'];
         $this->password = $password;
+        $this->pouch = $pouch;
     }
 
     public function getId(): int
@@ -54,6 +59,18 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setEmail(string $email): static
     {
         $this->email = $email;
+
+        return $this;
+    }
+
+    public function getPouch(): Pouch
+    {
+        return $this->pouch;
+    }
+
+    public function setPouch(Pouch $pouch): static
+    {
+        $this->pouch = $pouch;
 
         return $this;
     }

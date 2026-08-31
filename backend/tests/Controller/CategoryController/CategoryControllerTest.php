@@ -121,6 +121,30 @@ class CategoryControllerTest extends WebTest
         self::assertContains($category['id'], $ids);
     }
 
+    public function testListExposesHasAccessKey(): void
+    {
+        $category = $this->createCategory('Maybe locked');
+
+        $this->authAsUser();
+        $this->webClient->request(
+            method: Request::METHOD_PUT,
+            uri: sprintf('/api/categories/%d/access-key', $category['id']),
+            content: json_encode(['key' => 'sekret123']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_NO_CONTENT);
+
+        $this->authAsUser();
+        $this->webClient->request(method: Request::METHOD_GET, uri: '/api/categories');
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+        $list = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        $byId = [];
+        foreach ($list as $row) {
+            $byId[$row['id']] = $row;
+        }
+
+        self::assertTrue($byId[$category['id']]['hasAccessKey']);
+    }
+
     public function testRenameCategory(): void
     {
         $category = $this->createCategory('Old name');
@@ -204,16 +228,53 @@ class CategoryControllerTest extends WebTest
 
     public function testMoveCategoryIntoOwnDescendantIsRejected(): void
     {
-        $grandparent = $this->createCategory('Grandparent');
-        $parent = $this->createCategory('Parent', $grandparent['id']);
+        // Only two levels — Część 13 limits categories to one level of
+        // subcategories, so a three-level fixture (Grandparent > Parent >
+        // Child) can no longer be built through create() at all.
+        $parent = $this->createCategory('Parent');
         $child = $this->createCategory('Child', $parent['id']);
 
-        // Moving "Grandparent" under its own grandchild "Child" would create a cycle.
+        // Moving "Parent" under its own child "Child" would create a cycle.
         $this->authAsUser();
         $this->webClient->request(
             method: Request::METHOD_PATCH,
-            uri: sprintf('/api/categories/%d/move', $grandparent['id']),
+            uri: sprintf('/api/categories/%d/move', $parent['id']),
             content: json_encode(['parentId' => $child['id']]),
+        );
+
+        self::assertResponseStatusCodeSame(Response::HTTP_BAD_REQUEST);
+        $this->responseTool->testBadRequestResponseData($this->webClient);
+    }
+
+    public function testCreateSubcategoryOfSubcategoryIsRejected(): void
+    {
+        $root = $this->createCategory('Root');
+        $sub = $this->createCategory('Sub', $root['id']);
+
+        $this->authAsUser();
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/categories',
+            content: json_encode(['name' => 'Sub-sub', 'parentId' => $sub['id']]),
+        );
+
+        self::assertResponseStatusCodeSame(Response::HTTP_BAD_REQUEST);
+        $this->responseTool->testBadRequestResponseData($this->webClient);
+    }
+
+    public function testMoveCategoryWithChildrenUnderAnotherCategoryIsRejected(): void
+    {
+        $firstRoot = $this->createCategory('First root');
+        $this->createCategory('First root child', $firstRoot['id']);
+        $secondRoot = $this->createCategory('Second root');
+
+        // "First root" has a child of its own — nesting it under "Second
+        // root" would put that child at depth 3.
+        $this->authAsUser();
+        $this->webClient->request(
+            method: Request::METHOD_PATCH,
+            uri: sprintf('/api/categories/%d/move', $firstRoot['id']),
+            content: json_encode(['parentId' => $secondRoot['id']]),
         );
 
         self::assertResponseStatusCodeSame(Response::HTTP_BAD_REQUEST);

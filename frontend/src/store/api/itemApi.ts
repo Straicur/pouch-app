@@ -3,7 +3,7 @@ import { ApiEndpoints } from "../../libs/apiEndpoints";
 import type {
   CreateFileRequest,
   CreateNoteRequest,
-  Item,
+  ItemDetail,
   ItemListParams,
   ItemListResult,
   ItemVersion,
@@ -38,7 +38,7 @@ export const itemApi = createApi({
         url: ApiEndpoints.ITEMS,
         method: "GET",
         params: {
-          categoryId: args?.categoryId,
+          categoryIds: args?.categoryIds && args.categoryIds.length > 0 ? args.categoryIds.join(",") : undefined,
           favorite: true === args?.favorite ? true : undefined,
           tags: args?.tags && args.tags.length > 0 ? args.tags.join(",") : undefined,
           q: args?.q && "" !== args.q ? args.q : undefined,
@@ -48,39 +48,54 @@ export const itemApi = createApi({
       }),
       providesTags: ["Item"],
     }),
+    // Część 13 — ItemDetailsModal's fetch behind a deliberate click on a
+    // card, not alongside the (paginated) list itself.
+    getItem: builder.query<ItemDetail, number>({
+      query: (id) => ({ url: ApiEndpoints.ITEM(id), method: "GET" }),
+      providesTags: ["Item"],
+    }),
+    // Część 14 — the backend has always had DELETE /api/items/{id} (moves to
+    // trash, see ItemGarbageCollector), the frontend just never wired a
+    // button to it. ItemDetailsModal's delete button, behind a ConfirmDialog.
+    deleteItem: builder.mutation<void, number>({
+      query: (id) => ({ url: ApiEndpoints.ITEM(id), method: "DELETE" }),
+      invalidatesTags: ["Item"],
+    }),
     getItemThumbnailLink: builder.mutation<SignedLink, number>({
       query: (id) => ({ url: ApiEndpoints.ITEM_THUMBNAIL_LINK(id), method: "POST", data: {} }),
     }),
     getItemDownloadLink: builder.mutation<SignedLink, number>({
       query: (id) => ({ url: ApiEndpoints.ITEM_DOWNLOAD_LINK(id), method: "POST", data: {} }),
     }),
-    createNote: builder.mutation<Item, CreateNoteRequest>({
+    createNote: builder.mutation<ItemDetail, CreateNoteRequest>({
       query: (body) => ({ url: ApiEndpoints.ITEM_NOTES, method: "POST", data: body }),
       invalidatesTags: ["Item"],
     }),
-    updateNote: builder.mutation<Item, UpdateNoteRequest>({
+    updateNote: builder.mutation<ItemDetail, UpdateNoteRequest>({
       query: ({ id, content }) => ({ url: ApiEndpoints.ITEM_NOTE(id), method: "PATCH", data: { content } }),
       invalidatesTags: ["Item"],
     }),
-    updateTags: builder.mutation<Item, UpdateTagsRequest>({
+    updateTags: builder.mutation<ItemDetail, UpdateTagsRequest>({
       query: ({ id, tags }) => ({ url: ApiEndpoints.ITEM_TAGS(id), method: "PUT", data: { tags } }),
       invalidatesTags: ["Item"],
     }),
-    markFavorite: builder.mutation<Item, number>({
+    markFavorite: builder.mutation<ItemDetail, number>({
       query: (id) => ({ url: ApiEndpoints.ITEM_FAVORITE(id), method: "PUT" }),
       invalidatesTags: ["Item"],
     }),
-    unmarkFavorite: builder.mutation<Item, number>({
+    unmarkFavorite: builder.mutation<ItemDetail, number>({
       query: (id) => ({ url: ApiEndpoints.ITEM_FAVORITE(id), method: "DELETE" }),
       invalidatesTags: ["Item"],
     }),
-    createFile: builder.mutation<Item, CreateFileRequest>({
-      query: ({ categoryId, file, name, keepForever, ttlPreset, expiresAt }) => ({
+    createFile: builder.mutation<ItemDetail, CreateFileRequest>({
+      query: ({ categoryId, file, name, content, tags, keepForever, ttlPreset, expiresAt }) => ({
         url: ApiEndpoints.ITEM_FILES,
         method: "POST",
         data: fileFormData(file, {
           categoryId: String(categoryId),
           ...(undefined !== name ? { name } : {}),
+          ...(undefined !== content ? { content } : {}),
+          ...(undefined !== tags && tags.length > 0 ? { tags: tags.join(",") } : {}),
           ...(undefined !== keepForever ? { keepForever: String(keepForever) } : {}),
           ...(undefined !== ttlPreset ? { ttlPreset } : {}),
           ...(undefined !== expiresAt ? { expiresAt } : {}),
@@ -89,7 +104,7 @@ export const itemApi = createApi({
       invalidatesTags: ["Item"],
     }),
     // Part 8 — same id/URL afterwards, see ItemServiceInterface::overwriteFile().
-    overwriteFile: builder.mutation<Item, OverwriteFileRequest>({
+    overwriteFile: builder.mutation<ItemDetail, OverwriteFileRequest>({
       query: ({ id, file }) => ({ url: ApiEndpoints.ITEM_FILE(id), method: "POST", data: fileFormData(file) }),
       invalidatesTags: ["Item"],
     }),
@@ -115,6 +130,8 @@ export const itemApi = createApi({
 
 export const {
   useListItemsQuery,
+  useGetItemQuery,
+  useDeleteItemMutation,
   useGetItemThumbnailLinkMutation,
   useGetItemDownloadLinkMutation,
   useCreateNoteMutation,

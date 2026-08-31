@@ -1,7 +1,7 @@
 import { createApi } from "@reduxjs/toolkit/query/react";
 import { ApiEndpoints } from "../../libs/apiEndpoints";
 import type { AuditLogEntry, AuditLogParams, ExtendExpiryRequest, GcRunLog, StorageReport } from "../types/admin";
-import type { Item } from "../types/item";
+import type { ItemDetail } from "../types/item";
 import { axiosBaseQuery } from "./baseQuery";
 
 // Request/response types live in store/types/admin.ts (see its header) —
@@ -44,11 +44,11 @@ export const adminApi = createApi({
       }),
       providesTags: ["AuditLog"],
     }),
-    listExpiringSoon: builder.query<Item[], number | undefined>({
+    listExpiringSoon: builder.query<ItemDetail[], number | undefined>({
       query: (withinHours) => ({ url: ApiEndpoints.ADMIN_ITEMS_EXPIRING_SOON, method: "GET", params: { withinHours } }),
       providesTags: ["ExpiringSoon"],
     }),
-    extendExpiry: builder.mutation<Item[], ExtendExpiryRequest>({
+    extendExpiry: builder.mutation<ItemDetail[], ExtendExpiryRequest>({
       query: (body) => ({ url: ApiEndpoints.ADMIN_ITEMS_EXTEND, method: "POST", data: body }),
       invalidatesTags: ["ExpiringSoon"],
     }),

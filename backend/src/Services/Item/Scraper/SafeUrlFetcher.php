@@ -28,7 +28,7 @@ final readonly class SafeUrlFetcher implements SafeUrlFetcherInterface
     {
         $current = $url;
 
-        for ($hop = 0; $hop <= self::MAX_REDIRECTS; ++$hop) {
+        for ($hop = 0; self::MAX_REDIRECTS >= $hop; ++$hop) {
             $pin = $this->urlValidator->assertValidAndPin($current);
 
             $response = $this->httpClient->request('GET', $current, [
@@ -51,7 +51,7 @@ final readonly class SafeUrlFetcher implements SafeUrlFetcherInterface
             ]);
 
             $status = $response->getStatusCode();
-            if ($status < 300 || $status >= 400) {
+            if (300 > $status || 400 <= $status) {
                 return $response;
             }
 

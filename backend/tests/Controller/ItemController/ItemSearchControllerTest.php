@@ -70,6 +70,51 @@ class ItemSearchControllerTest extends WebTest
         self::assertSame('Zebrasearchword', $items[0]['name']);
     }
 
+    public function testSearchMatchesByNamePrefix(): void
+    {
+        $this->authAsUser();
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/notes',
+            content: json_encode(['categoryId' => $this->category->getId(), 'content' => 'irrelevant content', 'name' => 'Giraffeprefixword']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+
+        // Only the first few letters — search-as-you-type shouldn't need the
+        // whole word (see ItemRepository::buildPrefixTsQuery()).
+        $items = $this->search('giraf');
+        self::assertCount(1, $items);
+        self::assertSame('Giraffeprefixword', $items[0]['name']);
+    }
+
+    public function testSearchRanksNameMatchAboveNoteContentMatch(): void
+    {
+        $this->authAsUser();
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/notes',
+            content: json_encode(['categoryId' => $this->category->getId(), 'content' => 'irrelevant content', 'name' => 'Rankingword']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+        $nameMatch = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+
+        // Explicit, unrelated $name — without it ItemService::deriveNoteName()
+        // would derive the name from $content, and the match would score via
+        // the (weight A) name field too, defeating the point of this test.
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/notes',
+            content: json_encode(['categoryId' => $this->category->getId(), 'name' => 'Unrelated title', 'content' => 'a note mentioning rankingword in passing']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+        $noteMatch = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+
+        $items = $this->search('rankingword');
+        self::assertCount(2, $items);
+        self::assertSame($nameMatch['id'], $items[0]['id']);
+        self::assertSame($noteMatch['id'], $items[1]['id']);
+    }
+
     public function testSearchMatchesByTag(): void
     {
         $this->authAsUser();
@@ -205,12 +250,12 @@ class ItemSearchControllerTest extends WebTest
 
         $otherCategory = $this->databaseMockManager->createCategory('Other');
 
-        $this->webClient->request(method: Request::METHOD_GET, uri: sprintf('/api/items?q=searchword&categoryId=%d', $otherCategory->getId()));
+        $this->webClient->request(method: Request::METHOD_GET, uri: sprintf('/api/items?q=searchword&categoryIds=%d', $otherCategory->getId()));
         self::assertResponseStatusCodeSame(Response::HTTP_OK);
         $emptyBody = json_decode((string) $this->webClient->getResponse()->getContent(), true);
         self::assertSame([], $emptyBody['items']);
 
-        $this->webClient->request(method: Request::METHOD_GET, uri: sprintf('/api/items?q=searchword&categoryId=%d', $this->category->getId()));
+        $this->webClient->request(method: Request::METHOD_GET, uri: sprintf('/api/items?q=searchword&categoryIds=%d', $this->category->getId()));
         self::assertResponseStatusCodeSame(Response::HTTP_OK);
         $body = json_decode((string) $this->webClient->getResponse()->getContent(), true);
         $items = $body['items'];

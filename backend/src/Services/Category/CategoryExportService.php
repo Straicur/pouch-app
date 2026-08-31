@@ -122,7 +122,7 @@ class CategoryExportService implements CategoryExportServiceInterface
 
         $usedNames = [];
 
-        foreach ($this->itemRepository->findFiltered(new ItemListFilter(categoryId: $category->getId())) as $item) {
+        foreach ($this->itemRepository->findFiltered(new ItemListFilter(categoryIds: [$category->getId()])) as $item) {
             if (false === $bypassLocks && false === $this->accessKeyGuard->isItemUnlocked($item, $request)) {
                 continue;
             }

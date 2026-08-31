@@ -16,8 +16,10 @@ use function array_map;
 use function array_slice;
 use function array_values;
 use function count;
+use function implode;
 use function is_numeric;
 use function is_scalar;
+use function preg_match_all;
 use function str_replace;
 
 /**
@@ -62,9 +64,9 @@ class ItemRepository extends ServiceEntityRepository
         $qb = $this->createQueryBuilder('i')
             ->where('i.trashedAt IS NULL');
 
-        if (null !== $filter->categoryId) {
-            $qb->andWhere('i.category = :categoryId')
-                ->setParameter('categoryId', $filter->categoryId);
+        if ([] !== $filter->categoryIds) {
+            $qb->andWhere('i.category IN (:categoryIds)')
+                ->setParameter('categoryIds', $filter->categoryIds);
         }
 
         if ($filter->favoriteOnly) {
@@ -125,17 +127,22 @@ class ItemRepository extends ServiceEntityRepository
      * slicing happens in PHP there instead, same as findFiltered()'s own
      * re-sort.
      *
-     * $excludedCategoryIds/$excludedItemIds (post-review fix): Part 7 locks
-     * excluded *after* COUNT/OFFSET/LIMIT used to run — ItemController::
-     * list() now computes what's locked first (AccessKeyGuard::
-     * lockedCategoryIds()/lockedItemIdsWithOwnKey()) and passes it in here,
-     * so the WHERE clause itself never counts or paginates a locked item.
-     * Fetching a page blind to locks could otherwise come back empty while
-     * unlocked items existed on the next one, and $total leaked how many
-     * hidden items existed.
+     * $excludedCategoryIds (post-review fix): Part 7 category locks excluded
+     * *after* COUNT/OFFSET/LIMIT used to run — ItemController::list() now
+     * computes what's locked first (AccessKeyGuard::lockedCategoryIds()) and
+     * passes it in here, so the WHERE clause itself never counts or
+     * paginates an item in a locked category. Fetching a page blind to locks
+     * could otherwise come back empty while unlocked items existed on the
+     * next one, and $total leaked how many hidden items existed. An item
+     * locked only by its *own* key (category unlocked) is deliberately
+     * *not* excluded here anymore — it still appears in the page, redacted
+     * to a locked summary by ItemController::list() (Część 13), rather than
+     * disappearing entirely.
+     *
+     * $pouchId: joins `category` and scopes to one pouch when given (an item
+     * has no pouch column of its own). Optional — omit it to query across pouches.
      *
      * @param list<int> $excludedCategoryIds
-     * @param list<int> $excludedItemIds
      *
      * @return array{items: list<Item>, total: int}
      */
@@ -144,14 +151,20 @@ class ItemRepository extends ServiceEntityRepository
         int $offset,
         int $limit,
         array $excludedCategoryIds = [],
-        array $excludedItemIds = [],
+        ?int $pouchId = null,
     ): array {
         $qb = $this->createQueryBuilder('i')
             ->where('i.trashedAt IS NULL');
 
-        if (null !== $filter->categoryId) {
-            $qb->andWhere('i.category = :categoryId')
-                ->setParameter('categoryId', $filter->categoryId);
+        if (null !== $pouchId) {
+            $qb->join('i.category', 'c')
+                ->andWhere('c.pouch = :pouchId')
+                ->setParameter('pouchId', $pouchId);
+        }
+
+        if ([] !== $filter->categoryIds) {
+            $qb->andWhere('i.category IN (:categoryIds)')
+                ->setParameter('categoryIds', $filter->categoryIds);
         }
 
         if ($filter->favoriteOnly) {
@@ -168,11 +181,6 @@ class ItemRepository extends ServiceEntityRepository
         if ([] !== $excludedCategoryIds) {
             $qb->andWhere('i.category NOT IN (:excludedCategoryIds)')
                 ->setParameter('excludedCategoryIds', $excludedCategoryIds);
-        }
-
-        if ([] !== $excludedItemIds) {
-            $qb->andWhere('i.id NOT IN (:excludedItemIds)')
-                ->setParameter('excludedItemIds', $excludedItemIds);
         }
 
         if (null === $filter->query) {
@@ -240,11 +248,11 @@ class ItemRepository extends ServiceEntityRepository
     private function searchMatchingIds(string $query): array
     {
         $sql = <<<'SQL'
-            SELECT i.item_id, ts_rank(i.search_vector, plainto_tsquery('simple', :query)) AS rank
+            SELECT i.item_id, ts_rank(i.search_vector, to_tsquery('simple', :tsQuery)) AS rank
             FROM item i
             WHERE i.trashed_at IS NULL
               AND (
-                  i.search_vector @@ plainto_tsquery('simple', :query)
+                  i.search_vector @@ to_tsquery('simple', :tsQuery)
                   OR EXISTS (
                       SELECT 1 FROM item_tag it
                       JOIN tag t ON t.tag_id = it.tag_id
@@ -255,11 +263,27 @@ class ItemRepository extends ServiceEntityRepository
             SQL;
 
         $rows = $this->getEntityManager()->getConnection()->fetchFirstColumn($sql, [
-            'query'     => $query,
+            'tsQuery'   => $this->buildPrefixTsQuery($query),
             'likeQuery' => '%' . $this->escapeLikeWildcards($query) . '%',
         ]);
 
         return array_map(static fn (mixed $id): int => is_numeric($id) ? (int) $id : 0, $rows);
+    }
+
+    /**
+     * Each word becomes a `word:*` prefix match, ANDed together — lets
+     * search-as-you-type match "doku" against "dokumenty" instead of
+     * requiring the whole word (plainto_tsquery()'s tokenizer has no prefix
+     * mode). Words are reduced to letters/digits before being placed in the
+     * tsquery string, so punctuation in the input (which has meaning in
+     * tsquery syntax — `&`, `|`, `:`, `(`...) can't produce anything but a
+     * plain `word:*` term.
+     */
+    private function buildPrefixTsQuery(string $query): string
+    {
+        preg_match_all('/[\p{L}\p{N}]+/u', $query, $matches);
+
+        return implode(' & ', array_map(static fn (string $word): string => $word . ':*', $matches[0]));
     }
 
     /**
@@ -397,38 +421,5 @@ class ItemRepository extends ServiceEntityRepository
             ->getResult();
 
         return $result;
-    }
-
-    /**
-     * Post-review fix: AccessKeyGuard::lockedItemIdsWithOwnKey() needs every
-     * item-level key up front (bulk) to compute, before a paginated list
-     * query runs, which item ids to exclude — rather than fetching a page
-     * and filtering afterwards (see ItemController::list()'s own comment).
-     *
-     * Scalar id/version pairs, not full entities — this used to hydrate
-     * every matching Item in full (note content/OCR text included) on
-     * *every* GET /api/items, which is exactly the "load way more than a
-     * page needs" problem pagination exists to avoid in the first place.
-     * Filtered to active items only: a trashed item is already excluded by
-     * every list query's own `trashedAt IS NULL`, so a trashed item's key
-     * never needs to be in this set at all — an earlier version of this
-     * method still hydrated (and checked grants against) trashed items too.
-     *
-     * @return list<array{id: int, accessKeyVersion: int}>
-     */
-    public function findAllWithOwnAccessKeyForLockCheck(): array
-    {
-        /** @var list<array{id: mixed, accessKeyVersion: mixed}> $rows */
-        $rows = $this->createQueryBuilder('i')
-            ->select('i.id AS id', 'i.accessKeyVersion AS accessKeyVersion')
-            ->where('i.accessKeyHash IS NOT NULL')
-            ->andWhere('i.trashedAt IS NULL')
-            ->getQuery()
-            ->getArrayResult();
-
-        return array_map(static fn (array $row): array => [
-            'id'               => is_numeric($row['id']) ? (int) $row['id'] : 0,
-            'accessKeyVersion' => is_numeric($row['accessKeyVersion']) ? (int) $row['accessKeyVersion'] : 0,
-        ], $rows);
     }
 }

@@ -10,6 +10,8 @@ enum TtlPreset: string
 {
     case ONE_HOUR = '1h';
 
+    case ONE_DAY = '1d';
+
     case SEVEN_DAYS = '7d';
 
     case THIRTY_DAYS = '30d';
@@ -18,6 +20,7 @@ enum TtlPreset: string
     {
         return match ($this) {
             self::ONE_HOUR    => new DateInterval('PT1H'),
+            self::ONE_DAY     => new DateInterval('P1D'),
             self::SEVEN_DAYS  => new DateInterval('P7D'),
             self::THIRTY_DAYS => new DateInterval('P30D'),
         };

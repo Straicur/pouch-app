@@ -1,26 +1,20 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import ReactMarkdown from "react-markdown";
-import { toastUtil } from "../../../../libs/toastUtil";
-import { useSetItemKeyMutation, useUnlockItemMutation } from "../../../../store/api/accessKeyApi";
-import {
-  useGetItemDownloadLinkMutation,
-  useGetItemThumbnailLinkMutation,
-  useMarkFavoriteMutation,
-  useUnmarkFavoriteMutation,
-  useUpdateNoteMutation,
-  useUpdateTagsMutation,
-} from "../../../../store/api/itemApi";
-import type { Item } from "../../../../store/types/item";
-import { AccessKeyPanel } from "../../shared/AccessKeyPanel";
-import { ShareButton } from "./ShareButton";
-import { VersionHistory } from "./VersionHistory";
+import { useListCategoriesQuery } from "../../../../store/api/categoryApi";
+import { useGetItemThumbnailLinkMutation } from "../../../../store/api/itemApi";
+import type { ItemBaseLike, ItemSummary } from "../../../../store/types/item";
+import { Badge } from "../../../../ui/catalyst/badge";
+import { FavoriteStar } from "./FavoriteStar";
+import { ItemDetailsModal } from "./ItemDetailsModal";
 
 interface ItemCardProps {
-  item: Item;
+  item: ItemSummary;
 }
 
-function useItemThumbnailUrl(item: Item): string | null {
+// Współdzielone przez ItemCard (mała miniatura) i ItemDetailsModal (duży
+// podgląd) — działa na obu kształtach (ItemSummary/ItemDetail), stąd
+// ItemBaseLike zamiast konkretnego typu.
+export function useItemThumbnailUrl(item: ItemBaseLike): string | null {
   const [getThumbnailLink] = useGetItemThumbnailLinkMutation();
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
 
@@ -50,263 +44,61 @@ function useItemThumbnailUrl(item: Item): string | null {
   return thumbnailUrl;
 }
 
-interface NoteCardBodyProps {
-  item: Item;
-}
-
-// "Edycja po fakcie" — the note-specific bit no other item type needs.
-function NoteCardBody({ item }: NoteCardBodyProps) {
+// Część 13: karta na liście jest teraz czysto informacyjna — nazwa, opis,
+// tagi, typ, kategoria — i w całości klikalna, otwiera ItemDetailsModal z
+// resztą (ulubione, edycja, pobieranie, udostępnianie, historia wersji,
+// klucz dostępu), zamiast trzymać to wszystko rozrzucone po karcie.
+export function ItemCard({ item }: ItemCardProps) {
   const { t } = useTranslation();
-  const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState(item.noteContent ?? "");
-  const [updateNote, { isLoading }] = useUpdateNoteMutation();
-  const [error, setError] = useState<string | null>(null);
-
-  const startEditing = () => {
-    setDraft(item.noteContent ?? "");
-    setError(null);
-    setIsEditing(true);
-  };
-
-  const handleSave = async () => {
-    setError(null);
-
-    try {
-      await updateNote({ id: item.id, content: draft }).unwrap();
-      setIsEditing(false);
-    } catch {
-      setError(t("notes.updateError"));
-    }
-  };
-
-  if (isEditing) {
-    return (
-      <div className="item-card-note-edit">
-        <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={6} />
-        {null !== error && <p className="form-error">{error}</p>}
-        <div className="item-card-note-actions">
-          <button type="button" onClick={handleSave} disabled={isLoading}>
-            {isLoading ? t("notes.saving") : t("notes.save")}
-          </button>
-          <button type="button" onClick={() => setIsEditing(false)} disabled={isLoading}>
-            {t("notes.cancel")}
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const thumbnailUrl = useItemThumbnailUrl(item);
+  const { data: categories } = useListCategoriesQuery();
+  const categoryName = categories?.find((category) => category.id === item.categoryId)?.name ?? null;
+  const title = "url" === item.type ? (item.pageTitle ?? item.name) : item.name;
+  const description = "url" === item.type ? item.pageDescription : item.noteContent;
 
   return (
     <>
-      <div className="item-card-note-preview">
-        <ReactMarkdown>{item.noteContent ?? ""}</ReactMarkdown>
-      </div>
-      <button type="button" onClick={startEditing}>
-        {t("notes.edit")}
-      </button>
-    </>
-  );
-}
-
-interface FavoriteButtonProps {
-  item: Item;
-}
-
-function FavoriteButton({ item }: FavoriteButtonProps) {
-  const { t } = useTranslation();
-  const [markFavorite] = useMarkFavoriteMutation();
-  const [unmarkFavorite] = useUnmarkFavoriteMutation();
-
-  const toggle = () => {
-    void (item.favorite ? unmarkFavorite(item.id) : markFavorite(item.id));
-  };
-
-  return (
-    <button
-      type="button"
-      className="item-card-favorite"
-      onClick={toggle}
-      aria-label={item.favorite ? t("tags.unmarkFavorite") : t("tags.markFavorite")}
-      aria-pressed={item.favorite}
-    >
-      {item.favorite ? "★" : "☆"}
-    </button>
-  );
-}
-
-interface TagEditorProps {
-  item: Item;
-}
-
-function TagEditor({ item }: TagEditorProps) {
-  const { t } = useTranslation();
-  const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState(item.tags.join(", "));
-  const [updateTags, { isLoading }] = useUpdateTagsMutation();
-  const [error, setError] = useState<string | null>(null);
-
-  const startEditing = () => {
-    setDraft(item.tags.join(", "));
-    setError(null);
-    setIsEditing(true);
-  };
-
-  const handleSave = async () => {
-    setError(null);
-
-    const tags = draft
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter((tag) => "" !== tag);
-
-    try {
-      await updateTags({ id: item.id, tags }).unwrap();
-      setIsEditing(false);
-    } catch {
-      setError(t("tags.updateError"));
-    }
-  };
-
-  if (isEditing) {
-    return (
-      <div className="item-card-tags-edit">
-        <input
-          type="text"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder={t("tags.tagsPlaceholder")}
-        />
-        {null !== error && <p className="form-error">{error}</p>}
-        <div className="item-card-tags-actions">
-          <button type="button" onClick={handleSave} disabled={isLoading}>
-            {isLoading ? t("tags.saving") : t("tags.save")}
-          </button>
-          <button type="button" onClick={() => setIsEditing(false)} disabled={isLoading}>
-            {t("tags.cancel")}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="item-card-tags">
-      {item.tags.length > 0 ? (
-        item.tags.map((tag) => (
-          <span key={tag} className="item-card-tag-chip">
-            {tag}
-          </span>
-        ))
-      ) : (
-        <span className="item-card-tag-chip item-card-tag-chip-empty">{t("tags.noTags")}</span>
-      )}
-      <button type="button" className="item-card-tags-edit-button" onClick={startEditing}>
-        {t("tags.editTags")}
-      </button>
-    </div>
-  );
-}
-
-interface DownloadButtonProps {
-  item: Item;
-}
-
-// Was missing entirely before — a FILE/PHOTO item had a thumbnail preview
-// but no way to actually get the file itself.
-function DownloadButton({ item }: DownloadButtonProps) {
-  const { t } = useTranslation();
-  const [getDownloadLink, { isLoading }] = useGetItemDownloadLinkMutation();
-
-  const handleDownload = async () => {
-    try {
-      const link = await getDownloadLink(item.id).unwrap();
-      // Post-review fix: window.open("", "_blank", "noreferrer") — the
-      // previous attempt at dodging the popup-blocker — doesn't actually
-      // work: "noreferrer" implies "noopener", and with "noopener" set,
-      // window.open()'s return value is always null (there's no window
-      // reference to hand back), so `tab.location.href = ...` never ran and
-      // the user was left staring at a permanently blank tab. The signed
-      // download URL itself responds with Content-Disposition: attachment
-      // (see ItemController::download()), so navigating the *current* tab
-      // triggers a download without leaving the app — no popup, no
-      // blocker, nothing that can silently no-op.
-      window.location.assign(link.url);
-    } catch {
-      toastUtil.showToast(t("items.downloadError"), "error");
-    }
-  };
-
-  return (
-    <button type="button" onClick={handleDownload} disabled={isLoading}>
-      {isLoading ? t("items.downloading") : t("items.download")}
-    </button>
-  );
-}
-
-interface ItemAccessKeySectionProps {
-  item: Item;
-}
-
-// Part 7 — an item's own key, independent of whatever key its category has
-// (see AccessKeyGuard) — always offered, same reasoning as AccessKeyPanel's
-// own docblock.
-function ItemAccessKeySection({ item }: ItemAccessKeySectionProps) {
-  const [unlockItem] = useUnlockItemMutation();
-  const [setItemKey] = useSetItemKeyMutation();
-
-  return (
-    <AccessKeyPanel
-      onUnlock={(key) => unlockItem({ itemId: item.id, key }).unwrap()}
-      onSetKey={(key) => setItemKey({ itemId: item.id, key }).unwrap()}
-    />
-  );
-}
-
-export function ItemCard({ item }: ItemCardProps) {
-  const { t } = useTranslation();
-  const thumbnailUrl = useItemThumbnailUrl(item);
-  const title = "url" === item.type ? (item.pageTitle ?? item.name) : item.name;
-  const description = "url" === item.type ? item.pageDescription : null;
-
-  return (
-    <article className="item-card">
-      {null !== thumbnailUrl && <img src={thumbnailUrl} alt="" className="item-card-thumbnail" />}
-      <div className="item-card-body">
-        <div className="item-card-header">
-          <p className="item-card-type">{t(`items.type.${item.type}`)}</p>
-          <FavoriteButton item={item} />
-        </div>
-        <h3 className="item-card-title">
-          {"url" === item.type && null !== item.url ? (
-            <a href={item.url} target="_blank" rel="noreferrer">
-              {title}
-            </a>
-          ) : (
-            title
+      {/* FavoriteStar wewnątrz jest <span role="button">, nie <button> — patrz
+          jej własny komentarz (zagnieżdżanie <button> w <button> jest
+          niepoprawnym HTML-em). */}
+      <button
+        type="button"
+        onClick={() => setIsDetailsOpen(true)}
+        className="relative flex flex-col overflow-hidden rounded-lg text-left ring-1 ring-zinc-950/10 hover:ring-zinc-950/20 dark:ring-white/10 dark:hover:ring-white/20"
+      >
+        <FavoriteStar itemId={item.id} favorite={item.favorite} className="absolute top-2 right-2 z-10" />
+        {null !== thumbnailUrl && <img src={thumbnailUrl} alt="" className="aspect-video w-full object-cover" />}
+        <div className="flex flex-col gap-2 p-4">
+          <h3 className="pr-6 text-base font-semibold text-zinc-950 dark:text-white">{title}</h3>
+          {null !== description && (
+            <p className="line-clamp-3 text-sm text-zinc-600 dark:text-zinc-400">{description}</p>
           )}
-        </h3>
-        {null !== description && <p className="item-card-description">{description}</p>}
-        {"note" === item.type && <NoteCardBody item={item} />}
-        <TagEditor item={item} />
-        {"pending" === item.processingStatus && <p className="item-card-status">{t("items.processing")}</p>}
-        {"failed" === item.processingStatus && (
-          <p className="item-card-status item-card-status-error">
-            {t("items.processingError")}
-            {null !== item.processingError ? `: ${item.processingError}` : ""}
-          </p>
-        )}
-
-        <div className="item-card-actions">
-          {/* Downloading a file needs actual file content — restricted to
-              file/photo. Sharing a public link works for every item type
-              (backend's public-link endpoint has no such restriction). */}
-          {("file" === item.type || "photo" === item.type) && <DownloadButton item={item} />}
-          <ShareButton itemId={item.id} />
+          <div className="flex flex-wrap items-center gap-1.5">
+            {item.tags.length > 0 ? (
+              item.tags.map((tag) => (
+                <Badge key={tag} color="blue">
+                  {tag}
+                </Badge>
+              ))
+            ) : (
+              <span className="text-xs text-zinc-400 dark:text-zinc-500">{t("tags.noTags")}</span>
+            )}
+          </div>
+          <div className="mt-1 flex items-center justify-between gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+            <Badge>{t(`items.type.${item.type}`)}</Badge>
+            {null !== categoryName && <span>{categoryName}</span>}
+          </div>
+          {"failed" === item.processingStatus && (
+            <p className="text-xs text-red-600 dark:text-red-400">{t("items.processingError")}</p>
+          )}
+          {"pending" === item.processingStatus && (
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">{t("items.processing")}</p>
+          )}
         </div>
-        {"file" === item.type && <VersionHistory itemId={item.id} />}
+      </button>
 
-        <ItemAccessKeySection item={item} />
-      </div>
-    </article>
+      <ItemDetailsModal itemId={item.id} open={isDetailsOpen} onClose={() => setIsDetailsOpen(false)} />
+    </>
   );
 }

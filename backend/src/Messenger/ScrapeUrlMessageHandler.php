@@ -4,10 +4,10 @@ declare(strict_types = 1);
 
 namespace App\Messenger;
 
+use App\Repository\ItemRepository;
 use App\Services\Item\Scraper\OpenGraphScraperInterface;
 use App\Services\Item\Scraper\SafeUrlFetcherInterface;
 use App\Services\Item\ThumbnailServiceInterface;
-use App\Repository\ItemRepository;
 use App\Services\Storage\StorageServiceInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;

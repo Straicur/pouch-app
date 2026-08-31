@@ -5,8 +5,23 @@ import { z } from "zod";
 import { ExceptionUuid, getApiErrorBody, isApiError } from "../../../libs/apiError";
 import i18n from "../../../libs/i18n";
 import { toastUtil } from "../../../libs/toastUtil";
+import { Button } from "../../../ui/catalyst/button";
+import { ErrorMessage } from "../../../ui/catalyst/form/fieldset";
+import { Input } from "../../../ui/catalyst/form/input";
 
 interface AccessKeyPanelProps {
+  // Część 13 — czy ten zasób ma już ustawiony klucz: steruje, czy pokazujemy
+  // "Ustaw klucz" (nie ma) czy "Zmień klucz"/"Usuń klucz" (ma) — zamiast
+  // zawsze oferować oba warianty naraz, jak wcześniej (patrz
+  // ItemResponseDTO::$hasAccessKey / CategoryResponseDTO::$hasAccessKey).
+  hasKey: boolean;
+  // Kategorie zostają odblokowywalne wprost z tego panelu (lista kategorii
+  // pokazuje zablokowane kategorie po nazwie, tak jak zawsze). Itemy — nie:
+  // zablokowany item ma własne, osobne miejsce do odblokowania na liście
+  // (LockedItemCard); zanim ktoś w ogóle zobaczy ten panel dla itemu (w
+  // ItemDetailsModal), musi już być odblokowany, więc pole "odblokuj" tu nie
+  // ma sensu. Domyślnie true (kategorie).
+  showUnlock?: boolean;
   onUnlock: (key: string) => Promise<unknown>;
   onSetKey: (key: string | null) => Promise<unknown>;
 }
@@ -19,15 +34,10 @@ const setKeySchema = z.object({ key: z.string().min(1, i18n.t("validation.newKey
 type UnlockKeyValues = z.infer<typeof unlockKeySchema>;
 type SetKeyValues = z.infer<typeof setKeySchema>;
 
-// Part 7 — shared by categories (CategoriesPage) and items (ItemCard), since
-// both have exactly the same two actions: submit a key to unlock, or
-// set/change/remove the resource's own key. Always offered, never gated
-// behind detecting "is this locked" client-side — nothing in
-// CategoryResponseDTO/ItemResponseDTO says whether a key is set (see
-// docs/codestyle/FRONTEND.md's warning against branching on `detail` text
-// instead of `context.uuid`), so the structured response to *attempting* the
-// action is the only reliable signal there is.
-export function AccessKeyPanel({ onUnlock, onSetKey }: AccessKeyPanelProps) {
+// Part 7 — shared by categories (CategoryRow) and items (ItemDetailsModal),
+// since both have the same underlying actions: submit a key to unlock, or
+// set/change/remove the resource's own key.
+export function AccessKeyPanel({ hasKey, showUnlock = true, onUnlock, onSetKey }: AccessKeyPanelProps) {
   const { t } = useTranslation();
 
   const unlockForm = useForm<UnlockKeyValues>({ resolver: zodResolver(unlockKeySchema) });
@@ -63,46 +73,63 @@ export function AccessKeyPanel({ onUnlock, onSetKey }: AccessKeyPanelProps) {
   };
 
   return (
-    <div className="access-key-panel">
-      <p className="access-key-panel-title">{t("accessKey.sectionTitle")}</p>
+    <div className="flex flex-col gap-3">
+      <p className="text-sm font-medium text-zinc-950 dark:text-white">{t("accessKey.sectionTitle")}</p>
 
-      <form className="access-key-unlock-form" onSubmit={unlockForm.handleSubmit(handleUnlock)} noValidate>
-        <input
-          type="password"
-          placeholder={t("accessKey.unlockPlaceholder")}
-          aria-label={t("accessKey.unlockPlaceholder")}
-          {...unlockForm.register("key")}
-        />
-        <button type="submit" disabled={unlockForm.formState.isSubmitting}>
-          {unlockForm.formState.isSubmitting ? t("accessKey.unlocking") : t("accessKey.unlockButton")}
-        </button>
-        {undefined !== unlockForm.formState.errors.key && (
-          <p className="field-error">{unlockForm.formState.errors.key.message}</p>
-        )}
-      </form>
+      {hasKey && showUnlock && (
+        <form className="flex items-center gap-2" onSubmit={unlockForm.handleSubmit(handleUnlock)} noValidate>
+          <Input
+            type="password"
+            placeholder={t("accessKey.unlockPlaceholder")}
+            aria-label={t("accessKey.unlockPlaceholder")}
+            {...unlockForm.register("key")}
+          />
+          <Button type="submit" size="small" disabled={unlockForm.formState.isSubmitting}>
+            {unlockForm.formState.isSubmitting ? t("accessKey.unlocking") : t("accessKey.unlockButton")}
+          </Button>
+          {undefined !== unlockForm.formState.errors.key && (
+            <ErrorMessage>{unlockForm.formState.errors.key.message}</ErrorMessage>
+          )}
+        </form>
+      )}
 
-      <form className="access-key-set-form" onSubmit={setKeyForm.handleSubmit(handleSetKey)} noValidate>
-        <input
+      <form className="flex items-center gap-2" onSubmit={setKeyForm.handleSubmit(handleSetKey)} noValidate>
+        <Input
           type="password"
-          placeholder={t("accessKey.setKeyPlaceholder")}
-          aria-label={t("accessKey.setKeyPlaceholder")}
+          placeholder={hasKey ? t("accessKey.changeKeyPlaceholder") : t("accessKey.setKeyPlaceholder")}
+          aria-label={hasKey ? t("accessKey.changeKeyPlaceholder") : t("accessKey.setKeyPlaceholder")}
           {...setKeyForm.register("key")}
         />
-        <button type="submit" disabled={setKeyForm.formState.isSubmitting}>
-          {setKeyForm.formState.isSubmitting ? t("accessKey.settingKey") : t("accessKey.setKeyButton")}
-        </button>
-        <button type="button" onClick={handleRemoveKey} disabled={setKeyForm.formState.isSubmitting}>
-          {t("accessKey.removeKeyButton")}
-        </button>
+        <Button type="submit" size="small" variant="outline" disabled={setKeyForm.formState.isSubmitting}>
+          {setKeyForm.formState.isSubmitting
+            ? t("accessKey.settingKey")
+            : hasKey
+              ? t("accessKey.changeKeyButton")
+              : t("accessKey.setKeyButton")}
+        </Button>
+        {hasKey && (
+          <Button
+            type="button"
+            size="small"
+            variant="outline"
+            onClick={handleRemoveKey}
+            disabled={setKeyForm.formState.isSubmitting}
+          >
+            {t("accessKey.removeKeyButton")}
+          </Button>
+        )}
         {undefined !== setKeyForm.formState.errors.key && (
-          <p className="field-error">{setKeyForm.formState.errors.key.message}</p>
+          <ErrorMessage>{setKeyForm.formState.errors.key.message}</ErrorMessage>
         )}
       </form>
     </div>
   );
 }
 
-function unlockErrorMessage(error: unknown, t: (key: string, options?: Record<string, unknown>) => string): string {
+export function unlockErrorMessage(
+  error: unknown,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
   if (isApiError(error, ExceptionUuid.UNAUTHORIZED)) {
     return t("accessKey.wrongKey");
   }

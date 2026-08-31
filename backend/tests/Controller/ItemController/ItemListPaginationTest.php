@@ -13,9 +13,11 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Post-review fix: GET /api/items used to run COUNT/OFFSET/LIMIT blind to
  * Part 7 locks, filtering locked items out only after the page (and $total)
- * were already fixed — AccessKeyGuard::lockedCategoryIds()/
- * lockedItemIdsWithOwnKey() now compute what's locked *before* the query
- * runs (ItemController::list() -> ItemRepository::findFilteredPage()).
+ * were already fixed — AccessKeyGuard::lockedCategoryIds() now computes
+ * what's locked *before* the query runs (ItemController::list() ->
+ * ItemRepository::findFilteredPage()). Część 13: an item locked by its own
+ * key is a separate case, no longer excluded at all — see
+ * testItemsLockedByTheirOwnKeyAppearRedactedInsteadOfExcluded() below.
  */
 class ItemListPaginationTest extends WebTest
 {
@@ -152,11 +154,12 @@ class ItemListPaginationTest extends WebTest
     }
 
     /**
-     * An item locked by its *own* key (independent of any category lock) is
-     * excluded from the count/page the same way — lockedItemIdsWithOwnKey(),
-     * not just lockedCategoryIds().
+     * Część 13: an item locked by its *own* key (independent of any category
+     * lock) no longer disappears from the list — it stays on the page,
+     * redacted to a name-only ("locked") summary, so the frontend can offer
+     * an inline unlock instead of requiring the id to already be known.
      */
-    public function testItemsLockedByTheirOwnKeyAreExcludedToo(): void
+    public function testItemsLockedByTheirOwnKeyAppearRedactedInsteadOfExcluded(): void
     {
         $category = $this->databaseMockManager->createCategory('Open');
         $u1 = $this->createNote($category->getId(), 'U1');
@@ -172,7 +175,17 @@ class ItemListPaginationTest extends WebTest
 
         $body = $this->list();
 
-        self::assertSame(1, $body['total']);
-        self::assertSame([$u1], array_column($body['items'], 'id'));
+        self::assertSame(2, $body['total']);
+
+        $itemsById = [];
+        foreach ($body['items'] as $item) {
+            $itemsById[$item['id']] = $item;
+        }
+
+        self::assertFalse($itemsById[$u1]['locked']);
+        self::assertSame('U1', $itemsById[$u1]['noteContent']);
+
+        self::assertTrue($itemsById[$lockedItemId]['locked']);
+        self::assertNull($itemsById[$lockedItemId]['noteContent']);
     }
 }

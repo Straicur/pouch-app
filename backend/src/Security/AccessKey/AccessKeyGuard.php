@@ -9,7 +9,6 @@ use App\Entity\Item;
 use App\Entity\User;
 use App\ExceptionManagement\Exceptions\ApiException\ForbiddenException\ForbiddenException;
 use App\Repository\CategoryRepository;
-use App\Repository\ItemRepository;
 use App\Security\SignedUrlServiceInterface;
 use Override;
 use Symfony\Bundle\SecurityBundle\Security;
@@ -31,9 +30,9 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
     /**
      * Post-review fix: parseGrants() used to re-decode the same request's
      * grants header from scratch on every single hasValidGrant() call —
-     * cheap for one item, wasteful when lockedCategoryIds()/
-     * lockedItemIdsWithOwnKey() call it once per category/item on every
-     * GET /api/items. Keyed by Request (a WeakMap, not a plain array, so it
+     * cheap for one item, wasteful when lockedCategoryIds() calls it once
+     * per category on every GET /api/items. Keyed by Request (a WeakMap, not
+     * a plain array, so it
      * never outlives — or needs manual clearing between — the request
      * itself, which matters if this service is ever reused across requests
      * in a long-running worker). Readonly property, mutable object: `readonly`
@@ -50,7 +49,6 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
         private SignedUrlServiceInterface $signedUrlService,
         private Security $security,
         private CategoryRepository $categoryRepository,
-        private ItemRepository $itemRepository,
     ) {
         $this->grantsCache = new WeakMap();
     }
@@ -177,7 +175,7 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
      * same "walk up until a key is found" logic, over the id-keyed map
      * lockedCategoryIds() builds instead of live Category::getParent() calls.
      *
-     * @param array{id: int, parentId: int|null, accessKeyHash: string|null, accessKeyVersion: int}   $row
+     * @param array{id: int, parentId: int|null, accessKeyHash: string|null, accessKeyVersion: int}             $row
      * @param array<int, array{id: int, parentId: int|null, accessKeyHash: string|null, accessKeyVersion: int}> $byId
      *
      * @return array{id: int, parentId: int|null, accessKeyHash: string|null, accessKeyVersion: int}|null
@@ -197,27 +195,6 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
         return null;
     }
 
-    #[Override]
-    public function lockedItemIdsWithOwnKey(Request $request): array
-    {
-        $userId = $this->currentUserId();
-        $locked = [];
-
-        // Post-review fix: scalar id/accessKeyVersion pairs, active items
-        // only — see ItemRepository::findAllWithOwnAccessKeyForLockCheck()'s
-        // own doc comment.
-        foreach ($this->itemRepository->findAllWithOwnAccessKeyForLockCheck() as $row) {
-            $isUnlocked = null !== $userId
-                && $this->hasValidGrant($request, AccessKeyResource::forItem($row['id'], $row['accessKeyVersion'], $userId));
-
-            if (false === $isUnlocked) {
-                $locked[] = $row['id'];
-            }
-        }
-
-        return $locked;
-    }
-
     private function hasValidItemGrant(Item $item, Request $request): bool
     {
         $userId = $this->currentUserId();
@@ -231,13 +208,7 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
 
     private function hasValidGrant(Request $request, string $resource): bool
     {
-        foreach ($this->parseGrants($request) as $grant) {
-            if ($grant->resource === $resource && $this->signedUrlService->isValid($grant->resource, $grant->expires, $grant->signature)) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($this->parseGrants($request), fn ($grant): bool => $grant->resource === $resource && $this->signedUrlService->isValid($grant->resource, $grant->expires, $grant->signature));
     }
 
     /**
@@ -287,7 +258,15 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
                 continue;
             }
 
-            if (false === is_string($entry['resource']) || false === is_int($entry['expires']) || false === is_string($entry['signature'])) {
+            if (false === is_string($entry['resource'])) {
+                continue;
+            }
+
+            if (false === is_int($entry['expires'])) {
+                continue;
+            }
+
+            if (false === is_string($entry['signature'])) {
                 continue;
             }
 

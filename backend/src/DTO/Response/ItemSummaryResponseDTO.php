@@ -40,6 +40,7 @@ class ItemSummaryResponseDTO
         private readonly ?string $expiresAt,
         private readonly ?string $trashedAt,
         private readonly string $createdAt,
+        private readonly bool $locked,
     ) {}
 
     public function getId(): int
@@ -143,5 +144,10 @@ class ItemSummaryResponseDTO
     public function getCreatedAt(): string
     {
         return $this->createdAt;
+    }
+
+    public function isLocked(): bool
+    {
+        return $this->locked;
     }
 }

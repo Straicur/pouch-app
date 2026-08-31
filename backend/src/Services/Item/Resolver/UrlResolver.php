@@ -177,7 +177,11 @@ final class UrlResolver
         $output = [];
 
         foreach ($segments as $segment) {
-            if ('' === $segment || '.' === $segment) {
+            if ('' === $segment) {
+                continue;
+            }
+
+            if ('.' === $segment) {
                 continue;
             }
 

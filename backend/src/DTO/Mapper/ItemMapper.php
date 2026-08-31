@@ -46,6 +46,7 @@ final class ItemMapper
             expiresAt: $item->getExpiresAt()?->format(DateTimeInterface::ATOM),
             trashedAt: $item->getTrashedAt()?->format(DateTimeInterface::ATOM),
             createdAt: $item->getCreatedAt()->format(DateTimeInterface::ATOM),
+            hasAccessKey: null !== $item->getAccessKeyHash(),
         );
     }
 
@@ -88,6 +89,42 @@ final class ItemMapper
             expiresAt: $item->getExpiresAt()?->format(DateTimeInterface::ATOM),
             trashedAt: $item->getTrashedAt()?->format(DateTimeInterface::ATOM),
             createdAt: $item->getCreatedAt()->format(DateTimeInterface::ATOM),
+            locked: false,
+        );
+    }
+
+    /**
+     * Część 13 — an item locked by its own key (category unlocked) no longer
+     * disappears from GET /api/items entirely; it stays on the page, but
+     * every content-revealing field is redacted so the frontend can show it
+     * by name only, with an inline unlock, instead of the item existing
+     * silently invisible until you already know its id (see
+     * ItemController::list()'s own comment).
+     */
+    public static function toLockedSummaryResponseDTO(Item $item): ItemSummaryResponseDTO
+    {
+        return new ItemSummaryResponseDTO(
+            id: $item->getId(),
+            categoryId: $item->getCategory()->getId(),
+            type: $item->getType()->value,
+            name: $item->getName(),
+            processingStatus: $item->getProcessingStatus()->value,
+            processingError: null,
+            originalFilename: null,
+            mimeType: null,
+            size: null,
+            hasThumbnail: false,
+            url: null,
+            pageTitle: null,
+            pageDescription: null,
+            noteContent: null,
+            favorite: false,
+            tags: [],
+            keepForever: false,
+            expiresAt: null,
+            trashedAt: null,
+            createdAt: $item->getCreatedAt()->format(DateTimeInterface::ATOM),
+            locked: true,
         );
     }
 

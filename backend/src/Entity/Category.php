@@ -10,10 +10,6 @@ use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
-/**
- * Self-referencing tree node. Deleting a category cascades to its descendants
- * at the database level (see the parent join column's onDelete).
- */
 #[ORM\Entity(repositoryClass: CategoryRepository::class)]
 #[ORM\Table(name: 'category')]
 class Category
@@ -30,21 +26,13 @@ class Category
     #[ORM\JoinColumn(name: 'parent_id', referencedColumnName: 'category_id', nullable: true, onDelete: 'CASCADE')]
     private ?self $parent = null;
 
-    /**
-     * Bcrypt hash of the category's own access key (Part 7). Null means "no
-     * key of its own" — not "unprotected": see CategoryRepository/CategoryService
-     * for walking up to the nearest ancestor that does have one (inherited key).
-     */
+    #[ORM\ManyToOne(targetEntity: Pouch::class)]
+    #[ORM\JoinColumn(name: 'pouch_id', referencedColumnName: 'pouch_id', nullable: false)]
+    private Pouch $pouch;
+
     #[ORM\Column(name: 'access_key_hash', type: Types::STRING, length: 255, nullable: true)]
     private ?string $accessKeyHash = null;
 
-    /**
-     * Bumped every time setAccessKeyHash() runs — folded into the signed
-     * resource string a Part 7 access grant is issued for (AccessKeyResource),
-     * so resetting/removing/changing the key invalidates every grant already
-     * handed out for the old one, without needing a revocation list. See
-     * AccessKeyGuard/AccessKeyService.
-     */
     #[ORM\Column(name: 'access_key_version', type: Types::INTEGER, nullable: false, options: ['default' => 0])]
     private int $accessKeyVersion = 0;
 
@@ -54,9 +42,10 @@ class Category
     #[ORM\OneToMany(targetEntity: self::class, mappedBy: 'parent')]
     private Collection $children;
 
-    public function __construct(string $name, ?self $parent = null)
+    public function __construct(string $name, Pouch $pouch, ?self $parent = null)
     {
         $this->name = $name;
+        $this->pouch = $pouch;
         $this->parent = $parent;
         $this->children = new ArrayCollection();
     }
@@ -76,6 +65,11 @@ class Category
         $this->name = $name;
 
         return $this;
+    }
+
+    public function getPouch(): Pouch
+    {
+        return $this->pouch;
     }
 
     public function getParent(): ?self

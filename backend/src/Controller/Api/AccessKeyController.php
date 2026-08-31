@@ -4,8 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Controller\Api;
 
-use App\Services\Audit\AuditLoggerInterface;
-use App\Services\Category\CategoryServiceInterface;
+use App\ControllerHelper\Traits\AuthorizesRequestsTrait;
 use App\DTO\Mapper\AccessGrantMapper;
 use App\DTO\Request\AccessKeySetRequestDTO;
 use App\DTO\Request\AccessKeyUnlockRequestDTO;
@@ -22,13 +21,14 @@ use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\Unauth
 use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\UnauthorizedExceptionModel;
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentException;
 use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentException\UnprocessableContentExceptionModel;
-use App\ControllerHelper\Traits\AuthorizesRequestsTrait;
-use App\Services\Item\ItemServiceInterface;
 use App\Security\AccessKey\AccessKeyGuardInterface;
 use App\Security\AccessKey\AccessKeyServiceInterface;
 use App\Security\AuthorizationServiceInterface;
 use App\Security\Voter\CategoryVoter;
 use App\Security\Voter\ItemVoter;
+use App\Services\Audit\AuditLoggerInterface;
+use App\Services\Category\CategoryServiceInterface;
+use App\Services\Item\ItemServiceInterface;
 use App\Services\Request\RequestServiceInterface;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
@@ -78,7 +78,7 @@ final class AccessKeyController extends AbstractController
      */
     #[Route('/api/categories/{id}/access-key', name: 'category_access_key_set', requirements: ['id' => '\d+'], methods: [Request::METHOD_PUT])]
     #[OA\Put(
-        description: 'Set, change, or remove (key: null) a category\'s own access key',
+        description: "Set, change, or remove (key: null) a category's own access key",
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: new Model(type: AccessKeySetRequestDTO::class), type: 'object')),
         responses: [new OA\Response(response: 204, description: 'Success')],
     )]
@@ -142,7 +142,7 @@ final class AccessKeyController extends AbstractController
      */
     #[Route('/api/items/{id}/access-key', name: 'item_access_key_set', requirements: ['id' => '\d+'], methods: [Request::METHOD_PUT])]
     #[OA\Put(
-        description: 'Set, change, or remove (key: null) an item\'s own access key',
+        description: "Set, change, or remove (key: null) an item's own access key",
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: new Model(type: AccessKeySetRequestDTO::class), type: 'object')),
         responses: [new OA\Response(response: 204, description: 'Success')],
     )]
@@ -154,7 +154,7 @@ final class AccessKeyController extends AbstractController
 
         // Part 10: same "Reset klucza dostępu" rule as setCategoryKey() —
         // an item's *own* key only (not its category's, unrelated here).
-        if (false === $this->isGranted('ROLE_ADMIN') && false === $this->accessKeyGuard->isItemOwnKeyUnlocked($this->itemService->getById($id), $request)) {
+        if (false === $this->isGranted('ROLE_ADMIN') && false === $this->accessKeyGuard->isItemOwnKeyUnlocked($this->itemService->getByIdInCurrentPouch($id), $request)) {
             throw new ForbiddenException(message: 'item.locked');
         }
 

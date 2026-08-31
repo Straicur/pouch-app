@@ -18,6 +18,8 @@ use Symfony\Component\Serializer\Encoder\JsonEncoder;
 use Symfony\Component\Serializer\Exception\ExceptionInterface as SerializerExceptionInterface;
 use Symfony\Component\Serializer\SerializerInterface;
 
+use function in_array;
+
 #[OA\Response(
     response: 401,
     description: 'User not authorized',
@@ -51,7 +53,10 @@ final class WhoAmIController extends AbstractController
     {
         $user = $this->authService->getUserFromAccessToken();
 
-        $response = new WhoAmIResponseDTO(email: $user->getEmail());
+        // Pure UI label (which sidebar link to show) — every admin endpoint
+        // still verifies ROLE_ADMIN itself server-side, this changes nothing
+        // about what's actually enforced.
+        $response = new WhoAmIResponseDTO(email: $user->getEmail(), isAdmin: in_array('ROLE_ADMIN', $user->getRoles(), true));
 
         return new Response($this->serializer->serialize(data: $response, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
     }
