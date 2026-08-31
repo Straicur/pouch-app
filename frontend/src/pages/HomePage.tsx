@@ -32,7 +32,8 @@ export function HomePage() {
       <h1>{t("common.appName")}</h1>
       {undefined !== data && <p>{t("home.loggedInAs", { email: data.email })}</p>}
       {undefined !== error && 401 !== status && <p className="form-error">{t("home.connectionError")}</p>}
-      <Link to="/items">{t("home.viewItemsLink")}</Link>
+      <Link to="/user">{t("home.userAreaLink")}</Link>
+      <Link to="/admin">{t("home.adminLink")}</Link>
       <button type="button" onClick={handleLogout}>
         {t("auth.logoutButton")}
       </button>

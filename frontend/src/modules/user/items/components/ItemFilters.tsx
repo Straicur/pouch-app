@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
-import type { ItemListParams } from "../store/api/itemApi";
-import { useListTagsQuery } from "../store/api/tagApi";
+import type { ItemListParams } from "../../../../store/api/itemApi";
+import { useListTagsQuery } from "../../../../store/api/tagApi";
 
 interface ItemFiltersProps {
   filters: ItemListParams;

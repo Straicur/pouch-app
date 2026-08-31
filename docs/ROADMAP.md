@@ -322,6 +322,108 @@ tabele) nie powstał, tak jak dla Części 7/8/9.
 
 ---
 
+## Część 11 — Frontend dla Części 7–10
+
+Backend dla Części 7–10 (klucze dostępu, wersjonowanie plików, publiczne linki +
+eksport kategorii, panel admina) był gotowy tylko jako API — front był "z tyłu" o
+cztery części. Ta część domyka UI dla wszystkich czterech naraz.
+
+**Dogrywka — struktura widoków:** początkowo wszystko trafiło płasko do `pages/`/
+`components/` (jeden `AdminPage.tsx` z pięcioma sekcjami w jednym pliku). Przełożone
+na zagnieżdżony routing pod `src/modules/`:
+- `/user` (`modules/user/UserLayout.tsx`, wspólna nawigacja) → `/user/items`
+  (`modules/user/items/`, własny `components/`), `/user/categories`
+  (`modules/user/categories/`, własny `components/`); `modules/user/shared/` na
+  `AccessKeyPanel` używany przez oba moduły.
+- `/admin` (`modules/admin/AdminLayout.tsx`, jedno sprawdzenie 403 dla całego
+  obszaru zamiast per-sekcja) → osobny moduł/trasa na każdą część dawnego
+  `AdminPage.tsx`: `/admin/storage`, `/admin/gc`, `/admin/audit-log`,
+  `/admin/expiring`, `/admin/backup`.
+
+`make check`/`tsc -b`/`npm test` — czysto po przeniesieniu.
+
+**Dogrywka 2 — pomysły z `e-rezerwacja-frontend` (z listy przejrzanej wcześniej):**
+- `ProtectedRoute` (`components/ProtectedRoute.tsx`) — jedno sprawdzenie sesji dla
+  całego obszaru zamiast per-strona; wpięte w `UserLayout` i `AdminLayout` (dla
+  `AdminLayout` zdejmuje realny błąd: bez sesji w ogóle backend zwracał `401`, nie
+  `403`, więc dotychczasowe sprawdzenie "czy admin" po prostu tego nie łapało i
+  renderowało pełną nawigację tak jakby użytkownik był zalogowany).
+- `lib/httpMethods.ts` — cienkie `get/post/put/patch/del` nad `httpClient` (wzorem
+  `libs/core/src/httpClients/methods.ts`); `FormData`→multipart fix z Części 11
+  przeniesiony tu, więc obowiązuje też poza RTK Query.
+- `zod` + `react-hook-form` (wzorem `LoginPage`) dla pozostałych formularzy:
+  `NoteForm`, `FileUploadForm`, `UnlockItemForm`, `AccessKeyPanel` (dwa formularze w
+  jednym komponencie).
+- **Catalyst UI / Tailwind v4 / Headless UI** — `src/ui/catalyst/` (`sidebar.tsx`,
+  `navbar.tsx`, `sidebar-layout.tsx`, `link.tsx`, `touch-target.tsx`), ręcznie
+  przeniesione z `libs/catalyst-ui` w `e-rezerwacja-frontend` (samo Catalyst to kod,
+  który się kopiuje i modyfikuje, nie paczka npm) i przycięte do tego, czego
+  faktycznie potrzebuje `SidebarLayout` — bez customowego systemu kolorów/wariantów
+  przycisków z tamtego projektu, bez reszty kitu (dialog, combobox, table…). Wpięte
+  w `UserLayout`/`AdminLayout` jako nawigacja (chowany sidebar na desktop, drawer na
+  mobile) — reszta strony (karty itemów, formularze, tabele admina) zostaje na
+  dotychczasowym plain CSS, to nie jest pełna migracja. `#root`'owi dodane wyjście z
+  wąskiej kolumny na pełny viewport specjalnie dla tego layoutu.
+  **Nie zweryfikowane wizualnie w przeglądarce** (jak reszta frontendu w tej sesji —
+  brak `/chrome`) — tylko `tsc -b`/biome/`npm test` czysto; realne wejście na
+  `/user`/`/admin` i sprawdzenie jak wygląda sidebar zostaje do zrobienia.
+
+**Zakres:**
+- [x] Klucze dostępu (Część 7): odblokowanie kategorii/itemu kluczem, ustawienie/
+      zmiana/usunięcie klucza — na `ItemCard` i na nowej stronie kategorii.
+      Granty przechowywane w `sessionStorage` i doklejane automatycznie do każdego
+      requestu (`X-Pouch-Access-Grants`, interceptor w `httpClient`).
+- [x] Wersjonowanie plików (Część 8): historia wersji + nadpisanie nową wersją +
+      pobranie starej wersji, na `ItemCard` (tylko typ `file`).
+- [x] Publiczne linki + eksport (Część 9): przycisk "Udostępnij" generujący 24h
+      link bez konta, przycisk "Pobierz jako ZIP" na nowej stronie kategorii.
+- [x] Panel admina (Część 10): nowa strona `/admin` — zużycie storage + limity,
+      ręczne "Run GC Now" + historia, dziennik zdarzeń, lista wygasających +
+      masowe przedłużenie, backup całości jako ZIP.
+
+**Przy okazji (prerequisity, których wcześniej w ogóle nie było we froncie):**
+- Upload pliku (`POST /api/items/files`) — front miał dotąd tylko formularz notatek;
+  bez tego nie było czego wersjonować/udostępniać/eksportować.
+- Przycisk pobrania pliku na `ItemCard` — była tylko miniatura, nie było w ogóle
+  sposobu na ściągnięcie pliku.
+- Nowa strona `/categories` — `categoryApi`'s własny komentarz już wprost mówił "no
+  tree navigation UI yet, that's its own future piece of work"; Część 7 (klucz
+  kategorii) i Część 9 (eksport kategorii) potrzebowały jakiegoś miejsca na listę
+  kategorii, więc to jest ten moment. Celowo płaska lista, nie drzewo — realne drzewo
+  to osobna, większa robota.
+- `lib/apiError.ts` — współdzielony typ na kształt błędu (`context.uuid` z
+  `ExceptionUuidEnum`), do tej pory tylko sugerowany w `docs/codestyle/FRONTEND.md`
+  jako "warto dodać", teraz realnie zrobiony i użyty (m.in. żeby rozróżnić
+  "zły klucz"/"nie ma klucza"/"za dużo prób" bez zgadywania po treści `detail`).
+
+**Ważna poprawka po drodze:** `axiosBaseQuery` domyślnie ustawiał
+`Content-Type: application/json` na każdym requeście — dla payloadu `FormData`
+(upload pliku) axios w tej sytuacji **serializuje FormData do JSON-a zamiast wysłać
+multipart** (sprawdzone wprost w źródłach axios: `transformRequest` patrzy na
+nagłówek, nie na typ payloadu). Zweryfikowane empirycznie przez Node-owy skrypt
+uderzający w żywy backend: bez poprawki → 400 "Brak pliku lub przesłany plik jest
+nieprawidłowy"; z jawnym wyczyszczeniem nagłówka (`Content-Type: undefined`, żeby
+przeglądarka sama dopisała boundary) → 201, plik faktycznie zapisany. Poprawka w
+`axiosBaseQuery` obsługuje to dla każdego endpointu przyjmującego plik (upload,
+nadpisanie wersji), nie tylko dla nowych.
+
+**Testy kodowe:** `npm run check` (biome) i `tsc -b` (przez `npm run build`) czysto,
+istniejące testy (`npm test`) zielone. Nowych testów komponentów nie dopisano — poza
+zakresem tej sesji frontendowej, patrz "Test ręczny" niżej.
+
+**Test ręczny:** ⏳ **nie wykonany w prawdziwej przeglądarce** — użytkownik nie
+zainstalował rozszerzenia Claude in Chrome w tej sesji, a inne narzędzie do
+sterowania przeglądarką nie było dostępne. Zamiast tego zweryfikowane pośrednio:
+`tsc`/biome czysto, kontrakt request/response każdego nowego wywołania API ręcznie
+zestawiony pole-po-polu z backendowymi DTO (Części 7–10 już wcześniej przetestowane
+end-to-end przez `curl`), i opisany wyżej Node-owy test uploadu FormData na żywym
+backendzie. **Realne kliknięcie przez UI w przeglądarce (`http://localhost:5174`) —
+klucz dostępu, historia wersji, udostępnianie, eksport ZIP, panel admina — zostaje do
+zrobienia przy najbliższej okazji**, najlepiej z rozszerzeniem Claude in Chrome
+włączonym (`/chrome`) albo ręcznie przez użytkownika.
+
+---
+
 ## Opcjonalne do naprawy (niezależne od kolejności wyżej)
 
 Nie blokują żadnej części — zrobić przy okazji, kiedy akurat dotykamy powiązanego

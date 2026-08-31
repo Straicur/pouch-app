@@ -15,8 +15,15 @@ Patrz `frontend/package.json` (źródło prawdy — jeśli się rozjedzie z tą 
 - TypeScript 5.6
 - Vite 5
 
-Bez SASS/SCSS na razie — zwykły CSS. Osobna decyzja do podjęcia później, nie coś
-przyjęte mimochodem tym dokumentem.
+Bez SASS/SCSS — zwykły CSS zostaje domyślnym wyborem dla większości aplikacji.
+**Wyjątek: Tailwind v4** (`@tailwindcss/vite`, konfiguracja CSS-first w
+`src/index.css`) wszedł w Części 11, ale świadomie *scoped* — tylko
+`src/ui/catalyst/` (przeniesiony z `e-rezerwacja-frontend` `SidebarLayout` +
+`Navbar`/`Sidebar`, patrz tamtejszy `README.md`) i miejsca, które go używają
+(`UserLayout`, `AdminLayout`). Reszta aplikacji (karty itemów, formularze, tabele
+admina) zostaje na plain CSS — to nie jest zapowiedź pełnej migracji, patrz "Do
+ustalenia" niżej. Nowy kod **poza** `src/ui/catalyst/` pisz w plain CSS, nie Tailwind,
+dopóki ta decyzja nie zostanie podjęta świadomie dla całej aplikacji.
 
 ## Jak uruchomić
 
@@ -28,6 +35,46 @@ przyjęte mimochodem tym dokumentem.
 | `npm test` | vitest run |
 
 ---
+
+## Struktura katalogów
+
+Od Części 11: widoki dzielą się na dwa zagnieżdżone obszary, każdy dalej rozbity na
+moduły — jeden katalog na konkretny, samodzielny kawałek funkcjonalności, nie jeden
+płaski worek na wszystkie strony/komponenty (tak jak wcześniej `pages/`/`components/`
+mieszały wszystko, np. jeden `AdminPage.tsx` na pięć niepowiązanych sekcji):
+
+```
+src/modules/
+  user/
+    UserLayout.tsx       # nawigacja (Sidebar) + <Outlet/> dla /user/*, owinięte ProtectedRoute
+    shared/               # współdzielone MIĘDZY modułami usera (np. AccessKeyPanel)
+    items/
+      ItemsPage.tsx
+      components/         # własne, niereużywane poza tym modułem
+    categories/
+      CategoriesPage.tsx
+      components/
+  admin/
+    AdminLayout.tsx       # nawigacja + jedno sprawdzenie 403 dla całego /admin/*
+    storage/StorageModule.tsx
+    gc/GcModule.tsx
+    auditLog/AuditLogModule.tsx
+    expiring/ExpiringModule.tsx
+    backup/BackupModule.tsx
+```
+
+- Strona/moduł widoczny w routingu (`routes.tsx`) nazywa się `<Nazwa>Page.tsx` (user)
+  albo `<Nazwa>Module.tsx` (admin) — rozróżnienie czysto nazewnicze, oba to zwykłe
+  komponenty stron.
+- Komponent użyty w więcej niż jednym module danego obszaru → `modules/<obszar>/shared/`
+  (przykład: `AccessKeyPanel` używany przez `items` i `categories`). Komponent
+  współdzielony między `user` i `admin` (jeszcze taki nie istnieje) → `src/components/`
+  (tam gdzie dziś mieszka np. `RootLayout.tsx`, `ProtectedRoute.tsx`).
+- `<Obszar>Layout.tsx` (`UserLayout.tsx`, `AdminLayout.tsx`) odpowiada za nawigację i
+  jedno wspólne sprawdzenie dostępu (patrz "Layouty i trasy" niżej) — moduły w środku
+  nie duplikują tego sprawdzenia.
+- `src/pages/` zostaje dla tego, co nie należy do żadnego obszaru: `HomePage`,
+  `LoginPage`.
 
 ## Wymuszane automatycznie
 
@@ -149,6 +196,23 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
   `useHookAtTopLevel` (i cała reszta reguł hooków) rozpoznaje hooki właśnie po tym
   prefiksie, żeby wiedzieć co sprawdzać.
 
+### Layouty i trasy
+
+- Każdy obszar (`UserLayout`, `AdminLayout` — patrz "Struktura katalogów" wyżej) jest
+  owinięty `ProtectedRoute` (`src/components/ProtectedRoute.tsx`) — jedno sprawdzenie
+  sesji (`useWhoAmIQuery`) dla całego poddrzewa tras zamiast każdej strony osobno.
+  Dodając nowy obszar (nie nowy moduł w istniejącym — to samo `<Obszar>Layout.tsx` już
+  to załatwia), owiń go w `ProtectedRoute` tak samo.
+- Dodatkowe sprawdzenie specyficzne dla obszaru (np. `AdminLayout`'owe "czy to admin",
+  wykryte po `403`/`ExceptionUuid.FORBIDDEN`) idzie **po** `ProtectedRoute`, nie przed
+  ani zamiast — inaczej brak sesji w ogóle (`401`) nie zostanie złapany przez logikę
+  liczącą tylko na `403` (to był realny błąd w `AdminLayout`, patrz `ROADMAP.md`
+  Część 11).
+- `ProtectedRoute` przekierowuje na `/login` przy błędzie sesji; `HomePage` ma własne,
+  nieco inne zachowanie (chwilowe wyrenderowanie przed przekierowaniem) — nie
+  ujednolicaj tego bez konkretnego powodu, to świadomie inny przypadek ("stale
+  session powinna na chwilę coś pokazać", nie natychmiastowy bounce).
+
 ### Stałe
 
 - Magic stringi/liczby wynoś do nazwanych stałych.
@@ -195,13 +259,51 @@ tekstów: `src/locales/pl.ts`, inicjalizacja: `src/lib/i18n.ts` (importowane raz
 `toastUtil.ts`) woła `i18n.t(...)` bezpośrednio na zaimportowanej instancji zamiast
 przez hook.
 
-Wyjątek: schematy walidacji `zod` (np. w `LoginPage.tsx`) są definiowane na poziomie
-modułu, poza komponentem — `useTranslation()` tam nie zadziała — więc ich komunikaty
-zostają wpisane wprost, ze świadomym komentarzem tłumaczącym dlaczego.
+Wyjątek: schematy walidacji `zod` (patrz "Formularze" niżej) są definiowane na
+poziomie modułu, poza komponentem — `useTranslation()` tam nie zadziała — więc ich
+komunikaty zostają wpisane wprost, ze świadomym komentarzem tłumaczącym dlaczego.
 
 Analogiczny mechanizm istnieje po stronie backendu (Symfony Translator,
 `backend/translations/*.pl.yaml`, patrz `backend/README.md`) — API też nie zwraca
 sztywnych stringów, tylko przetłumaczone teksty po kluczu.
+
+### Formularze (`react-hook-form` + `zod`)
+
+Docelowy wzorzec dla każdego formularza z realną walidacją (nie tylko HTML-owym
+`required`) — `LoginPage.tsx` jako pierwszy przykład, dziś też `NoteForm`,
+`FileUploadForm`, `UnlockItemForm`, `AccessKeyPanel`:
+
+```ts
+// Na poziomie modułu — patrz wyjątek w sekcji "Teksty (i18n)" wyżej.
+const schema = z.object({
+  categoryId: z.coerce.number().int().positive("Wybierz kategorię"),
+  content: z.string().min(1, "Treść nie może być pusta"),
+});
+```
+
+- **`z.coerce.number()` (i inne `z.coerce.*`) mają inny typ wejścia niż wyjścia** —
+  `<select>`/`<input>` produkują string/`unknown`, schemat zwraca `number`. Samo
+  `z.infer<typeof schema>` daje typ *wyjściowy* i `useForm<typeof schema>` się nie
+  skompiluje (błąd o niezgodności `Resolver`). Zamiast tego:
+
+  ```ts
+  type FormInput = z.input<typeof schema>; // to, co idzie do register()
+  type FormValues = z.output<typeof schema>; // to, co dostaje onSubmit
+
+  const { register, handleSubmit } = useForm<FormInput, unknown, FormValues>({
+    resolver: zodResolver(schema),
+  });
+  ```
+
+- Input plikowy (`<input type="file">`) nie da się sensownie zarejestrować przez
+  `register()` jako kontrolowane pole zoda — trzyma się go w osobnym `useState<File |
+  null>`, a `z.instanceof(File, { message: "..." })` woła się ręcznie
+  (`schema.safeParse(file)`) w `onSubmit`, nie przez resolver — patrz
+  `FileUploadForm.tsx`.
+- Błąd z backendu (nie walidacja frontu) idzie do `setError("root", { message })`,
+  wyświetlany jako `errors.root.message` — tak jak `LoginPage` robi to dla `401`.
+  Patrz też "422 niesie listę `violations`" w sekcji "Error handling" niżej — to
+  osobny, bardziej precyzyjny przypadek (błąd na konkretnym polu, nie ogólny).
 
 ---
 
@@ -229,8 +331,11 @@ Dotyczy to też błędów, których backend sam nie rzuca (nieznana trasa, zła 
 frameworka.
 
 - `AxiosBaseQueryError`/błąd z `httpClient` zawsze niesie `data` w tym kształcie przy
-  odpowiedzi z naszego API — warto dodać współdzielony typ tego envelope'u zamiast
-  każdorazowo rzutować `error.data` ręcznie.
+  odpowiedzi z naszego API — `src/lib/apiError.ts` to ten współdzielony typ
+  (`ApiErrorBody`) plus `ExceptionUuid` (odpowiednik `ExceptionUuidEnum` z backendu),
+  `getApiErrorBody(error)`/`getApiErrorUuid(error)`/`isApiError(error, uuid)`. Używaj
+  tego zamiast każdorazowo rzutować `error.data` ręcznie i zamiast porównywać `status`
+  albo `detail` wprost.
 - **422 (`UnprocessableContentException`) niesie listę `violations`**
   (`{ propertyPath, message, code }[]`) — to mapuje się wprost na
   `setError(propertyPath, { message })` z `react-hook-form`. Docelowy wzorzec dla
@@ -245,9 +350,19 @@ frameworka.
   jeszcze serwisu do zbierania błędów) — ale nie połykaj błędu bez żadnego śladu.
 - Każda funkcja `async`, która woła API, obsługuje błąd — nie zostawiaj
   nieobsłużonego rejection.
-- Warto rozważyć wygenerowanie typów tego envelope'u i `ExceptionUuidEnum` wprost z
-  OpenAPI, które już generuje `nelmio/api-doc-bundle` (`/api/doc.json`) — zamiast
-  ręcznie przepisywać je po stronie frontendu i pilnować zgodności ręcznie.
+- **Wysyłając `FormData` (upload pliku), nie ustawiaj `Content-Type` samodzielnie i
+  nie polegaj na domyślnym `httpClient`'owym `application/json`** — z tym nagłówkiem
+  axios *serializuje `FormData` do JSON-a* zamiast wysłać multipart (sprawdzone
+  wprost w źródłach axios, `transformRequest` patrzy na nagłówek, nie na typ
+  payloadu — realny błąd znaleziony i naprawiony w Części 11). Wołaj przez
+  `src/lib/httpMethods.ts` (`get/post/put/patch/del`) albo przez `axiosBaseQuery`
+  (RTK Query) — oba już czyszczą `Content-Type` dla `FormData`, żeby przeglądarka
+  sama dopisała boundary. Nie wołaj `httpClient(...)` bezpośrednio z `FormData` w
+  body pomijając te dwa miejsca.
+- `ExceptionUuid`/`ApiErrorBody` w `lib/apiError.ts` są dziś przepisane ręcznie z
+  backendowego `ExceptionUuidEnum` — nadal warto rozważyć wygenerowanie ich wprost z
+  OpenAPI (`nelmio/api-doc-bundle`, `/api/doc.json`), żeby nie trzeba było ręcznie
+  pilnować zgodności przy każdej zmianie po stronie backendu.
 
 ---
 
@@ -256,4 +371,12 @@ frameworka.
 - Gdzie mieszkają typy współdzielone (`src/types/` czy kolokowane przy
   `store/api/*.ts`, jak dziś) — część rozmowy o rozbiciu folderów, jeszcze nie
   rozstrzygnięta.
-- SASS vs zwykły CSS na dłuższą metę.
+- SASS vs zwykły CSS na dłuższą metę — teraz dodatkowo skomplikowane przez Tailwind
+  (patrz "Wersje kluczowych komponentów"): czy Tailwind zostaje trwale ograniczony do
+  `src/ui/catalyst/`, czy z czasem przejmuje resztę aplikacji, a plain CSS/SASS
+  przestaje być tematem — świadoma decyzja do podjęcia, nie coś, co ten dokument
+  rozstrzyga przy okazji.
+- Czy panel admina/usera doczeka się realnego wykorzystania reszty przeniesionego
+  Catalyst UI (`libs/catalyst-ui` w `e-rezerwacja-frontend` ma m.in. `dialog`,
+  `combobox`, `table`) — dziś przeniesiony jest tylko to, czego potrzebuje
+  `SidebarLayout`.

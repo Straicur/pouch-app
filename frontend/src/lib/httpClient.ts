@@ -1,4 +1,5 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
+import { accessGrants, GRANTS_HEADER } from "./accessGrants";
 import { ApiEndpoints, NO_REFRESH_ENDPOINTS } from "./apiEndpoints";
 
 // Auth is cookie-based (httpOnly, see App\Security\CookieService) — no token touches JS.
@@ -10,6 +11,19 @@ export const httpClient = axios.create({
     // biome-ignore lint/style/useNamingConvention: HTTP header name, not a JS identifier.
     Accept: "application/json",
   },
+});
+
+// Part 7: every request carries whatever access grants this tab currently
+// holds — AccessKeyGuard only looks at the ones relevant to the resource
+// being touched, so it's simplest to just always attach the full set rather
+// than have every call site figure out which grant(s) a given request needs.
+httpClient.interceptors.request.use((config) => {
+  const headerValue = accessGrants.toHeaderValue();
+  if (undefined !== headerValue) {
+    config.headers.set(GRANTS_HEADER, headerValue);
+  }
+
+  return config;
 });
 
 type RetryableConfig = InternalAxiosRequestConfig & { _retry?: boolean };

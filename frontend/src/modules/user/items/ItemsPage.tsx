@@ -1,22 +1,25 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
-import { ItemCard } from "../components/ItemCard";
-import { ItemFilters } from "../components/ItemFilters";
-import { NoteForm } from "../components/NoteForm";
-import { type ItemListParams, useListItemsQuery } from "../store/api/itemApi";
+import { type ItemListParams, useListItemsQuery } from "../../../store/api/itemApi";
+import { FileUploadForm } from "./components/FileUploadForm";
+import { ItemCard } from "./components/ItemCard";
+import { ItemFilters } from "./components/ItemFilters";
+import { NoteForm } from "./components/NoteForm";
+import { UnlockItemForm } from "./components/UnlockItemForm";
 
 export function ItemsPage() {
   const { t } = useTranslation();
   const [filters, setFilters] = useState<ItemListParams>({});
   const { data: items, isLoading, error } = useListItemsQuery(filters);
 
+  // div, not <main> — Część 11's SidebarLayout (UserLayout) already provides one.
   return (
-    <main className="items-page">
-      <h1>{t("common.appName")}</h1>
-      <Link to="/">{t("items.homeLink")}</Link>
+    <div className="items-page">
+      <h1>{t("nav.items")}</h1>
 
       <NoteForm />
+      <FileUploadForm />
+      <UnlockItemForm />
 
       <ItemFilters filters={filters} onChange={setFilters} />
 
@@ -31,6 +34,6 @@ export function ItemsPage() {
           ))}
         </div>
       )}
-    </main>
+    </div>
   );
 }

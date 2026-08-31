@@ -1,14 +1,20 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
+import { toastUtil } from "../../../../lib/toastUtil";
+import { useSetItemKeyMutation, useUnlockItemMutation } from "../../../../store/api/accessKeyApi";
 import {
   type Item,
+  useGetItemDownloadLinkMutation,
   useGetItemThumbnailLinkMutation,
   useMarkFavoriteMutation,
   useUnmarkFavoriteMutation,
   useUpdateNoteMutation,
   useUpdateTagsMutation,
-} from "../store/api/itemApi";
+} from "../../../../store/api/itemApi";
+import { AccessKeyPanel } from "../../shared/AccessKeyPanel";
+import { ShareButton } from "./ShareButton";
+import { VersionHistory } from "./VersionHistory";
 
 interface ItemCardProps {
   item: Item;
@@ -201,6 +207,51 @@ function TagEditor({ item }: TagEditorProps) {
   );
 }
 
+interface DownloadButtonProps {
+  item: Item;
+}
+
+// Was missing entirely before — a FILE/PHOTO item had a thumbnail preview
+// but no way to actually get the file itself.
+function DownloadButton({ item }: DownloadButtonProps) {
+  const { t } = useTranslation();
+  const [getDownloadLink, { isLoading }] = useGetItemDownloadLinkMutation();
+
+  const handleDownload = async () => {
+    try {
+      const link = await getDownloadLink(item.id).unwrap();
+      window.open(link.url, "_blank", "noreferrer");
+    } catch {
+      toastUtil.showToast(t("items.downloadError"), "error");
+    }
+  };
+
+  return (
+    <button type="button" onClick={handleDownload} disabled={isLoading}>
+      {isLoading ? t("items.downloading") : t("items.download")}
+    </button>
+  );
+}
+
+interface ItemAccessKeySectionProps {
+  item: Item;
+}
+
+// Part 7 — an item's own key, independent of whatever key its category has
+// (see AccessKeyGuard) — always offered, same reasoning as AccessKeyPanel's
+// own docblock.
+function ItemAccessKeySection({ item }: ItemAccessKeySectionProps) {
+  const [unlockItem] = useUnlockItemMutation();
+  const [setItemKey] = useSetItemKeyMutation();
+
+  return (
+    <AccessKeyPanel
+      onUnlock={(key) => unlockItem({ itemId: item.id, key }).unwrap()}
+      onSetKey={(key) => setItemKey({ itemId: item.id, key }).unwrap()}
+    />
+  );
+}
+
 export function ItemCard({ item }: ItemCardProps) {
   const { t } = useTranslation();
   const thumbnailUrl = useItemThumbnailUrl(item);
@@ -234,6 +285,16 @@ export function ItemCard({ item }: ItemCardProps) {
             {null !== item.processingError ? `: ${item.processingError}` : ""}
           </p>
         )}
+
+        {("file" === item.type || "photo" === item.type) && (
+          <div className="item-card-actions">
+            <DownloadButton item={item} />
+            <ShareButton itemId={item.id} />
+          </div>
+        )}
+        {"file" === item.type && <VersionHistory itemId={item.id} />}
+
+        <ItemAccessKeySection item={item} />
       </div>
     </article>
   );

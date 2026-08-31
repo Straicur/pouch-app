@@ -1,4 +1,6 @@
 import { configureStore } from "@reduxjs/toolkit";
+import { accessKeyApi } from "./api/accessKeyApi";
+import { adminApi } from "./api/adminApi";
 import { authApi } from "./api/authApi";
 import { categoryApi } from "./api/categoryApi";
 import { itemApi } from "./api/itemApi";
@@ -12,6 +14,8 @@ export const store = configureStore({
     [itemApi.reducerPath]: itemApi.reducer,
     [categoryApi.reducerPath]: categoryApi.reducer,
     [tagApi.reducerPath]: tagApi.reducer,
+    [accessKeyApi.reducerPath]: accessKeyApi.reducer,
+    [adminApi.reducerPath]: adminApi.reducer,
   },
   devTools: import.meta.env.MODE !== "production",
   middleware: (getDefaultMiddleware) =>
@@ -21,6 +25,8 @@ export const store = configureStore({
       itemApi.middleware,
       categoryApi.middleware,
       tagApi.middleware,
+      accessKeyApi.middleware,
+      adminApi.middleware,
     ),
 });
 

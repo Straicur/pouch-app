@@ -57,6 +57,42 @@ export interface UpdateTagsRequest {
   tags: string[];
 }
 
+export interface CreateFileRequest {
+  categoryId: number;
+  file: File;
+  name?: string;
+}
+
+export interface OverwriteFileRequest {
+  id: number;
+  file: File;
+}
+
+export interface ItemVersion {
+  version: number;
+  originalFilename: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
+}
+
+export interface PublicLink {
+  viewUrl: string;
+  downloadUrl: string | null;
+  thumbnailUrl: string | null;
+  expiresAt: string;
+}
+
+const fileFormData = (file: File, extra?: Record<string, string>): FormData => {
+  const formData = new FormData();
+  formData.append("file", file);
+  for (const [key, value] of Object.entries(extra ?? {})) {
+    formData.append(key, value);
+  }
+
+  return formData;
+};
+
 export const itemApi = createApi({
   reducerPath: "itemApi",
   baseQuery: axiosBaseQuery(),
@@ -101,6 +137,36 @@ export const itemApi = createApi({
       query: (id) => ({ url: ApiEndpoints.ITEM_FAVORITE(id), method: "DELETE" }),
       invalidatesTags: ["Item"],
     }),
+    createFile: builder.mutation<Item, CreateFileRequest>({
+      query: ({ categoryId, file, name }) => ({
+        url: ApiEndpoints.ITEM_FILES,
+        method: "POST",
+        data: fileFormData(file, { categoryId: String(categoryId), ...(undefined !== name ? { name } : {}) }),
+      }),
+      invalidatesTags: ["Item"],
+    }),
+    // Part 8 — same id/URL afterwards, see ItemServiceInterface::overwriteFile().
+    overwriteFile: builder.mutation<Item, OverwriteFileRequest>({
+      query: ({ id, file }) => ({ url: ApiEndpoints.ITEM_FILE(id), method: "POST", data: fileFormData(file) }),
+      invalidatesTags: ["Item"],
+    }),
+    listVersions: builder.query<ItemVersion[], number>({
+      query: (id) => ({ url: ApiEndpoints.ITEM_VERSIONS(id), method: "GET" }),
+      providesTags: ["Item"],
+    }),
+    getVersionDownloadLink: builder.mutation<SignedLink, { id: number; version: number }>({
+      query: ({ id, version }) => ({
+        url: ApiEndpoints.ITEM_VERSION_DOWNLOAD_LINK(id, version),
+        method: "POST",
+        data: {},
+      }),
+    }),
+    // Part 9 — a 24h link usable with no account at all; see AccessKeyGuard
+    // (Part 7) for why generating it still requires being logged in and
+    // already having access to the item.
+    getPublicLink: builder.mutation<PublicLink, number>({
+      query: (id) => ({ url: ApiEndpoints.ITEM_PUBLIC_LINK(id), method: "POST", data: {} }),
+    }),
   }),
 });
 
@@ -113,4 +179,9 @@ export const {
   useUpdateTagsMutation,
   useMarkFavoriteMutation,
   useUnmarkFavoriteMutation,
+  useCreateFileMutation,
+  useOverwriteFileMutation,
+  useListVersionsQuery,
+  useGetVersionDownloadLinkMutation,
+  useGetPublicLinkMutation,
 } = itemApi;

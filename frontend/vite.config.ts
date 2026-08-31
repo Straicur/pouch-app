@@ -1,9 +1,14 @@
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  // Tailwind v4 — CSS-first config (see src/index.css's `@import "tailwindcss"`),
+  // no tailwind.config.js needed. Scoped in practice to the new Sidebar-based
+  // layout (Część 11's Catalyst UI port) — the rest of the app's plain CSS is
+  // untouched, this doesn't force a full migration.
+  plugins: [react(), tailwindcss()],
   server: {
     host: true, // listen on 0.0.0.0 so the dev server is reachable from the Docker host
     port: 5173,

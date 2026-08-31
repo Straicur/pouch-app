@@ -1,6 +1,6 @@
 import type { BaseQueryFn } from "@reduxjs/toolkit/query";
-import type { AxiosError, AxiosRequestConfig, Method } from "axios";
-import { httpClient } from "../../lib/httpClient";
+import type { AxiosError, AxiosResponse, Method } from "axios";
+import { httpMethods } from "../../lib/httpMethods";
 
 export interface AxiosBaseQueryArgs {
   url: string;
@@ -15,12 +15,36 @@ export interface AxiosBaseQueryError {
   message: string;
 }
 
-// Routes RTK Query through httpClient instead of its default fetch-based baseQuery.
+const dispatch = (
+  method: Method,
+  url: string,
+  data: unknown,
+  params: Record<string, unknown> | undefined,
+): Promise<AxiosResponse> => {
+  const normalizedMethod = method.toUpperCase();
+
+  switch (normalizedMethod) {
+    case "GET":
+      return httpMethods.get(url, { params });
+    case "POST":
+      return httpMethods.post(url, data, { params });
+    case "PUT":
+      return httpMethods.put(url, data, { params });
+    case "PATCH":
+      return httpMethods.patch(url, data, { params });
+    case "DELETE":
+      return httpMethods.del(url, { params });
+    default:
+      throw new Error(`Unsupported HTTP method: ${method}`);
+  }
+};
+
+// Routes RTK Query through httpMethods (see lib/httpMethods.ts) instead of
+// its default fetch-based baseQuery.
 export const axiosBaseQuery = (): BaseQueryFn<AxiosBaseQueryArgs, unknown, AxiosBaseQueryError> => {
   return async ({ url, method = "GET", data, params }) => {
     try {
-      const config: AxiosRequestConfig = { url, method, data, params };
-      const response = await httpClient(config);
+      const response = await dispatch(method, url, data, params);
 
       return { data: response.data as unknown };
     } catch (error) {

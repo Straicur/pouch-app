@@ -55,7 +55,7 @@
   },
   "overrides": [
     {
-      "includes": ["src/lib/apiEndpoints.ts", "src/lib/redirectEndpoints.ts"],
+      "includes": ["src/lib/apiEndpoints.ts", "src/lib/redirectEndpoints.ts", "src/lib/apiError.ts"],
       "linter": {
         "rules": {
           "style": {
