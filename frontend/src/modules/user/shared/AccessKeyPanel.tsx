@@ -2,17 +2,19 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
-import { ExceptionUuid, getApiErrorBody, isApiError } from "../../../lib/apiError";
-import { toastUtil } from "../../../lib/toastUtil";
+import { ExceptionUuid, getApiErrorBody, isApiError } from "../../../libs/apiError";
+import i18n from "../../../libs/i18n";
+import { toastUtil } from "../../../libs/toastUtil";
 
 interface AccessKeyPanelProps {
   onUnlock: (key: string) => Promise<unknown>;
   onSetKey: (key: string | null) => Promise<unknown>;
 }
 
-// Defined at module scope, like LoginPage — see locales/pl.ts's header.
-const unlockKeySchema = z.object({ key: z.string().min(1, "Podaj klucz") });
-const setKeySchema = z.object({ key: z.string().min(1, "Podaj nowy klucz") });
+// Defined at module scope, like LoginPage — messages go through the imported
+// i18n instance's t() directly; see locales/pl.ts's header.
+const unlockKeySchema = z.object({ key: z.string().min(1, i18n.t("validation.keyRequired")) });
+const setKeySchema = z.object({ key: z.string().min(1, i18n.t("validation.newKeyRequired")) });
 
 type UnlockKeyValues = z.infer<typeof unlockKeySchema>;
 type SetKeyValues = z.infer<typeof setKeySchema>;

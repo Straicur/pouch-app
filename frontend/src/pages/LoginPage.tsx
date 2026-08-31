@@ -3,14 +3,16 @@ import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
+import i18n from "../libs/i18n";
 import { useLoginMutation } from "../store/api/authApi";
 
 // Defined at module scope (zod needs the schema before any component/hook
-// runs), so — unlike everything else in this file — these two messages stay
-// inline instead of going through useTranslation(); see locales/pl.ts's header.
+// runs), so — unlike everything else in this file — these two messages go
+// through the imported i18n instance's t() directly instead of the hook
+// (see locales/pl.ts's header and FRONTEND.md's "Formularze" section).
 const loginSchema = z.object({
-  email: z.email("Nieprawidłowy adres e-mail"),
-  password: z.string().min(1, "Podaj hasło"),
+  email: z.email(i18n.t("validation.invalidEmail")),
+  password: z.string().min(1, i18n.t("validation.passwordRequired")),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;

@@ -1,6 +1,6 @@
 import { createApi } from "@reduxjs/toolkit/query/react";
-import { accessGrants } from "../../lib/accessGrants";
-import { ApiEndpoints } from "../../lib/apiEndpoints";
+import { ApiEndpoints } from "../../libs/apiEndpoints";
+import { accessGrants } from "../../utils/accessGrants";
 import { axiosBaseQuery } from "./baseQuery";
 import { itemApi } from "./itemApi";
 
@@ -31,7 +31,7 @@ interface SetItemKeyRequest {
 }
 
 // Post-review fix: what POST .../export-token returns — see
-// lib/triggerDownload.ts and CategoryController's own doc comments for why
+// utils/triggerDownload.ts and CategoryController's own doc comments for why
 // a category export needs this at all (a plain navigation, used so the ZIP
 // streams, can't set the X-Pouch-Access-Grants header a normal request
 // would — this mints a short-lived, opaque token carrying the same grants
@@ -45,7 +45,7 @@ export interface CategoryExportToken {
 // here), so its invalidatesTags can't reach itemApi's cache — RTK Query tags
 // only invalidate within the same api. Instead, every mutation that changes
 // what's visible/locked dispatches itemApi.util.invalidateTags directly, and
-// a successful unlock stores the grant it earned (see lib/accessGrants.ts)
+// a successful unlock stores the grant it earned (see utils/accessGrants.ts)
 // as a side effect too, right here, so every call site gets both for free.
 export const accessKeyApi = createApi({
   reducerPath: "accessKeyApi",

@@ -1,5 +1,5 @@
 import { createApi } from "@reduxjs/toolkit/query/react";
-import { ApiEndpoints } from "../../lib/apiEndpoints";
+import { ApiEndpoints } from "../../libs/apiEndpoints";
 import { axiosBaseQuery } from "./baseQuery";
 
 // Just the list of tag names currently in use — for the tag-filter/

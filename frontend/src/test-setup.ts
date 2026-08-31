@@ -1,2 +1,2 @@
 import "@testing-library/jest-dom/vitest";
-import "./lib/i18n";
+import "./libs/i18n";

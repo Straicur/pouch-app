@@ -1,6 +1,6 @@
 import type { BaseQueryFn } from "@reduxjs/toolkit/query";
 import type { AxiosError, AxiosResponse, Method } from "axios";
-import { httpMethods } from "../../lib/httpMethods";
+import { httpMethods } from "../../libs/httpMethods";
 
 export interface AxiosBaseQueryArgs {
   url: string;
@@ -39,7 +39,7 @@ const dispatch = (
   }
 };
 
-// Routes RTK Query through httpMethods (see lib/httpMethods.ts) instead of
+// Routes RTK Query through httpMethods (see libs/httpMethods.ts) instead of
 // its default fetch-based baseQuery.
 export const axiosBaseQuery = (): BaseQueryFn<AxiosBaseQueryArgs, unknown, AxiosBaseQueryError> => {
   return async ({ url, method = "GET", data, params }) => {

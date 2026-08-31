@@ -1,6 +1,6 @@
 import { createApi } from "@reduxjs/toolkit/query/react";
-import { accessGrants } from "../../lib/accessGrants";
-import { ApiEndpoints } from "../../lib/apiEndpoints";
+import { ApiEndpoints } from "../../libs/apiEndpoints";
+import { accessGrants } from "../../utils/accessGrants";
 import { axiosBaseQuery } from "./baseQuery";
 
 export interface LoginRequest {
@@ -16,7 +16,7 @@ export const authApi = createApi({
       query: (body) => ({ url: ApiEndpoints.LOGIN, method: "POST", data: body }),
       // Post-review fix: a grant earned by whoever was logged in before
       // (or not logged in at all) must not follow into this new session —
-      // see lib/accessGrants.ts.
+      // see utils/accessGrants.ts.
       async onQueryStarted(_arg, { queryFulfilled }) {
         accessGrants.clear();
         await queryFulfilled;

@@ -1,20 +1,20 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
-import { RootLayout } from "./components/RootLayout";
-import { AdminLayout } from "./modules/admin/AdminLayout";
-import { AuditLogModule } from "./modules/admin/auditLog/AuditLogModule";
-import { BackupModule } from "./modules/admin/backup/BackupModule";
-import { ExpiringModule } from "./modules/admin/expiring/ExpiringModule";
-import { GcModule } from "./modules/admin/gc/GcModule";
-import { StorageModule } from "./modules/admin/storage/StorageModule";
-import { CategoriesPage } from "./modules/user/categories/CategoriesPage";
-import { ItemsPage } from "./modules/user/items/ItemsPage";
-import { UserLayout } from "./modules/user/UserLayout";
+import { AdminLayout } from "./pages/admin/AdminLayout";
+import { AuditLogPage } from "./pages/admin/auditLog/AuditLogPage";
+import { BackupPage } from "./pages/admin/backup/BackupPage";
+import { ExpiringPage } from "./pages/admin/expiring/ExpiringPage";
+import { GcPage } from "./pages/admin/gc/GcPage";
+import { StoragePage } from "./pages/admin/storage/StoragePage";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
+import { RootLayout } from "./pages/RootLayout";
+import { CategoriesPage } from "./pages/user/categories/CategoriesPage";
+import { ItemsPage } from "./pages/user/items/ItemsPage";
+import { UserLayout } from "./pages/user/UserLayout";
 
 // Part 11: everything used to sit flat under one router — now nested per
-// area (User / Admin), and within each area, one route per concrete module
-// (UserLayout/AdminLayout own the shared nav, each module owns its own page).
+// area (User / Admin), and within each area, one route per concrete page
+// (UserLayout/AdminLayout own the shared nav, each page owns its own content).
 export const router = createBrowserRouter([
   {
     element: <RootLayout />,
@@ -35,11 +35,11 @@ export const router = createBrowserRouter([
         element: <AdminLayout />,
         children: [
           { index: true, element: <Navigate to="storage" replace /> },
-          { path: "storage", element: <StorageModule /> },
-          { path: "gc", element: <GcModule /> },
-          { path: "audit-log", element: <AuditLogModule /> },
-          { path: "expiring", element: <ExpiringModule /> },
-          { path: "backup", element: <BackupModule /> },
+          { path: "storage", element: <StoragePage /> },
+          { path: "gc", element: <GcPage /> },
+          { path: "audit-log", element: <AuditLogPage /> },
+          { path: "expiring", element: <ExpiringPage /> },
+          { path: "backup", element: <BackupPage /> },
         ],
       },
     ],

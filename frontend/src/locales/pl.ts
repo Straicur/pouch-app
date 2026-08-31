@@ -1,8 +1,8 @@
 // The one place every user-facing string in the app lives — components pull
 // text via useTranslation()'s t("key"), never inline literals (see
-// docs/codestyle/FRONTEND.md). Form validation messages (zod schemas) are the
-// deliberate exception: they're defined at module scope, outside any
-// component that could call the hook, so they stay inline for now.
+// docs/codestyle/FRONTEND.md). Zod schemas (module scope, no hook available)
+// pull from the same keys via the imported `i18n` instance's i18n.t(...) —
+// see `validation` below and the "Formularze" section of FRONTEND.md.
 const pl = {
   common: {
     appName: "Pouch",
@@ -228,6 +228,27 @@ const pl = {
     error: "Błąd",
     warning: "Ostrzeżenie",
     info: "Informacja",
+  },
+  // Zod schemas call i18n.t("validation.xxx") directly (module scope, no
+  // useTranslation() available) — see this file's header and FRONTEND.md's
+  // "Formularze" section.
+  validation: {
+    selectCategory: "Wybierz kategorię",
+    maxLength255: "Maksymalnie 255 znaków",
+    noteContentRequired: "Treść notatki nie może być pusta",
+    expiresAtRequired: "Podaj datę wygaśnięcia",
+    selectFile: "Wybierz plik",
+    keyRequired: "Podaj klucz",
+    newKeyRequired: "Podaj nowy klucz",
+    itemIdRequired: "Podaj ID itemu",
+    itemIdInvalid: "Podaj poprawne ID itemu",
+    invalidEmail: "Nieprawidłowy adres e-mail",
+    passwordRequired: "Podaj hasło",
+  },
+  errorBoundary: {
+    title: "Coś poszło nie tak",
+    description: "Wystąpił nieoczekiwany błąd aplikacji. Spróbuj odświeżyć stronę.",
+    reloadButton: "Odśwież stronę",
   },
 } as const;
 

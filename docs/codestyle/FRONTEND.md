@@ -38,43 +38,105 @@ dopóki ta decyzja nie zostanie podjęta świadomie dla całej aplikacji.
 
 ## Struktura katalogów
 
-Od Części 11: widoki dzielą się na dwa zagnieżdżone obszary, każdy dalej rozbity na
-moduły — jeden katalog na konkretny, samodzielny kawałek funkcjonalności, nie jeden
-płaski worek na wszystkie strony/komponenty (tak jak wcześniej `pages/`/`components/`
-mieszały wszystko, np. jeden `AdminPage.tsx` na pięć niepowiązanych sekcji):
+Od Części 12: pełny podział na `pages/` (routing) i `modules/` (implementacja),
+plus wydzielone `libs/`/`utils/`/`providers/`/`store/types/`. Zasada nadrzędna: jeden
+katalog na konkretny, samodzielny kawałek funkcjonalności, nie jeden płaski worek na
+wszystko (tak jak kiedyś `pages/`/`components/` mieszały wszystko, np. jeden
+`AdminPage.tsx` na pięć niepowiązanych sekcji — patrz historia w `ROADMAP.md`, Część 11
+zaczęła ten podział przez `modules/`, Część 12 dociąga go do końca). Nazwy katalogów: liczba
+mnoga, mała litera (`libs/`, `utils/`, `pages/`, `modules/`, `providers/`, `types/` —
+nie `lib/`, `Utils/` itd.).
 
 ```
-src/modules/
-  user/
-    UserLayout.tsx       # nawigacja (Sidebar) + <Outlet/> dla /user/*, owinięte ProtectedRoute
-    shared/               # współdzielone MIĘDZY modułami usera (np. AccessKeyPanel)
-    items/
-      ItemsPage.tsx
-      components/         # własne, niereużywane poza tym modułem
-    categories/
-      CategoriesPage.tsx
-      components/
-  admin/
-    AdminLayout.tsx       # nawigacja + jedno sprawdzenie 403 dla całego /admin/*
-    storage/StorageModule.tsx
-    gc/GcModule.tsx
-    auditLog/AuditLogModule.tsx
-    expiring/ExpiringModule.tsx
-    backup/BackupModule.tsx
+src/
+  pages/                    # WSZYSTKO co ma routing (routes.tsx) i jest stroną główną
+    RootLayout.tsx           # nawigacja poza React Routerem (toast/navigate), bez podziału User/Admin
+    HomePage.tsx
+    LoginPage.tsx
+    user/
+      UserLayout.tsx         # nawigacja (Sidebar) + <Outlet/> dla /user/*, owinięte ProtectedRoute
+      items/ItemsPage.tsx
+      categories/CategoriesPage.tsx
+    admin/
+      AdminLayout.tsx        # nawigacja + jedno sprawdzenie 403 dla całego /admin/*
+      storage/StoragePage.tsx
+      gc/GcPage.tsx
+      auditLog/AuditLogPage.tsx
+      expiring/ExpiringPage.tsx
+      backup/BackupPage.tsx
+  modules/                  # implementacja pod stronami z pages/ — NIC stąd nie ma routingu
+    user/
+      shared/                # współdzielone MIĘDZY modułami usera (np. AccessKeyPanel)
+      items/
+        forms/                # formularze (react-hook-form + zod) — NoteForm, FileUploadForm, ...
+        view/                 # mniejsze komponenty widoku (karty, przyciski, filtry) — ItemCard, ShareButton, ...
+        services/             # logika API/biznesowa specyficzna dla tego modułu (jeśli powstanie — patrz niżej)
+      categories/
+        view/
+    admin/                  # analogicznie, jeśli/gdy admin doczeka się własnych forms/view (dziś strony są proste)
+  providers/                # cross-cutting, owija drzewo aplikacji — ProtectedRoute, ErrorBoundary
+  libs/                     # infrastruktura: httpClient, logger, toastUtil, i18n, apiError, apiEndpoints...
+  utils/                    # czyste funkcje pomocnicze bez efektów ubocznych infrastruktury — accessGrants, triggerDownload
+  store/
+    api/                    # RTK Query slice'y (createApi + hooki) — jedna sprawa na plik
+    types/                  # typy request/response wyniesione z api/*.ts, gdy jest ich dużo (patrz niżej)
 ```
 
-- Strona/moduł widoczny w routingu (`routes.tsx`) nazywa się `<Nazwa>Page.tsx` (user)
-  albo `<Nazwa>Module.tsx` (admin) — rozróżnienie czysto nazewnicze, oba to zwykłe
-  komponenty stron.
+- Strona widoczna w routingu (`routes.tsx`) zawsze nazywa się `<Nazwa>Page.tsx` i żyje w
+  `pages/` — bez wyjątku dla `admin/` (do Części 12 admin używał `<Nazwa>Module.tsx`;
+  mylące, bo sugerowało coś z `modules/`, mimo że to były strony z routingiem tak samo
+  jak `user/`). `Module`/inne przyrostki nie oznaczają routingu — jeśli coś w
+  `modules/` kiedyś potrzebuje własnej nazwy-etykiety, nie bierze przyrostka `Page`,
+  właśnie żeby to rozróżnienie zostało jednoznaczne.
+- `pages/user/` i `pages/admin/` to jedyny podział na obszary — powstaje **od razu**,
+  nie dokłada się go później. `pages/` samo (bez `user/`/`admin/`) zostaje dla tego, co
+  nie należy do żadnego obszaru: `HomePage`, `LoginPage`, `RootLayout` (poza-routerowa
+  nawigacja/toasty — patrz "Toasty" niżej — nie jest per-obszar, więc nie dzieli się na
+  `user`/`admin`).
+- `modules/<obszar>/<feature>/` trzyma to, co dana strona z `pages/` renderuje, ale co
+  samo nie jest routowalne: `forms/` dla formularzy react-hook-form+zod, `view/` dla
+  mniejszych komponentów prezentacyjnych (karty, przyciski, listy, filtry). Podział jest
+  po tym, czy komponent zarządza własnym stanem formularza/wysyłką, nie po rozmiarze
+  pliku.
+- `services/` (w `modules/<obszar>/<feature>/services/`) to miejsce na logikę
+  biznesową/wywołania API specyficzne dla jednego modułu, gdy przestaje się mieścić
+  wygodnie w komponencie z `forms/`/`view/` — dziś żaden moduł jeszcze tego nie
+  potrzebuje (logika mieści się w RTK Query hookach z `store/api/` wprost), katalog
+  zakłada się dopiero, gdy faktycznie powstanie taki plik.
 - Komponent użyty w więcej niż jednym module danego obszaru → `modules/<obszar>/shared/`
   (przykład: `AccessKeyPanel` używany przez `items` i `categories`). Komponent
-  współdzielony między `user` i `admin` (jeszcze taki nie istnieje) → `src/components/`
-  (tam gdzie dziś mieszka np. `RootLayout.tsx`, `ProtectedRoute.tsx`).
+  współdzielony między `user` i `admin` (jeszcze taki nie istnieje) → `src/providers/`
+  jeśli to cross-cutting owijacz drzewa, albo nowy `src/modules/shared/` dla zwykłego
+  komponentu — do ustalenia w momencie, gdy faktycznie powstanie pierwszy taki przypadek.
 - `<Obszar>Layout.tsx` (`UserLayout.tsx`, `AdminLayout.tsx`) odpowiada za nawigację i
   jedno wspólne sprawdzenie dostępu (patrz "Layouty i trasy" niżej) — moduły w środku
   nie duplikują tego sprawdzenia.
-- `src/pages/` zostaje dla tego, co nie należy do żadnego obszaru: `HomePage`,
-  `LoginPage`.
+- `src/providers/` to komponenty, które owijają (część) drzewa aplikacji i same nie
+  renderują żadnego widoku dla użytkownika w normalnym przypadku: `ProtectedRoute`
+  (sprawdzenie sesji) i `ErrorBoundary` (patrz "Error handling" niżej). Nie mylić z
+  `<Obszar>Layout.tsx` w `pages/` — te renderują realną nawigację (Sidebar), nie tylko
+  sprawdzają dostęp.
+- `src/libs/` to infrastruktura współdzielona w całej aplikacji, zwykle z zależnością na
+  coś zewnętrznego/efektem ubocznym (axios, i18next, `console.*`, `sessionStorage`
+  pośrednio przez inne `libs/`): `httpClient.ts`, `httpMethods.ts`, `logger.ts`,
+  `toastUtil.ts`, `navigationUtil.ts`, `i18n.ts`, `apiError.ts`, `apiEndpoints.ts`,
+  `redirectEndpoints.ts`.
+- `src/utils/` to czyste(-sze) funkcje pomocnicze — bez frameworkowych zależności, choć
+  mogą wołać coś z `libs/` (np. `logger`): `accessGrants.ts` (wrapper na
+  `sessionStorage`), `triggerDownload.ts` (nawigacja przeglądarki). Rozróżnienie
+  `libs/` vs `utils/` jest z natury trochę płynne — jeśli wątpliwości, pytanie
+  pomocnicze: "czy to infrastruktura, na której buduje się reszta apki (`libs/`), czy
+  pojedyncza, samodzielna funkcja pomocnicza (`utils/`)".
+- `store/types/<nazwa>.ts` — typy request/response z `store/api/<nazwa>Api.ts`
+  wynosi się tutaj, gdy jest ich dużo (orientacyjnie: więcej niż 4–5 eksportowanych
+  typów w jednym pliku API zaczyna przesłaniać sam kod endpointów przy scrollowaniu —
+  tak było z `itemApi.ts`, 15 typów, i `adminApi.ts`, 7 typów). Ten sam próg/wzorzec
+  dotyczy nie tylko `store/api/` — jeśli jakiś moduł (`modules/...`) sam narośnie
+  własnymi typami, wydziela się analogiczny `types/` katalog lokalnie, nie tylko w
+  `store/`. Plik z API slice'em importuje typy stamtąd (`import type {...} from
+  "../types/<nazwa>"`) zamiast je deklarować u siebie; konsumenci spoza `store/api/`
+  importują typy z `store/types/`, nie z pliku API (hooki typu `useListItemsQuery`
+  zostają importowane z `store/api/`, tylko same typy się przenoszą).
 
 ## Wymuszane automatycznie
 
@@ -199,7 +261,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
 ### Layouty i trasy
 
 - Każdy obszar (`UserLayout`, `AdminLayout` — patrz "Struktura katalogów" wyżej) jest
-  owinięty `ProtectedRoute` (`src/components/ProtectedRoute.tsx`) — jedno sprawdzenie
+  owinięty `ProtectedRoute` (`src/providers/ProtectedRoute.tsx`) — jedno sprawdzenie
   sesji (`useWhoAmIQuery`) dla całego poddrzewa tras zamiast każdej strony osobno.
   Dodając nowy obszar (nie nowy moduł w istniejącym — to samo `<Obszar>Layout.tsx` już
   to załatwia), owiń go w `ProtectedRoute` tak samo.
@@ -231,18 +293,18 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
 ### Logi (`console.*`)
 
 Nie wołaj `console.log`/`.info`/`.warn`/`.error` bezpośrednio — zawsze przez `logger` z
-`src/lib/logger.ts`. Sterowane zmiennymi środowiskowymi (`VITE_ENABLE_DEBUG_LOGS`,
+`src/libs/logger.ts`. Sterowane zmiennymi środowiskowymi (`VITE_ENABLE_DEBUG_LOGS`,
 `VITE_LOG_LEVEL`, patrz `.env.example`): domyślnie logi widać w dev, na buildzie
 produkcyjnym są wyciszone. Patrz też sekcja "Error handling" niżej.
 
 ### Toasty
 
-Powiadomienia (`react-toastify`) idą przez `toastUtil` (`src/lib/toastUtil.ts`), nie
+Powiadomienia (`react-toastify`) idą przez `toastUtil` (`src/libs/toastUtil.ts`), nie
 bezpośrednio przez `toast.success(...)` z biblioteki — ujednolica wygląd (tytuł per typ,
 `theme: "colored"`) i obsługuje `sessionStorage`-owy "pending toast" po
 reload/nawigacji (`showToastAndReload`, `showToastAndNavigateToLogin`). Nawigacja poza
 komponentem Reacta (np. w interceptorze `httpClient`) idzie przez `navigationUtil`
-(`src/lib/navigationUtil.ts`) — `useNavigate` jest dostępny tylko wewnątrz drzewa
+(`src/libs/navigationUtil.ts`) — `useNavigate` jest dostępny tylko wewnątrz drzewa
 routera, `navigationUtil.setNavigate` podpina go raz w `RootLayout`.
 
 ### Komentarze
@@ -254,14 +316,18 @@ którego nie widać z kodu — nie przy każdej funkcji "na wszelki wypadek".
 
 Żadnych tekstów wpisanych na sztywno w JSX. Wszystko idzie przez `useTranslation()`
 (`react-i18next`) i klucz — `t("sekcja.klucz")` — nigdy `<p>Jakiś tekst</p>`. Katalog
-tekstów: `src/locales/pl.ts`, inicjalizacja: `src/lib/i18n.ts` (importowane raz w
+tekstów: `src/locales/pl.ts`, inicjalizacja: `src/libs/i18n.ts` (importowane raz w
 `main.tsx`, i osobno w `test-setup.ts` pod testy). Kod spoza drzewa komponentów (np.
 `toastUtil.ts`) woła `i18n.t(...)` bezpośrednio na zaimportowanej instancji zamiast
 przez hook.
 
-Wyjątek: schematy walidacji `zod` (patrz "Formularze" niżej) są definiowane na
-poziomie modułu, poza komponentem — `useTranslation()` tam nie zadziała — więc ich
-komunikaty zostają wpisane wprost, ze świadomym komentarzem tłumaczącym dlaczego.
+Schematy walidacji `zod` (patrz "Formularze" niżej) są definiowane na poziomie modułu,
+poza komponentem — `useTranslation()` tam nie zadziała — więc, tak jak `toastUtil.ts`,
+wołają `i18n.t(...)` bezpośrednio na zaimportowanej instancji (`import i18n from
+"../libs/i18n"`) zamiast przez hook. Klucze idą do osobnej sekcji `validation` w
+`pl.ts`, nie wpisuje się ich wprost jako literałów — to samo dotyczy
+`ErrorBoundary.tsx` (patrz "Error handling" niżej), z tego samego powodu (klasowy
+komponent, `useTranslation()` niedostępny).
 
 Analogiczny mechanizm istnieje po stronie backendu (Symfony Translator,
 `backend/translations/*.pl.yaml`, patrz `backend/README.md`) — API też nie zwraca
@@ -274,10 +340,13 @@ Docelowy wzorzec dla każdego formularza z realną walidacją (nie tylko HTML-ow
 `FileUploadForm`, `UnlockItemForm`, `AccessKeyPanel`:
 
 ```ts
-// Na poziomie modułu — patrz wyjątek w sekcji "Teksty (i18n)" wyżej.
+// Na poziomie modułu — patrz sekcja "Teksty (i18n)" wyżej: i18n.t(...) bezpośrednio,
+// nie useTranslation().
+import i18n from "../../../../libs/i18n";
+
 const schema = z.object({
-  categoryId: z.coerce.number().int().positive("Wybierz kategorię"),
-  content: z.string().min(1, "Treść nie może być pusta"),
+  categoryId: z.coerce.number().int().positive(i18n.t("validation.selectCategory")),
+  content: z.string().min(1, i18n.t("validation.noteContentRequired")),
 });
 ```
 
@@ -331,7 +400,7 @@ Dotyczy to też błędów, których backend sam nie rzuca (nieznana trasa, zła 
 frameworka.
 
 - `AxiosBaseQueryError`/błąd z `httpClient` zawsze niesie `data` w tym kształcie przy
-  odpowiedzi z naszego API — `src/lib/apiError.ts` to ten współdzielony typ
+  odpowiedzi z naszego API — `src/libs/apiError.ts` to ten współdzielony typ
   (`ApiErrorBody`) plus `ExceptionUuid` (odpowiednik `ExceptionUuidEnum` z backendu),
   `getApiErrorBody(error)`/`getApiErrorUuid(error)`/`isApiError(error, uuid)`. Używaj
   tego zamiast każdorazowo rzutować `error.data` ręcznie i zamiast porównywać `status`
@@ -343,7 +412,7 @@ frameworka.
   zamiast jednego ogólnego komunikatu (tak jak dziś robi to `LoginPage` dla 401 —
   tam wystarczy jeden komunikat, bo to nie błąd walidacji pola).
 - Nigdy nie wołaj `console.log`/`console.info`/`console.warn`/`console.error` wprost —
-  używaj `logger` z `src/lib/logger.ts` (`logger.error(...)` zamiast `console.error(...)`
+  używaj `logger` z `src/libs/logger.ts` (`logger.error(...)` zamiast `console.error(...)`
   itd.). Wrapper wycisza logi na produkcji (domyślnie logi lecą tylko w dev, patrz
   `VITE_ENABLE_DEBUG_LOGS`/`VITE_LOG_LEVEL` w `.env.example`) — gołe `console.*`
   ominęłoby to wyciszenie. `logger.error` w `catch` jest OK na tym etapie (nie mamy
@@ -355,22 +424,35 @@ frameworka.
   axios *serializuje `FormData` do JSON-a* zamiast wysłać multipart (sprawdzone
   wprost w źródłach axios, `transformRequest` patrzy na nagłówek, nie na typ
   payloadu — realny błąd znaleziony i naprawiony w Części 11). Wołaj przez
-  `src/lib/httpMethods.ts` (`get/post/put/patch/del`) albo przez `axiosBaseQuery`
+  `src/libs/httpMethods.ts` (`get/post/put/patch/del`) albo przez `axiosBaseQuery`
   (RTK Query) — oba już czyszczą `Content-Type` dla `FormData`, żeby przeglądarka
   sama dopisała boundary. Nie wołaj `httpClient(...)` bezpośrednio z `FormData` w
   body pomijając te dwa miejsca.
-- `ExceptionUuid`/`ApiErrorBody` w `lib/apiError.ts` są dziś przepisane ręcznie z
+- `ExceptionUuid`/`ApiErrorBody` w `libs/apiError.ts` są dziś przepisane ręcznie z
   backendowego `ExceptionUuidEnum` — nadal warto rozważyć wygenerowanie ich wprost z
   OpenAPI (`nelmio/api-doc-bundle`, `/api/doc.json`), żeby nie trzeba było ręcznie
   pilnować zgodności przy każdej zmianie po stronie backendu.
+
+### `ErrorBoundary`
+
+`src/providers/ErrorBoundary.tsx` łapie błędy renderowania gdziekolwiek niżej w
+drzewie (`componentDidCatch`/`getDerivedStateFromError` — jedyny sposób to zrobić,
+nie ma hookowego odpowiednika) i pokazuje przetłumaczony fallback zamiast białego
+ekranu po odmontowaniu całej aplikacji. Owinięty wokół `<Provider>`/`<RouterProvider>`
+w `App.tsx` — jeden `ErrorBoundary` na całą aplikację, nie po jednym na obszar/moduł,
+chyba że konkretny widok (np. duży, ryzykowny fragment trzeciej strony) uzasadni
+własny, bardziej lokalny.
+
+**To NIE łapie błędów z event handlerów ani z `async` callbacków** — to ograniczenie
+Reacta, nie tego komponentu. Te przypadki nadal muszą mieć własny `try/catch` (patrz
+"Każda funkcja `async`, która woła API, obsługuje błąd" wyżej) — `ErrorBoundary` jest
+ostatnią linią obrony dla tego, co nieobsłużony `try/catch` by przegapił, nie
+zamiennikiem dla obsługi błędów w komponentach.
 
 ---
 
 ## Do ustalenia
 
-- Gdzie mieszkają typy współdzielone (`src/types/` czy kolokowane przy
-  `store/api/*.ts`, jak dziś) — część rozmowy o rozbiciu folderów, jeszcze nie
-  rozstrzygnięta.
 - SASS vs zwykły CSS na dłuższą metę — teraz dodatkowo skomplikowane przez Tailwind
   (patrz "Wersje kluczowych komponentów"): czy Tailwind zostaje trwale ograniczony do
   `src/ui/catalyst/`, czy z czasem przejmuje resztę aplikacji, a plain CSS/SASS
