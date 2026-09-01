@@ -6,13 +6,12 @@ component kit, ported by hand from `e-rezerwacja-frontend`'s own
 installed as a package — Catalyst is distributed as source you own and edit,
 not an npm dependency.
 
-Started in Część 11 with just `SidebarLayout`/`Sidebar`/`Navbar`
-(`touch-target`, `link`, `navbar`, `sidebar`, `sidebar-layout`). Część 13
-brought over the rest of what the app actually uses: `button`, `dialog`,
-`dropdown`, `badge`, `text`, `heading`, and `form/` (`fieldset`, `input`,
-`textarea`, `select`, `checkbox`, `radio`, `switch`) — still not the *entire*
-source kit (no `combobox`/`table`/`pagination` yet — add them the same way if
-a real use case shows up).
+Covers what the app actually uses: `SidebarLayout`/`Sidebar`/`Navbar`
+(`touch-target`, `link`, `navbar`, `sidebar`, `sidebar-layout`), `button`,
+`dialog`, `dropdown`, `badge`, `text`, `heading`, and `form/` (`fieldset`,
+`input`, `textarea`, `select`, `checkbox`, `radio`, `switch`) — still not the
+*entire* source kit (no `combobox`/`table`/`pagination` yet — add them the
+same way if a real use case shows up).
 
 Two deliberate differences from the source, consistent across every ported
 file:
@@ -24,9 +23,9 @@ file:
   source's rebranded tokens** (`bg-primary`, `text-primary`, `gray-01`,
   `gray-02`, `gray-03`, bare `red`/`orange` instead of `red-600`/`orange-500`,
   `FONT_FAMILY_ROBOTO`). Those tokens come from a `@theme` this project never
-  ported — the already-existing `sidebar.tsx`/`navbar.tsx` (Część 11) already
-  used the stock palette, so every later port follows that precedent instead
-  of introducing a second, half-defined design-token system.
+  ported — `sidebar.tsx`/`navbar.tsx` already use the stock palette, so every
+  later port follows that precedent instead of introducing a second,
+  half-defined design-token system.
 - `checkbox.tsx`'s ARIA-label fallback used the source's own `useTCore()`
   (from `@ereservation/core`, which this project doesn't have) — replaced
   with this app's own `useTranslation()` (`form.checkboxLabel` in
@@ -37,7 +36,7 @@ file:
   route, so that branch is gone rather than reimplemented for a case that
   doesn't occur yet — add it back if/when an actual external link shows up.
 
-**No longer scoped to the sidebar layouts** — since Część 13, Catalyst/Tailwind
-is the whole app's standard (see `FRONTEND.md`, "Wersje kluczowych
-komponentów"); the rest of `src/index.css`'s plain CSS is being migrated away
-from incrementally, not kept as a parallel long-term choice.
+**Not scoped to the sidebar layouts** — Catalyst/Tailwind is the whole app's
+standard (see `FRONTEND.md`, "Wersje kluczowych komponentów"); the rest of
+`src/index.css`'s plain CSS is being migrated away from incrementally, not
+kept as a parallel long-term choice.

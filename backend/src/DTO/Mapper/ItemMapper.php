@@ -95,10 +95,10 @@ final class ItemMapper
     }
 
     /**
-     * Część 13 — an item locked by its own key (category unlocked) no longer
-     * disappears from GET /api/items entirely; it stays on the page, but
-     * every content-revealing field is redacted so the frontend can show it
-     * by name only, with an inline unlock, instead of the item existing
+     * An item locked by its own key (category unlocked) doesn't disappear
+     * from GET /api/items entirely; it stays on the page, but every
+     * content-revealing field is redacted so the frontend can show it by
+     * name only, with an inline unlock, instead of the item existing
      * silently invisible until you already know its id (see
      * ItemController::list()'s own comment).
      */

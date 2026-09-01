@@ -76,9 +76,9 @@ class ItemService implements ItemServiceInterface
         private readonly LoggerInterface $logger,
         // Only for list()/listPage()'s free-text search — searchMatchingIds()
         // runs outside Doctrine's ORM/DQL layer (raw SQL), so PouchFilter
-        // (Część 16) can't scope it the way it scopes every other lookup
-        // here. Not a reintroduction of manual scoping generally, just the
-        // one place it structurally has to stay manual — see
+        // can't scope it the way it scopes every other lookup here. Not a
+        // reintroduction of manual scoping generally, just the one place it
+        // structurally has to stay manual — see
         // ItemRepository::findFilteredPage()'s own comment on $pouchId.
         private readonly CurrentPouchResolverInterface $currentPouchResolver,
     ) {}

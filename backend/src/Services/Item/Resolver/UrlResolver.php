@@ -26,16 +26,15 @@ use const PHP_URL_SCHEME;
 use const PHP_URL_USER;
 
 /**
- * Post-review fix: OpenGraphScraper used to resolve a relative og:image (or
- * redirect Location) by always docking it onto the page's *origin* — for
- * `https://example.com/articles/123/page.html` with `og:image="cover.jpg"`,
- * that produced `https://example.com/cover.jpg` instead of the correct
- * `https://example.com/articles/123/cover.jpg`. A standalone, static class
- * (no state, no I/O) implementing RFC 3986 §5.3's reference-resolution
- * algorithm — trimmed to the parts that matter for the two callers here
- * (OG image URLs, redirect Location headers): no relative-reference userinfo
- * handling beyond carrying the base's along, dot-segment removal kept simple
- * rather than the RFC's full state machine.
+ * A relative og:image or redirect Location must resolve against the
+ * *current document path*, not just the origin — `og:image="cover.jpg"` on
+ * `https://example.com/articles/123/page.html` means
+ * `https://example.com/articles/123/cover.jpg`, not `https://example.com/cover.jpg`.
+ * A standalone, static class (no state, no I/O) implementing RFC 3986 §5.3's
+ * reference-resolution algorithm — trimmed to the parts that matter for the
+ * two callers here (OG image URLs, redirect Location headers): no
+ * relative-reference userinfo handling beyond carrying the base's along,
+ * dot-segment removal kept simple rather than the RFC's full state machine.
  */
 final class UrlResolver
 {
@@ -68,15 +67,14 @@ final class UrlResolver
             return $reference;
         }
 
-        // Post-review fix: parse_url() can return `false` (malformed input),
-        // not just `null` (component absent) — `?? ''` only ever catches the
-        // latter, so a malformed $reference used to hand `false` straight to
-        // str_starts_with()/mergePaths() below and blow up with a TypeError.
-        // Since $reference is attacker-controlled (og:image, redirect
-        // Location), treating "couldn't parse" the same as "no path" here —
-        // not throwing — keeps a malformed value from taking down the whole
-        // scrape/redirect-follow instead of just this one field resolving
-        // to nothing useful.
+        // parse_url() can return `false` (malformed input), not just `null`
+        // (component absent) — `?? ''` only ever catches the latter, so this
+        // checks explicitly rather than passing `false` straight to
+        // str_starts_with()/mergePaths() below. $reference is
+        // attacker-controlled (og:image, redirect Location); treating
+        // "couldn't parse" the same as "no path" here — not throwing — keeps
+        // a malformed value from taking down the whole scrape/redirect-follow
+        // instead of just this one field resolving to nothing useful.
         $refPathRaw = parse_url($reference, PHP_URL_PATH);
         $refPath = is_string($refPathRaw) ? $refPathRaw : '';
 

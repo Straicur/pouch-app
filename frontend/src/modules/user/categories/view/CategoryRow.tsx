@@ -20,11 +20,11 @@ interface CategoryRowProps {
   subcategories?: Category[];
 }
 
-// Część 13: klucz dostępu zwinięty domyślnie (Headless.Disclosure) — dawniej
-// zawsze widoczny, co dominowało kartę kategorii mimo że większość kategorii
-// nie ma ustawionego klucza w ogóle. "Dodaj podkategorię" tylko na kategorii
-// głównej (subcategories !== undefined) — limit głębokości 2 (CategoryService)
-// wymuszony też wizualnie, nie tylko na backendzie.
+// Klucz dostępu zwinięty domyślnie (Headless.Disclosure) — większość
+// kategorii nie ma ustawionego klucza w ogóle, więc pokazywanie go zawsze
+// dominowałoby kartę kategorii bez potrzeby. "Dodaj podkategorię" tylko na
+// kategorii głównej (subcategories !== undefined) — limit głębokości 2
+// (CategoryService) wymuszony też wizualnie, nie tylko na backendzie.
 export function CategoryRow({ category, subcategories }: CategoryRowProps) {
   const { t } = useTranslation();
   const [unlockCategory] = useUnlockCategoryMutation();
@@ -33,10 +33,10 @@ export function CategoryRow({ category, subcategories }: CategoryRowProps) {
   const [isAddSubcategoryOpen, setIsAddSubcategoryOpen] = useState(false);
   const isRoot = undefined !== subcategories;
 
-  // Post-review fix: a plain navigation can't set the X-Pouch-Access-Grants
-  // header, so this first exchanges whatever grants the session currently
-  // holds for a short-lived, opaque token (a normal AJAX POST, where the
-  // header works fine) — see triggerDownload.ts's own doc comment.
+  // A plain navigation can't set the X-Pouch-Access-Grants header, so this
+  // first exchanges whatever grants the session currently holds for a
+  // short-lived, opaque token (a normal AJAX POST, where the header works
+  // fine) — see triggerDownload.ts's own doc comment.
   const handleExport = async () => {
     try {
       const { token } = await getExportToken(category.id).unwrap();

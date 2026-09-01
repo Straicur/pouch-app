@@ -20,8 +20,8 @@ type CategoryFormValues = z.infer<typeof categoryFormSchema>;
 interface CategoryFormProps {
   // Not a form field — fixed by the caller (null for a root category, a root
   // category's id for a subcategory). Depth (kategoria główna + jedna
-  // podkategoria, Część 13) is enforced structurally this way, not just by
-  // validation: there's no field to pick a deeper parent in the first place.
+  // podkategoria) is enforced structurally this way, not just by validation:
+  // there's no field to pick a deeper parent in the first place.
   parentId: number | null;
   onSuccess: () => void;
 }

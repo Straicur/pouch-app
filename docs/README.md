@@ -19,7 +19,8 @@ Ten katalog jest kanonicznym punktem wejścia do wersjonowanej dokumentacji proj
 | Obszar | Dokument |
 | --- | --- |
 | Koncepcja produktu | [PRODUCT.md](PRODUCT.md) |
-| Plan prac | [ROADMAP.md](ROADMAP.md) |
+| Plan prac (przyszłość) | [ROADMAP.md](ROADMAP.md) |
+| Historia zakończonych etapów | [CHANGELOG.md](CHANGELOG.md) |
 | Backend codestyle | [BACKEND.md](codestyle/BACKEND.md) |
 | Frontend codestyle | [FRONTEND.md](codestyle/FRONTEND.md) |
 | Architektura i decyzje domenowe | [architecture.md](engineering/architecture.md) |

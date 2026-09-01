@@ -60,15 +60,13 @@ class CategoryExportService implements CategoryExportServiceInterface
             throw new RuntimeException('Could not create a temporary file for the export archive');
         }
 
-        // Post-review fix: everything from here on used to be able to throw
-        // (open() failing, a storage download inside addCategoryToZip()
-        // failing, close() failing) without $zipPath — already sitting on
-        // disk by this point — ever being cleaned up; only the caller's own
-        // eventual (successful-path-only) unlink() covered it. A repeatedly
-        // failing export/backup could quietly fill up the temp directory.
-        // The controllers now guarantee cleanup of whatever this method
-        // *returns*, but they never get a path to clean up if this throws
-        // instead — so the guarantee has to live here too.
+        // Everything from here on can throw (open() failing, a storage
+        // download inside addCategoryToZip() failing, close() failing) —
+        // $zipPath is already sitting on disk by this point, and the
+        // controllers only guarantee cleanup of whatever this method
+        // *returns*, not a path they never got because it threw instead. A
+        // repeatedly failing export/backup would otherwise quietly fill up
+        // the temp directory, so the cleanup guarantee has to live here too.
         try {
             $zip = new ZipArchive();
             if (true !== $zip->open($zipPath, ZipArchive::OVERWRITE)) {

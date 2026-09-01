@@ -10,11 +10,10 @@ interface ShareButtonProps {
   itemId: number;
 }
 
-// Post-review fix (Część 13): the primary, copyable link used to always be
-// $viewUrl — an's item's raw JSON metadata, no HTML at all — so visiting it
-// for a FILE/PHOTO showed a blank page full of JSON instead of downloading
-// anything, which is what "udostępnij" actually implies for those types.
-// Now the primary link is $downloadUrl when the item has one (file content
+// $viewUrl alone is an item's raw JSON metadata, no HTML — visiting it for a
+// FILE/PHOTO would show a blank page full of JSON instead of downloading
+// anything, which is what "udostępnij" actually implies for those types. The
+// primary, copyable link is $downloadUrl when the item has one (file content
 // to actually download); $viewUrl (metadata) is offered as a secondary link,
 // and becomes primary itself for types with nothing to download (note/url).
 const primaryLink = (link: PublicLink): string => link.downloadUrl ?? link.viewUrl;

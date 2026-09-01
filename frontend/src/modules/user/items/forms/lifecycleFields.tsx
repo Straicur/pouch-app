@@ -5,16 +5,12 @@ import type { ItemLifecycleFields } from "../../../../store/types/item";
 import { ErrorMessage, Label } from "../../../../ui/catalyst/form/fieldset";
 import { Input } from "../../../../ui/catalyst/form/input";
 
-// Post-review fix (CR finding #6): FileUploadForm and NoteForm both only sent
-// {categoryId, ...}, so every item silently got the backend's 1-day default
-// TTL — the product doc requires choosing this at creation time. One radio
-// group covering the same choices ItemLifecycleOptions actually accepts,
-// shared so both forms stay in sync rather than drifting.
-//
-// Część 13 post-review fix: "default" (sent nothing, backend's own 1-day
-// fallback) and "keepForever" used to be two separate options — collapsed
-// into one ("Domyślnie" *is* "przechowuj zawsze" now, matching the product
-// ask that new items are kept forever unless a TTL is picked explicitly).
+// The product doc requires choosing a TTL at creation time, not silently
+// falling back to the backend's 1-day default — one radio group covering the
+// same choices ItemLifecycleOptions actually accepts, shared by
+// FileUploadForm and NoteForm so they stay in sync rather than drifting.
+// "Domyślnie" *is* "przechowuj zawsze" (one option, not two) — new items are
+// kept forever unless a TTL is picked explicitly, per the product doc.
 const LIFECYCLE_MODES = ["default", "1h", "1d", "7d", "30d", "custom"] as const;
 export type LifecycleMode = (typeof LIFECYCLE_MODES)[number];
 
@@ -76,8 +72,8 @@ export function LifecycleFieldsInput<T extends LifecycleFormValues>({
   return (
     <div className="flex flex-col gap-2">
       <span className="text-sm font-medium text-zinc-950 dark:text-white">{t("lifecycle.label")}</span>
-      {/* Część 13 post-review fix: stacked vertically, not side by side — a
-          row of six inline <label> elements used to wrap unpredictably. */}
+      {/* Stacked vertically, not side by side — a row of six inline <label>
+          elements wraps unpredictably. */}
       <div className="flex flex-col gap-2">
         {RADIO_OPTIONS.map((option) => (
           <label

@@ -5,14 +5,12 @@ declare(strict_types = 1);
 namespace App\DTO\Response;
 
 /**
- * Post-review fix: GET /api/items (paginated) used to reuse ItemResponseDTO
- * — every item's full $extractedText (OCR output for photos, scraped page
- * text for URL items) rode along on every list request even though nothing
- * in the frontend renders it there, ballooning the payload well past what
- * "mobile-first" implies at any real collection size. Same shape as
- * ItemResponseDTO minus that one field; $noteContent stays, since ItemCard
- * genuinely renders a note's full body inline in the list, not behind a
- * separate "view details" fetch.
+ * GET /api/items' per-item shape — deliberately without $extractedText (OCR
+ * output for photos, scraped page text for URL items): nothing in the
+ * frontend renders it in the list, so including it would balloon every list
+ * response for no reason. Same shape as ItemResponseDTO minus that one
+ * field; $noteContent stays, since ItemCard genuinely renders a note's full
+ * body inline in the list, not behind a separate "view details" fetch.
  */
 class ItemSummaryResponseDTO
 {

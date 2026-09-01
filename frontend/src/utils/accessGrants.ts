@@ -63,10 +63,9 @@ export const accessGrants = {
     writeAll([...others, grant]);
   },
 
-  // Post-review fix: called from authApi's login/logout onQueryStarted
-  // handlers. Without this, a grant earned by one account keeps being sent
-  // (and, pre-backend-fix, kept working) after that account logs out and a
-  // different one logs in on the same tab.
+  // Called from authApi's login/logout onQueryStarted handlers. Without
+  // this, a grant earned by one account keeps being sent after that account
+  // logs out and a different one logs in on the same tab.
   clear() {
     try {
       sessionStorage.removeItem(STORAGE_KEY);

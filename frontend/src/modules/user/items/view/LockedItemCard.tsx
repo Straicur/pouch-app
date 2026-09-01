@@ -12,8 +12,8 @@ interface LockedItemCardProps {
   item: ItemSummary;
 }
 
-// Część 13: zablokowany item (własny klucz, kategoria odblokowana) pokazuje
-// się na liście po samej nazwie zamiast znikać całkiem — z polem odblokuj
+// Zablokowany item (własny klucz, kategoria odblokowana) pokazuje się na
+// liście po samej nazwie zamiast znikać całkiem — z polem odblokuj
 // wprost na karcie. Po sukcesie nic więcej nie trzeba robić ręcznie:
 // useUnlockItemMutation's onQueryStarted (accessKeyApi.ts) zapisuje grant i
 // unieważnia cache "Item", więc lista odświeży się sama i (mając już ważny

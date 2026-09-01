@@ -26,12 +26,11 @@ final readonly class CookieService implements CookieServiceInterface
             path: '/',
             secure: true,
             httpOnly: true,
-            // Post-review fix: was SAMESITE_NONE, which sends the cookie on
-            // cross-site requests too — a third-party page could trigger an
+            // Lax, not None: a third-party page could otherwise trigger an
             // authenticated state-changing request (e.g. AdminController's
-            // bodyless GC-trigger POST) and the browser would attach it.
-            // Frontend and API are same-origin (SameSite's "site" is the
-            // registrable domain, not the port, so localhost:5174 calling
+            // bodyless GC-trigger POST) and the browser would attach this
+            // cookie. Frontend and API are same-origin (SameSite's "site" is
+            // the registrable domain, not the port, so localhost:5174 calling
             // localhost:8080 is already same-site) — Lax needs nothing else
             // to keep working. See OriginCheckListener for the second,
             // independent layer on top of this.
@@ -50,12 +49,11 @@ final readonly class CookieService implements CookieServiceInterface
             path: '/',
             secure: true,
             httpOnly: true,
-            // Post-review fix: was SAMESITE_NONE, which sends the cookie on
-            // cross-site requests too — a third-party page could trigger an
+            // Lax, not None: a third-party page could otherwise trigger an
             // authenticated state-changing request (e.g. AdminController's
-            // bodyless GC-trigger POST) and the browser would attach it.
-            // Frontend and API are same-origin (SameSite's "site" is the
-            // registrable domain, not the port, so localhost:5174 calling
+            // bodyless GC-trigger POST) and the browser would attach this
+            // cookie. Frontend and API are same-origin (SameSite's "site" is
+            // the registrable domain, not the port, so localhost:5174 calling
             // localhost:8080 is already same-site) — Lax needs nothing else
             // to keep working. See OriginCheckListener for the second,
             // independent layer on top of this.

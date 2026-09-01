@@ -30,12 +30,12 @@ interface SetItemKeyRequest {
   key: string | null;
 }
 
-// Post-review fix: what POST .../export-token returns — see
-// utils/triggerDownload.ts and CategoryController's own doc comments for why
-// a category export needs this at all (a plain navigation, used so the ZIP
-// streams, can't set the X-Pouch-Access-Grants header a normal request
-// would — this mints a short-lived, opaque token carrying the same grants
-// instead of putting them in the URL itself).
+// What POST .../export-token returns — see utils/triggerDownload.ts and
+// CategoryController's own doc comments for why a category export needs
+// this at all (a plain navigation, used so the ZIP streams, can't set the
+// X-Pouch-Access-Grants header a normal request would — this mints a
+// short-lived, opaque token carrying the same grants instead of putting
+// them in the URL itself).
 export interface CategoryExportToken {
   token: string;
   expiresAt: string;
@@ -57,18 +57,29 @@ export const accessKeyApi = createApi({
         method: "POST",
         data: { key },
       }),
+      // RTK Query rejects queryFulfilled the same way the mutation itself
+      // does — the caller already sees that via unlockCategory(...).unwrap(),
+      // so a failure here is just swallowed rather than left unhandled.
       onQueryStarted: async (_args, { dispatch, queryFulfilled }) => {
-        const { data } = await queryFulfilled;
-        accessGrants.add(data);
-        dispatch(itemApi.util.invalidateTags(["Item"]));
+        try {
+          const { data } = await queryFulfilled;
+          accessGrants.add(data);
+          dispatch(itemApi.util.invalidateTags(["Item"]));
+        } catch {
+          // handled by the caller via .unwrap()
+        }
       },
     }),
     unlockItem: builder.mutation<AccessGrantResponse, UnlockItemRequest>({
       query: ({ itemId, key }) => ({ url: ApiEndpoints.ITEM_UNLOCK(itemId), method: "POST", data: { key } }),
       onQueryStarted: async (_args, { dispatch, queryFulfilled }) => {
-        const { data } = await queryFulfilled;
-        accessGrants.add(data);
-        dispatch(itemApi.util.invalidateTags(["Item"]));
+        try {
+          const { data } = await queryFulfilled;
+          accessGrants.add(data);
+          dispatch(itemApi.util.invalidateTags(["Item"]));
+        } catch {
+          // handled by the caller via .unwrap()
+        }
       },
     }),
     setCategoryKey: builder.mutation<void, SetCategoryKeyRequest>({
@@ -78,15 +89,23 @@ export const accessKeyApi = createApi({
         data: { key },
       }),
       onQueryStarted: async (_args, { dispatch, queryFulfilled }) => {
-        await queryFulfilled;
-        dispatch(itemApi.util.invalidateTags(["Item"]));
+        try {
+          await queryFulfilled;
+          dispatch(itemApi.util.invalidateTags(["Item"]));
+        } catch {
+          // handled by the caller via .unwrap()
+        }
       },
     }),
     setItemKey: builder.mutation<void, SetItemKeyRequest>({
       query: ({ itemId, key }) => ({ url: ApiEndpoints.ITEM_ACCESS_KEY(itemId), method: "PUT", data: { key } }),
       onQueryStarted: async (_args, { dispatch, queryFulfilled }) => {
-        await queryFulfilled;
-        dispatch(itemApi.util.invalidateTags(["Item"]));
+        try {
+          await queryFulfilled;
+          dispatch(itemApi.util.invalidateTags(["Item"]));
+        } catch {
+          // handled by the caller via .unwrap()
+        }
       },
     }),
     getCategoryExportToken: builder.mutation<CategoryExportToken, number>({

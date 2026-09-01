@@ -12,9 +12,9 @@ interface ConfirmDialogProps {
   isConfirming?: boolean;
 }
 
-// Część 14 (panel admina) — potwierdzenie przed nieodwracalną/kosztowną akcją
-// (backup całości, ręczne uruchomienie GC, masowe przedłużenie wygasania) —
-// jeden komponent zamiast powtarzania tego samego Dialogu w każdym miejscu.
+// Potwierdzenie przed nieodwracalną/kosztowną akcją (backup całości, ręczne
+// uruchomienie GC, masowe przedłużenie wygasania, usunięcie) — jeden
+// komponent zamiast powtarzania tego samego Dialogu w każdym miejscu.
 export function ConfirmDialog({
   open,
   title,

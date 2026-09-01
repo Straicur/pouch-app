@@ -16,9 +16,9 @@ export function ItemsPage() {
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
   const { data, isLoading, error } = useListItemsQuery({ ...filters, page });
 
-  // Post-review fix: GET /api/items is paginated now (see itemApi.ts's
-  // ItemListResult) — any filter change has to reset back to page 1, or a
-  // narrower result set could leave the current page past its own last one.
+  // GET /api/items is paginated (see itemApi.ts's ItemListResult) — any
+  // filter change has to reset back to page 1, or a narrower result set
+  // could leave the current page past its own last one.
   // Patches (not a full replacement) via setFilters' functional updater, and
   // wrapped in useCallback for a stable identity — ItemFilters' debounced
   // search effect depends on this reference staying the same across
@@ -30,7 +30,7 @@ export function ItemsPage() {
 
   const totalPages = undefined !== data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
 
-  // div, not <main> — Część 11's SidebarLayout (UserLayout) already provides one.
+  // div, not <main> — SidebarLayout (UserLayout) already provides one.
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">

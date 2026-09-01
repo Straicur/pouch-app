@@ -17,12 +17,11 @@ const formatSize = (bytes: number): string => {
   return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
 };
 
-// Part 8 — FILE items only (ItemService::overwriteFile() rejects any other
-// type). The current content is already shown by ItemDetailsModal itself;
-// this is purely the "what it used to be" history, per GET .../versions'
-// own doc. Część 13 post-review fix: shown directly, no expand/collapse
-// toggle anymore — everything in the details modal appears without extra
-// clicking.
+// FILE items only (ItemService::overwriteFile() rejects any other type). The
+// current content is already shown by ItemDetailsModal itself; this is
+// purely the "what it used to be" history, per GET .../versions' own doc.
+// Shown directly, no expand/collapse toggle — everything in the details
+// modal appears without extra clicking.
 export function VersionHistory({ itemId }: VersionHistoryProps) {
   const { t } = useTranslation();
   const { data: versions } = useListVersionsQuery(itemId);
@@ -50,12 +49,10 @@ export function VersionHistory({ itemId }: VersionHistoryProps) {
   const handleDownload = async (version: number) => {
     try {
       const link = await getVersionDownloadLink({ id: itemId, version }).unwrap();
-      // Post-review fix: see ItemCard's DownloadButton — window.open("",
-      // "_blank", "noreferrer") never actually worked ("noreferrer" implies
-      // "noopener", which makes window.open()'s return value always null,
-      // so the tab could never be pointed at the link). Same-tab navigation
-      // instead — the signed URL responds with Content-Disposition:
-      // attachment, so this downloads without leaving the app.
+      // Same-tab navigation, not window.open() (see ItemCard's DownloadButton
+      // for why "noreferrer" rules that out) — the signed URL responds with
+      // Content-Disposition: attachment, so this downloads without leaving
+      // the app.
       window.location.assign(link.url);
     } catch {
       toastUtil.showToast(t("versions.downloadError"), "error");

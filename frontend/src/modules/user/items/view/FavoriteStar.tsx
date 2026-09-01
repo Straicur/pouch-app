@@ -9,7 +9,7 @@ interface FavoriteStarProps {
   className?: string;
 }
 
-// Część 15: gwiazdka w rogu karty (ItemCard) i w nagłówku modalu detali
+// Gwiazdka w rogu karty (ItemCard) i w nagłówku modalu detali
 // (ItemDetailsModal) — świeci się, gdy item jest ulubiony, klik przełącza.
 // stopPropagation() matters na karcie: cała karta jest klikalna (otwiera
 // modal), gwiazdka musi przechwycić klik dla siebie, nie dla karty pod spodem.

@@ -6,7 +6,7 @@ export interface Category {
   id: number;
   name: string;
   parentId: number | null;
-  // Część 13 — czy ta kategoria ma ustawiony własny klucz dostępu (AccessKeyPanel
+  // Czy ta kategoria ma ustawiony własny klucz dostępu (AccessKeyPanel
   // pokazuje "Ustaw klucz" albo "Zmień/Usuń klucz" w zależności od tego).
   hasAccessKey: boolean;
 }
@@ -25,7 +25,7 @@ export const categoryApi = createApi({
       query: () => ({ url: ApiEndpoints.CATEGORIES, method: "GET" }),
       providesTags: ["Category"],
     }),
-    // Część 13 — CategoriesPage's "Dodaj kategorię"/"Dodaj podkategorię".
+    // CategoriesPage's "Dodaj kategorię"/"Dodaj podkategorię".
     // Depth (kategoria główna + jedna podkategoria) is enforced by
     // CategoryForm never offering a parent past a root category, backed up
     // by CategoryService::create() rejecting it server-side either way.

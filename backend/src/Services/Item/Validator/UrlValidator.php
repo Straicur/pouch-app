@@ -29,16 +29,13 @@ use const PHP_URL_HOST;
 use const PHP_URL_SCHEME;
 
 /**
- * Post-review fix: this used to be deliberately minimal — format/length/
- * scheme only, no DNS resolution or IP-range check at all, on the reasoning
- * that a self-hosted, single/few-user tool only ever gets a URL from an
- * already-authenticated user. That's still true for the *input* URL — the
- * gap the roadmap flagged was that a scraped page can itself redirect
- * (Location header) or point at an OG image hosted anywhere, and neither of
- * those targets was ever checked. Resolving DNS and rejecting private/
- * loopback/link-local/reserved IPs now applies here, and SafeUrlFetcher
- * calls assertValidAndPin() again for every redirect hop (and the final OG
- * image fetch), not just the URL a user typed in when creating the item.
+ * Format/length/scheme aren't enough on their own: a scraped page can itself
+ * redirect (Location header) or point at an OG image hosted anywhere, and an
+ * already-authenticated user typing in the *input* URL says nothing about
+ * where either of those targets actually lead. Resolves DNS and rejects
+ * private/loopback/link-local/reserved IPs — SafeUrlFetcher calls
+ * assertValidAndPin() again for every redirect hop (and the final OG image
+ * fetch), not just the URL a user typed in when creating the item.
  */
 final class UrlValidator
 {

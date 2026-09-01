@@ -1,9 +1,9 @@
 import { logger } from "./logger";
 
-// Tryb jasny/ciemny (Część 13) — sterowany klasą `.dark` na <html> (patrz
-// @custom-variant w index.css), nie samym prefers-color-scheme, żeby
-// ThemeSwitch mógł nadpisać ustawienie systemowe. Zapisany w localStorage,
-// żeby przetrwał odświeżenie/kolejną wizytę.
+// Tryb jasny/ciemny sterowany klasą `.dark` na <html> (patrz @custom-variant
+// w index.css), nie samym prefers-color-scheme, żeby ThemeSwitch mógł
+// nadpisać ustawienie systemowe. Zapisany w localStorage, żeby przetrwał
+// odświeżenie/kolejną wizytę.
 export type Theme = "light" | "dark";
 
 const STORAGE_KEY = "pouchTheme";

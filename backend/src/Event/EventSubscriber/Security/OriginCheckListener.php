@@ -22,19 +22,15 @@ use const PHP_URL_PORT;
 use const PHP_URL_SCHEME;
 
 /**
- * Post-review fix: auth is entirely cookie-based (CookieService) with
- * SameSite=None (needed historically for a cross-port dev setup where
- * SameSite's "site" classification still treats localhost:5174/localhost:8080
- * as the same site — None was never actually required for that, and
- * nothing here checked the request's origin at all) — a third-party page
- * could submit a state-changing request (e.g. a bodyless POST like
- * AdminController::runGc()) that the browser would happily attach the
- * logged-in user's cookies to. This is a second, independent layer on top of
- * switching to SameSite=Lax (CookieService): reject any state-changing
- * request whose Origin (or, failing that, Referer) doesn't match this app's
- * own frontend, using the exact same allow-list nelmio/cors-bundle already
- * enforces for cross-origin fetch/XHR (CORS_ALLOW_ORIGIN) — one source of
- * truth for "what counts as us".
+ * Auth is entirely cookie-based (CookieService) — without this, a
+ * third-party page could submit a state-changing request (e.g. a bodyless
+ * POST like AdminController::runGc()) that the browser would happily attach
+ * the logged-in user's cookies to. Second, independent layer on top of
+ * CookieService's SameSite=Lax: reject any state-changing request whose
+ * Origin (or, failing that, Referer) doesn't match this app's own frontend,
+ * using the exact same allow-list nelmio/cors-bundle already enforces for
+ * cross-origin fetch/XHR (CORS_ALLOW_ORIGIN) — one source of truth for "what
+ * counts as us".
  *
  * Disabled in test env (see .env.test) — none of the existing functional
  * tests send an Origin/Referer header, the same reason the rate limiters are

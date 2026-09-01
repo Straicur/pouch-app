@@ -45,15 +45,14 @@ interface AccessKeyGuardInterface
     public function isItemOwnKeyUnlocked(Item $item, Request $request): bool;
 
     /**
-     * Post-review fix: every category (bulk, not one-at-a-time) currently
-     * locked for $request — a category with an access key set on it or an
-     * ancestor, where $request carries no valid grant for that key's
-     * holder. Lets a caller exclude locked categories from a query's WHERE
-     * clause *before* it runs, instead of fetching a page and filtering
-     * locked items out of it afterwards (ItemController::list() used to do
-     * exactly that: COUNT/LIMIT/OFFSET ran first, blind to Part 7 locks, so
-     * a page could come back empty while unlocked items existed on the next
-     * one, and $total leaked how many hidden items existed).
+     * Every category (bulk, not one-at-a-time) currently locked for
+     * $request — a category with an access key set on it or an ancestor,
+     * where $request carries no valid grant for that key's holder. Lets a
+     * caller exclude locked categories from a query's WHERE clause *before*
+     * it runs, instead of fetching a page and filtering locked items out of
+     * it afterwards — the latter runs COUNT/LIMIT/OFFSET blind to locks, so
+     * a page can come back empty while unlocked items exist on the next one,
+     * and $total leaks how many hidden items exist.
      *
      * @return list<int>
      */

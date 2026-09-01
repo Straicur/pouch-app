@@ -35,7 +35,7 @@ const pl = {
   home: {
     connectionError: "Nie udało się połączyć z backendem.",
   },
-  // Część 11 — nawigacja wewnątrz UserLayout/AdminLayout (zagnieżdżone widoki
+  // Nawigacja wewnątrz UserLayout/AdminLayout (zagnieżdżone widoki
   // User/Admin, moduł na konkretny obszar) — osobna sekcja od per-modułowych
   // nagłówków (np. `admin.storage.title`), bo to samo "Zużycie storage" musi
   // się różnić jako krótka etykieta w nawigacji i pełny nagłówek strony.

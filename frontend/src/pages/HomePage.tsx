@@ -5,10 +5,9 @@ import { toastUtil } from "../libs/toastUtil";
 import { useLogoutMutation } from "../store/api/authApi";
 import { useWhoAmIQuery } from "../store/api/sessionApi";
 
-// Część 13: "/" nie ma już własnej treści — od razu pokazuje to, co
-// "/user/items" (życzenie usera: pod "/" ma być widoczne to samo co pod
-// "/user/items", nie osobna, okrojona strona). Wciąż jednak nie jest to
-// zwykłe <Navigate> wprost w routes.tsx: sesja musi się najpierw rozstrzygnąć
+// "/" nie ma własnej treści — od razu pokazuje to, co "/user/items" (pod "/"
+// ma być widoczne to samo co pod "/user/items", nie osobna, okrojona strona).
+// Wciąż jednak nie jest to zwykłe <Navigate> wprost w routes.tsx: sesja musi się najpierw rozstrzygnąć
 // (401 → /login, chwilowe "nic" podczas ładowania — patrz FRONTEND.md,
 // "Layouty i trasy", ostatni akapit — to świadomie inne zachowanie niż
 // ProtectedRoute), błąd połączenia z backendem dostaje własny komunikat

@@ -1,6 +1,3 @@
-/* Część 11 wprowadziła Tailwind v4 tylko dla portowanego Catalyst UI
-   (`src/ui/catalyst/`). Część 13 (redesign) rozszerza to na całą aplikację —
-   patrz FRONTEND.md, "Wersje kluczowych komponentów". */
 @import "tailwindcss";
 
 /* Tailwind v4 domyślnie steruje `dark:` przez prefers-color-scheme — to
@@ -40,7 +37,7 @@ body {
   max-width: 960px;
 }
 
-/* Część 11: UserLayout/AdminLayout render the ported Catalyst SidebarLayout
+/* UserLayout/AdminLayout render the ported Catalyst SidebarLayout
    (src/ui/catalyst/), which wants the full viewport — undo #root's own
    centered-column default for it rather than fight it with more max-width. */
 #root:has(.catalyst-sidebar-layout) {
@@ -62,6 +59,3 @@ body {
   text-align: left;
   width: 100%;
 }
-
-/* .area-layout/.area-nav (Część 11's first pass) were superseded by the
-   ported Catalyst SidebarLayout — see src/ui/catalyst/. */

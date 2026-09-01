@@ -48,15 +48,15 @@ export const itemApi = createApi({
       }),
       providesTags: ["Item"],
     }),
-    // Część 13 — ItemDetailsModal's fetch behind a deliberate click on a
-    // card, not alongside the (paginated) list itself.
+    // ItemDetailsModal's fetch behind a deliberate click on a card, not
+    // alongside the (paginated) list itself.
     getItem: builder.query<ItemDetail, number>({
       query: (id) => ({ url: ApiEndpoints.ITEM(id), method: "GET" }),
       providesTags: ["Item"],
     }),
-    // Część 14 — the backend has always had DELETE /api/items/{id} (moves to
-    // trash, see ItemGarbageCollector), the frontend just never wired a
-    // button to it. ItemDetailsModal's delete button, behind a ConfirmDialog.
+    // DELETE /api/items/{id} moves the item to trash (see
+    // ItemGarbageCollector) — ItemDetailsModal's delete button, behind a
+    // ConfirmDialog.
     deleteItem: builder.mutation<void, number>({
       query: (id) => ({ url: ApiEndpoints.ITEM(id), method: "DELETE" }),
       invalidatesTags: ["Item"],

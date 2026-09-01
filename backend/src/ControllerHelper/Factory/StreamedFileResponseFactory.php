@@ -16,13 +16,10 @@ use function stream_copy_to_stream;
 use function unlink;
 
 /**
- * Post-review fix (conceptual — "trait + service" discussion): this exact
- * try/finally — open the temp file, stream it to php://output, always
- * unlink() regardless of outcome — used to be pasted into
- * CategoryController::export() and AdminController::backup() separately.
- * When a post-review fix (leaked temp files on a mid-stream failure) landed,
- * it had to be applied twice by hand; a third copy for a future
- * "backup as tar.gz" or similar would make that three. One place instead.
+ * Streams a temporary file to the response and always unlink()s it
+ * afterward, success or failure — the one place this try/finally lives, so
+ * every caller (CategoryController::export(), AdminController::backup(), any
+ * future one) gets the same leak-free cleanup instead of repeating it.
  */
 final readonly class StreamedFileResponseFactory implements StreamedFileResponseFactoryInterface
 {

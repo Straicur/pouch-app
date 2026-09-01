@@ -8,9 +8,9 @@ import { Button } from "../../../ui/catalyst/button";
 import { Dialog, DialogTitle } from "../../../ui/catalyst/dialog";
 import { Heading } from "../../../ui/catalyst/heading";
 
-// Część 13: kategorie w drzewie (kategoria główna + jej bezpośrednie
-// podkategorie — CategoryService ogranicza głębokość do tego jednego
-// poziomu), zamiast płaskiej listy z dopiskiem "(podkategoria: X)".
+// Kategorie w drzewie (kategoria główna + jej bezpośrednie podkategorie —
+// CategoryService ogranicza głębokość do tego jednego poziomu), zamiast
+// płaskiej listy z dopiskiem "(podkategoria: X)".
 export function CategoriesPage() {
   const { t } = useTranslation();
   const { data: categories, isLoading, error } = useListCategoriesQuery();

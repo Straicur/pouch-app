@@ -18,7 +18,7 @@ import { LifecycleFieldsInput, lifecycleFieldsSchema, toLifecyclePayload } from 
 
 type ItemKind = "file" | "note";
 
-// Część 13: jeden modal zamiast dwóch osobnych, zawsze widocznych formularzy
+// Jeden modal zamiast dwóch osobnych, zawsze widocznych formularzy
 // (NoteForm/FileUploadForm) — przełącznik typu na górze pokazuje tylko pola
 // właściwe dla wybranego typu. Domyślny wybór lifecycle ("default") to teraz
 // "przechowuj zawsze" (patrz lifecycleFields.tsx), nie backendowy fallback

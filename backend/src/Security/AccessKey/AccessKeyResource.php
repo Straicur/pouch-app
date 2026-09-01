@@ -9,10 +9,10 @@ namespace App\Security\AccessKey;
  * item access grant. Both AccessKeyService (issuing) and AccessKeyGuard
  * (checking) must agree on the exact same string, hence one shared place.
  *
- * Post-review fix: folds in $keyVersion (bumped by Category/Item::
- * setAccessKeyHash() on every change — see those entities) and $userId (the
- * grant holder) — a grant is only ever valid for the key version it was
- * issued against, from the same account that unlocked it:
+ * Folds in $keyVersion (bumped by Category/Item::setAccessKeyHash() on every
+ * change — see those entities) and $userId (the grant holder) — a grant is
+ * only ever valid for the key version it was issued against, from the same
+ * account that unlocked it:
  *  - resetting a key bumps the version, so every grant issued for the old
  *    one stops matching immediately (no revocation list needed);
  *  - one user unlocking something doesn't hand a working grant to whoever's

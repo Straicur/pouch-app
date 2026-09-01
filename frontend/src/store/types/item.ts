@@ -7,9 +7,8 @@ export type ItemType = "file" | "url" | "photo" | "note";
 export type ItemProcessingStatus = "pending" | "completed" | "failed";
 
 // Fields both ItemSummaryResponseDTO and ItemResponseDTO carry — split so
-// each response shape only adds what it actually has (Część 13: the two
-// diverged further once ItemSummaryResponseDTO got $locked and
-// ItemResponseDTO got $hasAccessKey, neither shared by the other).
+// each response shape only adds what it actually has (ItemSummaryResponseDTO
+// has $locked, ItemResponseDTO has $hasAccessKey, neither shared by the other).
 interface ItemBase {
   id: number;
   categoryId: number;
@@ -46,7 +45,7 @@ export interface ItemBaseLike {
 // list only needs to know whether *this request* is locked out, not whether
 // a key exists at all — see backend's ItemSummaryResponseDTO).
 export interface ItemSummary extends ItemBase {
-  // Część 13 — an item locked by its own key still appears in GET
+  // An item locked by its own key still appears in GET
   // /api/items (see ItemMapper::toLockedSummaryResponseDTO() on the
   // backend), just with every other content-revealing field redacted to
   // null/false/[]. LockedItemCard renders these by name only, with an
@@ -64,7 +63,7 @@ export interface ItemSummary extends ItemBase {
 // alongside the list.
 export interface ItemDetail extends ItemBase {
   extractedText: string | null;
-  // Część 13 — whether this item has its own access key set at all, as
+  // Whether this item has its own access key set at all, as
   // opposed to ItemSummary's $locked (whether *this request* is unlocked for
   // one that does). AccessKeyPanel uses it to show "Ustaw klucz" vs
   // "Zmień/Usuń klucz" instead of always offering every action.
@@ -133,7 +132,7 @@ export interface CreateFileRequest extends ItemLifecycleFields {
   categoryId: number;
   file: File;
   name?: string;
-  // Część 13 — optional free-text description, stored the same way a NOTE
+  // Optional free-text description, stored the same way a NOTE
   // item's body is (see backend's ItemServiceInterface::createFile()).
   content?: string;
   tags?: string[];

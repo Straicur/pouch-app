@@ -6,8 +6,8 @@ import { useListItemsQuery } from "../../../store/api/itemApi";
 import { Button } from "../../../ui/catalyst/button";
 import { Heading } from "../../../ui/catalyst/heading";
 
-// Część 14: lista samych ulubionych, osobna od głównej listy z wyszukiwarką
-// (ItemsPage) — bez filtrów, tylko `favorite: true` + paginacja. Backend
+// Lista samych ulubionych, osobna od głównej listy z wyszukiwarką (ItemsPage)
+// — bez filtrów, tylko `favorite: true` + paginacja. Backend
 // sortuje po createdAt DESC domyślnie (ItemRepository::findFilteredPage()),
 // więc "od najnowszego do najstarszego" nie wymaga niczego dodatkowego.
 const FAVORITES_PAGE_SIZE = 24;

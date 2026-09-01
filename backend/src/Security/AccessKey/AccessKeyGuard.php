@@ -28,17 +28,17 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
     // GRANTS_HEADER now lives on AccessKeyGuardInterface (inherited here) — see its own doc comment.
 
     /**
-     * Post-review fix: parseGrants() used to re-decode the same request's
-     * grants header from scratch on every single hasValidGrant() call —
-     * cheap for one item, wasteful when lockedCategoryIds() calls it once
-     * per category on every GET /api/items. Keyed by Request (a WeakMap, not
-     * a plain array, so it
-     * never outlives — or needs manual clearing between — the request
-     * itself, which matters if this service is ever reused across requests
-     * in a long-running worker). Readonly property, mutable object: `readonly`
-     * only stops *this* property from being reassigned, not the WeakMap
-     * instance it points to from being written to — the standard pattern for
-     * a cache on an otherwise-immutable, request-scoped-by-convention service.
+     * Caches parseGrants() per request — hasValidGrant() calls it once per
+     * category/item check, and lockedCategoryIds() calls it once per
+     * category on every GET /api/items, so decoding the same header from
+     * scratch each time adds up. Keyed by Request (a WeakMap, not a plain
+     * array), so it never outlives — or needs manual clearing between —
+     * the request itself, which matters if this service is ever reused
+     * across requests in a long-running worker. Readonly property, mutable
+     * object: `readonly` only stops *this* property from being reassigned,
+     * not the WeakMap instance it points to from being written to — the
+     * standard pattern for a cache on an otherwise-immutable,
+     * request-scoped-by-convention service.
      *
      * @var WeakMap<Request, list<AccessGrant>>
      */
@@ -54,8 +54,8 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
     }
 
     /**
-     * Post-review fix: a grant only matches for the user it was issued to —
-     * see AccessKeyResource's doc comment. Returns null (never matches any
+     * A grant only matches for the user it was issued to — see
+     * AccessKeyResource's doc comment. Returns null (never matches any
      * grant) rather than throwing: an unauthenticated request should simply
      * see the resource as locked, not 500.
      */
@@ -132,9 +132,9 @@ final readonly class AccessKeyGuard implements AccessKeyGuardInterface
     #[Override]
     public function lockedCategoryIds(Request $request): array
     {
-        // Post-review fix: scalar rows (id/parentId/accessKeyHash/
-        // accessKeyVersion), not full Category entities — see
-        // CategoryRepository::findAllForLockCheck()'s own doc comment.
+        // Scalar rows (id/parentId/accessKeyHash/accessKeyVersion), not full
+        // Category entities — see CategoryRepository::findAllForLockCheck()'s
+        // own doc comment.
         $rows = $this->categoryRepository->findAllForLockCheck();
 
         $byId = [];

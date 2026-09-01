@@ -11,10 +11,10 @@ interface TagsInputProps {
 
 const DATALIST_ID = "tags-input-known-tags";
 
-// Część 13 — zastępuje dawne pole "tagi oddzielone przecinkami" (jedna mała
-// linijka tekstu, ciężko dostrzegalna) czytelnymi, klikalnymi chipami z
-// osobnym polem do dopisania kolejnego — używane zarówno przy dodawaniu itemu
-// (AddItemModal) jak i przy edycji istniejącego (ItemDetailsModal).
+// Czytelne, klikalne chipy z osobnym polem do dopisania kolejnego tagu
+// (zamiast jednej linijki "tagi oddzielone przecinkami") — używane zarówno
+// przy dodawaniu itemu (AddItemModal) jak i przy edycji istniejącego
+// (ItemDetailsModal).
 export function TagsInput({ value, onChange }: TagsInputProps) {
   const { t } = useTranslation();
   const { data: knownTags } = useListTagsQuery();

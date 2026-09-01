@@ -31,7 +31,7 @@ class ItemResponseDTO
         private readonly ?string $expiresAt,
         private readonly ?string $trashedAt,
         private readonly string $createdAt,
-        // Część 13 — czy ten item ma ustawiony własny klucz dostępu.
+        // Czy ten item ma ustawiony własny klucz dostępu.
         // Świadomie tylko tutaj (pełny detal, GET /api/items/{id}), nie na
         // ItemSummaryResponseDTO — do listy nie trzeba wiedzieć, czy klucz
         // istnieje, tylko czy request jest nim odblokowany (locked).

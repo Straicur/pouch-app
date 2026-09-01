@@ -17,10 +17,8 @@ import {
 import { ADMIN_PAGES } from "../adminPages";
 import { ThemeSwitch } from "./ThemeSwitch";
 
-// Część 13: jedna, identyczna nawigacja dla /user/* i /admin/* — dawniej
-// UserLayout i AdminLayout renderowały każdy swój własny <Sidebar> (usera
-// widział tylko Itemy/Kategorie, admina tylko podstrony admina), więc kliknięcie
-// w dowolny moduł admina "gubiło" dostęp do Itemów/Kategorii i odwrotnie. Ten
+// Jedna, identyczna nawigacja dla /user/* i /admin/* — bez tego kliknięcie w
+// dowolny moduł admina "gubiłoby" dostęp do Itemów/Kategorii i odwrotnie. Ten
 // komponent jest samowystarczalny (własne useLocation/useWhoAmIQuery/
 // useLogoutMutation) — oba layouty tylko go renderują jako `sidebar` prop
 // swojego SidebarLayoutu, bez przekazywania żadnych propsów.
@@ -69,10 +67,10 @@ export function AppSidebar() {
             border-b widoczny na górze sidebaru. */}
         {true === data?.isAdmin && (
           <SidebarSection>
-            {/* Część 14 post-review fix: domyślny SidebarHeading (text-xs) był
-                ledwo czytelny jako etykieta całej sekcji — powiększony tu, nie
-                w samym komponencie (jedyne miejsce, gdzie jest dziś używany,
-                ale inne przyszłe użycia mogą chcieć oryginalnego rozmiaru). */}
+            {/* Domyślny SidebarHeading (text-xs) jest ledwo czytelny jako etykieta
+                całej sekcji — powiększony tu, nie w samym komponencie (jedyne
+                miejsce, gdzie jest dziś używany, ale inne przyszłe użycia mogą
+                chcieć oryginalnego rozmiaru). */}
             <SidebarHeading className="text-sm font-semibold text-zinc-950 dark:text-white">
               {t("nav.adminArea")}
             </SidebarHeading>

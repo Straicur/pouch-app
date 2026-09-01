@@ -67,14 +67,12 @@ class CategoryRepository extends ServiceEntityRepository
     }
 
     /**
-     * Post-review fix: AccessKeyGuard::lockedCategoryIds() used to hydrate
-     * every full Category entity (via findAllOrderedByName()) on *every*
-     * GET /api/items — fine for a personal-scale category tree, but full
-     * entities are needless weight for a check that only ever looks at
-     * id/parent/access-key fields. Scalar rows instead, with just enough to
-     * walk the parent chain in PHP the same way
-     * AccessKeyService::findEffectiveKeyHolder() does for one category at a
-     * time.
+     * Scalar rows, not full Category entities — AccessKeyGuard::
+     * lockedCategoryIds() calls this on *every* GET /api/items and only ever
+     * looks at id/parent/access-key fields, so hydrating full entities would
+     * be needless weight. Just enough to walk the parent chain in PHP the
+     * same way AccessKeyService::findEffectiveKeyHolder() does for one
+     * category at a time.
      *
      * @return list<array{id: int, parentId: int|null, accessKeyHash: string|null, accessKeyVersion: int}>
      */

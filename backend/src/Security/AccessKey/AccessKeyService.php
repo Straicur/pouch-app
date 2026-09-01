@@ -42,8 +42,8 @@ final readonly class AccessKeyService implements AccessKeyServiceInterface
     ) {}
 
     /**
-     * Post-review fix: a grant is bound to whoever's authenticated at the
-     * moment it's issued — see AccessKeyResource's doc comment for why.
+     * A grant is bound to whoever's authenticated at the moment it's issued
+     * — see AccessKeyResource's doc comment for why.
      */
     private function currentUserId(): int
     {

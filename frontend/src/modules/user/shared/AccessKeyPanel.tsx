@@ -10,9 +10,9 @@ import { ErrorMessage } from "../../../ui/catalyst/form/fieldset";
 import { Input } from "../../../ui/catalyst/form/input";
 
 interface AccessKeyPanelProps {
-  // Część 13 — czy ten zasób ma już ustawiony klucz: steruje, czy pokazujemy
+  // Czy ten zasób ma już ustawiony klucz: steruje, czy pokazujemy
   // "Ustaw klucz" (nie ma) czy "Zmień klucz"/"Usuń klucz" (ma) — zamiast
-  // zawsze oferować oba warianty naraz, jak wcześniej (patrz
+  // zawsze oferować oba warianty naraz (patrz
   // ItemResponseDTO::$hasAccessKey / CategoryResponseDTO::$hasAccessKey).
   hasKey: boolean;
   // Kategorie zostają odblokowywalne wprost z tego panelu (lista kategorii

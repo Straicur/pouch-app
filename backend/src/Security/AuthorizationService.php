@@ -10,13 +10,9 @@ use Override;
 use Symfony\Bundle\SecurityBundle\Security;
 
 /**
- * Post-review fix (conceptual — "trait + service" discussion): every
- * controller action used to open with the same three lines —
- * `$this->authService->getUserFromAccessToken()` then `if (false ===
- * $this->isGranted($attribute)) { throw new ForbiddenException(); }` —
- * copy-pasted across ~30 call sites. Pulled out into one place, both for the
- * duplication and so "what does being authorized even mean here" has a
- * single, testable answer instead of thirty identical-by-convention copies.
+ * The one place "does this request have the right role" is answered — every
+ * controller action calls this instead of repeating the same auth-then-voter
+ * check inline, so the answer stays single and testable.
  *
  * `Symfony\Bundle\SecurityBundle\Security::isGranted()` here, not
  * `AbstractController::isGranted()` — this is a plain service, not a

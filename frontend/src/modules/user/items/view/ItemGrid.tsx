@@ -6,8 +6,8 @@ interface ItemGridProps {
   items: ItemSummary[];
 }
 
-// Wydzielone z ItemsPage (Część 13) — używane też przez HomePage, żeby karty
-// itemów wyglądały i zachowywały się identycznie w obu miejscach.
+// Wydzielone z ItemsPage — używane też przez HomePage, żeby karty itemów
+// wyglądały i zachowywały się identycznie w obu miejscach.
 export function ItemGrid({ items }: ItemGridProps) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

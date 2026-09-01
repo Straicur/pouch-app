@@ -232,6 +232,41 @@ Tablica zależności `useEffect`/`useCallback`/`useMemo` musi być kompletna —
 sprawdza (warning). Nie wyciszaj przez pusty `// eslint-disable`-owy odpowiednik bez
 realnego powodu wypisanego w komentarzu.
 
+## Testy komponentów (Vitest + Testing Library)
+
+Współdzielone narzędzia w `src/testUtils/`:
+
+- `renderWithProviders(ui)` — renderuje komponent owinięty świeżym (per-test) Reduxowym
+  store'em (te same reducery/middleware co `store/store.ts`, ale nowa instancja, żeby cache
+  RTK Query nie przeciekał między testami), `MemoryRouter` i `ToastContainer` (bez niego
+  `toastUtil.showToast(...)` nic nie renderuje — patrz `RootLayout.tsx`). Użyj `wrapper`
+  Testing Library pod spodem, nie ręcznego zagnieżdżenia w JSX-ie — dzięki temu zwrócony
+  `rerender(...)` też przechodzi przez te same providery.
+- `mockApiResponse(data)`/`mockApiError(status, body)` (`testUtils/mockHttp.ts`) — budują
+  wartości zwracane przez zamockowany `httpMethods`.
+
+Każdy plik testujący komponent, który woła RTK Query, mockuje `../libs/httpMethods` (nie
+`axios` ani `httpClient` bezpośrednio) — to jedyne miejsce, przez które `axiosBaseQuery`
+faktycznie robi request (patrz `store/api/baseQuery.ts`):
+
+```ts
+vi.mock("../../../../libs/httpMethods", () => ({
+  httpMethods: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), del: vi.fn() },
+}));
+```
+
+Dzięki temu prawdziwe slice'y RTK Query (tagi, `invalidatesTags`, `onQueryStarted`) działają
+tak jak w apce — mockowany jest tylko transport, nie warstwa cache'a. Błąd mockuje się przez
+`mockApiError(status, body)` wołane leniwie (`mockImplementation(() => mockApiError(...))`,
+nie `mockReturnValue(mockApiError(...))`) — odrzucony `Promise` stworzony zbyt wcześnie
+(przed jego faktycznym `await`) Node/Vitest zgłasza jako unhandled rejection, nawet jeśli
+docelowo zostaje obsłużony.
+
+`onQueryStarted` w każdym `store/api/*.ts` musi łapać błąd z `queryFulfilled` (`try { await
+queryFulfilled; ... } catch { /* obsłużone przez .unwrap() u wołającego */ }`) — bez tego
+nieudana mutacja zostawia nieobsłużone odrzucenie promise'a (realny bug znaleziony przy
+pisaniu testów dla `accessKeyApi.ts`, patrz `CHANGELOG.md`/git log).
+
 ---
 
 ## Konwencje projektowe (nie wymuszane automatycznie)

@@ -45,10 +45,10 @@ export function useItemThumbnailUrl(item: ItemBaseLike): string | null {
   return thumbnailUrl;
 }
 
-// Część 13: karta na liście jest teraz czysto informacyjna — nazwa, opis,
-// tagi, typ, kategoria — i w całości klikalna, otwiera ItemDetailsModal z
-// resztą (ulubione, edycja, pobieranie, udostępnianie, historia wersji,
-// klucz dostępu), zamiast trzymać to wszystko rozrzucone po karcie.
+// Karta na liście jest czysto informacyjna — nazwa, opis, tagi, typ,
+// kategoria — i w całości klikalna, otwiera ItemDetailsModal z resztą
+// (ulubione, edycja, pobieranie, udostępnianie, historia wersji, klucz
+// dostępu), zamiast trzymać to wszystko rozrzucone po karcie.
 export function ItemCard({ item }: ItemCardProps) {
   const { t } = useTranslation();
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);

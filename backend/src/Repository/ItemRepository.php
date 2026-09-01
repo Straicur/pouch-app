@@ -37,7 +37,7 @@ class ItemRepository extends ServiceEntityRepository
      * around them (Postgres doesn't escape/tokenize it), so treating that
      * output as HTML would be a stored-XSS hole for anyone who can plant
      * item content another account then searches for (OCR text, a note, a
-     * scraped page) — see docs/ROADMAP.md's Część 17 note on this.
+     * scraped page).
      */
     public const string SNIPPET_HIGHLIGHT_START = "\u{E000}";
 
@@ -202,12 +202,11 @@ class ItemRepository extends ServiceEntityRepository
      * across pouches (AdminController's cross-pouch item browser does, when
      * no pouch is picked). Also threaded into searchMatchingIds() itself —
      * that raw SQL sits outside Doctrine's ORM/DQL layer, so PouchFilter
-     * (Część 16) can't scope it the way it scopes this method's own query
-     * builder; without $pouchId reaching it too, an exact match in another
-     * pouch would (a) still get filtered out of the final result correctly
-     * by the WHERE below, but (b) wrongly count as "found something",
-     * suppressing the typo-tolerant fallback for a pouch that actually had
-     * no match at all — see docs/ROADMAP.md's Część 17/18 note on this.
+     * can't scope it the way it scopes this method's own query builder;
+     * without $pouchId reaching it too, an exact match in another pouch
+     * would (a) still get filtered out of the final result correctly by the
+     * WHERE below, but (b) wrongly count as "found something", suppressing
+     * the typo-tolerant fallback for a pouch that actually had no match at all.
      *
      * @param list<int> $excludedCategoryIds
      *
@@ -555,8 +554,8 @@ class ItemRepository extends ServiceEntityRepository
     }
 
     /**
-     * Post-review fix: CategoryService::delete() calls this before removing a
-     * category, across the whole subtree it and its descendants form —
+     * CategoryService::delete() calls this before removing a category,
+     * across the whole subtree it and its descendants form —
      * deleting a category with any item still in it would otherwise cascade
      * at the DB level (ON DELETE CASCADE) without ItemGarbageCollector::
      * purgeTrash() ever getting a chance to see them, orphaning their
