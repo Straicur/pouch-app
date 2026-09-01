@@ -117,11 +117,11 @@ final class ItemController extends AbstractController
     private const int PUBLIC_LINK_TTL_SECONDS = 86_400;
 
     /**
-     * Post-review fix: GET /api/items' pagination defaults/cap — see
-     * ItemRepository::findFilteredPage(). 24 keeps a default page well under
-     * a real "several MB" response even with sizeable note bodies, and lines
-     * up with ItemGrid's card layout; 200 is a hard ceiling so
-     * `?pageSize=999999` can't be used to route around pagination entirely.
+     * GET /api/items' pagination defaults/cap — see ItemRepository::
+     * findFilteredPage(). 24 keeps a default page well under a real "several
+     * MB" response even with sizeable note bodies, and lines up with
+     * ItemGrid's card layout; 200 is a hard ceiling so `?pageSize=999999`
+     * can't be used to route around pagination entirely.
      */
     private const int DEFAULT_PAGE_SIZE = 24;
 
@@ -183,14 +183,10 @@ final class ItemController extends AbstractController
         $page = max(1, $request->query->getInt('page', 1));
         $pageSize = min(self::MAX_PAGE_SIZE, max(1, $request->query->getInt('pageSize', self::DEFAULT_PAGE_SIZE)));
 
-        // Post-review fix: locked categories used to be excluded *after*
-        // fetching a page — COUNT/OFFSET/LIMIT ran blind to Part 7 locks, so
-        // a page could come back empty while unlocked items sat on the next
-        // one, and $total leaked how many hidden items existed. Computed
-        // once, up front, and passed into the query itself instead (see
-        // ItemRepository::findFilteredPage()'s own doc comment). An item
-        // locked only by its own key stays in the query — Część 13, see the
-        // mapping loop below.
+        // Computed up front and passed into the query itself (see
+        // ItemRepository::findFilteredPage()'s own doc comment) so a locked
+        // category can never leak into COUNT/OFFSET/LIMIT. An item locked
+        // only by its own key stays in the query — see the mapping loop below.
         $excludedCategoryIds = $this->accessKeyGuard->lockedCategoryIds($request);
 
         $result = $this->itemService->listPage(
@@ -209,10 +205,10 @@ final class ItemController extends AbstractController
             fn (Item $item): bool => $this->accessKeyGuard->isCategoryUnlocked($item->getCategory(), $request),
         ));
 
-        // Część 13: an item locked by its own key no longer disappears from
-        // the list entirely — it appears redacted to a name-only summary, so
-        // the frontend can offer an inline unlock instead of requiring the
-        // id to already be known some other way.
+        // An item locked only by its own key no longer disappears from the
+        // list entirely — it appears redacted to a name-only summary, so the
+        // frontend can offer an inline unlock instead of requiring the id to
+        // already be known some other way.
         $summaries = array_map(
             fn (Item $item): ItemSummaryResponseDTO => $this->accessKeyGuard->isItemOwnKeyUnlocked($item, $request)
                 ? ItemMapper::toSummaryResponseDTO($item)
@@ -256,9 +252,9 @@ final class ItemController extends AbstractController
     {
         $user = $this->assertGranted(ItemVoter::VIEW);
 
-        $item = $this->itemService->getByIdInCurrentPouch($id);
+        $item = $this->itemService->getById($id);
         $this->accessKeyGuard->assertItemUnlocked($item, $request);
-        $this->auditLogger->log(AuditLoggerInterface::ACTION_VIEW, AuditLoggerInterface::RESOURCE_ITEM, $id, $user, $request);
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_VIEW, AuditLoggerInterface::RESOURCE_ITEM, $id, $user, $request, $item->getPouch());
 
         $responseDTO = ItemMapper::toResponseDTO($item);
 
@@ -268,9 +264,9 @@ final class ItemController extends AbstractController
     /**
      * @throws UnauthorizedException
      * @throws ForbiddenException
-     * @throws NotFoundException             if categoryId doesn't exist
-     * @throws BadRequestException           invalid file (extension/size) or TTL input
-     * @throws ConflictException             identical content already exists
+     * @throws NotFoundException
+     * @throws BadRequestException
+     * @throws ConflictException
      * @throws UnprocessableContentException
      * @throws SerializerExceptionInterface
      */
@@ -329,9 +325,9 @@ final class ItemController extends AbstractController
     /**
      * @throws UnauthorizedException
      * @throws ForbiddenException
-     * @throws NotFoundException             if categoryId doesn't exist
-     * @throws BadRequestException           invalid image (extension/size) or TTL input
-     * @throws ConflictException             identical content already exists
+     * @throws NotFoundException
+     * @throws BadRequestException
+     * @throws ConflictException
      * @throws UnprocessableContentException
      * @throws SerializerExceptionInterface
      */
@@ -387,8 +383,8 @@ final class ItemController extends AbstractController
     /**
      * @throws UnauthorizedException
      * @throws ForbiddenException
-     * @throws NotFoundException             if categoryId doesn't exist
-     * @throws BadRequestException           malformed URL or TTL input
+     * @throws NotFoundException
+     * @throws BadRequestException
      * @throws UnprocessableContentException
      * @throws SerializerExceptionInterface
      */
@@ -434,8 +430,8 @@ final class ItemController extends AbstractController
     /**
      * @throws UnauthorizedException
      * @throws ForbiddenException
-     * @throws NotFoundException             if categoryId doesn't exist
-     * @throws BadRequestException           blank/too-long content or TTL input
+     * @throws NotFoundException
+     * @throws BadRequestException
      * @throws UnprocessableContentException
      * @throws SerializerExceptionInterface
      */
@@ -480,12 +476,10 @@ final class ItemController extends AbstractController
     }
 
     /**
-     * "Edycja po fakcie" — the one thing a note can do that no other item type can.
-     *
      * @throws UnauthorizedException
      * @throws ForbiddenException
      * @throws NotFoundException
-     * @throws BadRequestException           item isn't a note, or blank/too-long content
+     * @throws BadRequestException
      * @throws UnprocessableContentException
      * @throws SerializerExceptionInterface
      */
@@ -512,7 +506,7 @@ final class ItemController extends AbstractController
         $this->assertGranted(ItemVoter::EDIT);
 
         $updateRequestDTO = $this->requestService->getRequestBodyContent($request, ItemUpdateNoteRequestDTO::class);
-        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getByIdInCurrentPouch($id), $request);
+        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
 
         $item = $this->itemService->updateNoteContent($id, $updateRequestDTO->getContent());
 
@@ -550,7 +544,7 @@ final class ItemController extends AbstractController
         $this->assertGranted(ItemVoter::EDIT);
 
         $updateRequestDTO = $this->requestService->getRequestBodyContent($request, ItemUpdateTagsRequestDTO::class);
-        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getByIdInCurrentPouch($id), $request);
+        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
 
         $item = $this->itemService->replaceTags($id, $updateRequestDTO->getTags());
 
@@ -615,7 +609,7 @@ final class ItemController extends AbstractController
     {
         $this->assertGranted(ItemVoter::EDIT);
 
-        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getByIdInCurrentPouch($id), $request);
+        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
 
         $item = $this->itemService->setFavorite($id, $favorite);
 
@@ -641,10 +635,11 @@ final class ItemController extends AbstractController
     {
         $user = $this->assertGranted(ItemVoter::DELETE);
 
-        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getByIdInCurrentPouch($id), $request);
+        $item = $this->itemService->getById($id);
+        $this->accessKeyGuard->assertItemUnlocked($item, $request);
 
         $this->itemService->delete($id);
-        $this->auditLogger->log(AuditLoggerInterface::ACTION_DELETE, AuditLoggerInterface::RESOURCE_ITEM, $id, $user, $request);
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_DELETE, AuditLoggerInterface::RESOURCE_ITEM, $id, $user, $request, $item->getPouch());
 
         return new Response(status: Response::HTTP_NO_CONTENT);
     }
@@ -667,7 +662,7 @@ final class ItemController extends AbstractController
     {
         $this->assertGranted(ItemVoter::DOWNLOAD);
 
-        $item = $this->itemService->getByIdInCurrentPouch($id);
+        $item = $this->itemService->getById($id);
         $this->accessKeyGuard->assertItemUnlocked($item, $request);
 
         if (null === $item->getStorageKey()) {
@@ -678,7 +673,7 @@ final class ItemController extends AbstractController
     }
 
     /**
-     * @throws ForbiddenException invalid or expired signature
+     * @throws ForbiddenException
      * @throws NotFoundException
      */
     #[Route('/api/items/{id}/download', name: 'item_download', requirements: ['id' => '\d+'], methods: [Request::METHOD_GET])]
@@ -706,7 +701,7 @@ final class ItemController extends AbstractController
 
         // No $user — this endpoint takes no auth token by design (see the
         // class docblock); still worth an IP, per the product doc.
-        $this->auditLogger->log(AuditLoggerInterface::ACTION_DOWNLOAD, AuditLoggerInterface::RESOURCE_ITEM, $id, null, $request);
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_DOWNLOAD, AuditLoggerInterface::RESOURCE_ITEM, $id, null, $request, $item->getPouch());
 
         return $this->streamedStorageResponse(
             storageKey: $storageKey,
@@ -734,7 +729,7 @@ final class ItemController extends AbstractController
     {
         $this->assertGranted(ItemVoter::DOWNLOAD);
 
-        $item = $this->itemService->getByIdInCurrentPouch($id);
+        $item = $this->itemService->getById($id);
         $this->accessKeyGuard->assertItemUnlocked($item, $request);
 
         if (null === $item->getThumbnailStorageKey()) {
@@ -745,7 +740,7 @@ final class ItemController extends AbstractController
     }
 
     /**
-     * @throws ForbiddenException invalid or expired signature
+     * @throws ForbiddenException
      * @throws NotFoundException
      */
     #[Route('/api/items/{id}/thumbnail', name: 'item_thumbnail', requirements: ['id' => '\d+'], methods: [Request::METHOD_GET])]
@@ -775,13 +770,11 @@ final class ItemController extends AbstractController
     }
 
     /**
-     * Part 8. Same id/URL as before the upload — see ItemServiceInterface::overwriteFile().
-     *
      * @throws UnauthorizedException
      * @throws ForbiddenException
-     * @throws NotFoundException             if the item doesn't exist
-     * @throws BadRequestException           if the item isn't a FILE item, or the new file is invalid
-     * @throws ConflictException             if a *different* item already has this exact content
+     * @throws NotFoundException
+     * @throws BadRequestException
+     * @throws ConflictException
      * @throws UnprocessableContentException
      * @throws SerializerExceptionInterface
      */
@@ -803,7 +796,7 @@ final class ItemController extends AbstractController
     {
         $this->assertGranted(ItemVoter::EDIT);
 
-        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getByIdInCurrentPouch($id), $request);
+        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
 
         $file = $this->extractUploadedFile($request);
 
@@ -843,7 +836,7 @@ final class ItemController extends AbstractController
     {
         $this->assertGranted(ItemVoter::VIEW);
 
-        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getByIdInCurrentPouch($id), $request);
+        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
 
         $versions = ItemMapper::toVersionResponseDTOList($this->itemService->listVersions($id));
 
@@ -872,7 +865,7 @@ final class ItemController extends AbstractController
     {
         $this->assertGranted(ItemVoter::DOWNLOAD);
 
-        $item = $this->itemService->getByIdInCurrentPouch($id);
+        $item = $this->itemService->getById($id);
         $this->accessKeyGuard->assertItemUnlocked($item, $request);
 
         // Also confirms the version exists, before minting a link for it.
@@ -911,7 +904,7 @@ final class ItemController extends AbstractController
 
         // Deliberately no auth/voter check here — see the class docblock.
         $itemVersion = $this->itemService->getVersion($id, $version);
-        $this->auditLogger->log(AuditLoggerInterface::ACTION_DOWNLOAD, AuditLoggerInterface::RESOURCE_ITEM, $id, null, $request);
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_DOWNLOAD, AuditLoggerInterface::RESOURCE_ITEM, $id, null, $request, $itemVersion->getItem()->getPouch());
 
         return $this->streamedStorageResponse(
             storageKey: $itemVersion->getStorageKey(),
@@ -939,7 +932,7 @@ final class ItemController extends AbstractController
     {
         $this->assertGranted(ItemVoter::DOWNLOAD);
 
-        $item = $this->itemService->getByIdInCurrentPouch($id);
+        $item = $this->itemService->getById($id);
         $this->accessKeyGuard->assertItemUnlocked($item, $request);
 
         $view = $this->publicSignedUrl('item_public_view', $this->publicViewSignatureResource($id), ['id' => $id]);
@@ -983,7 +976,7 @@ final class ItemController extends AbstractController
         $this->assertValidSignature($request, $this->publicViewSignatureResource($id));
 
         $item = $this->itemService->getById($id);
-        $this->auditLogger->log(AuditLoggerInterface::ACTION_VIEW, AuditLoggerInterface::RESOURCE_ITEM, $id, null, $request);
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_VIEW, AuditLoggerInterface::RESOURCE_ITEM, $id, null, $request, $item->getPouch());
 
         $responseDTO = ItemMapper::toPublicResponseDTO($item);
 
@@ -1191,8 +1184,8 @@ final class ItemController extends AbstractController
 
     /**
      * Shared by list()'s `tags` filter and parseItemCreateRequestDTO()'s
-     * `tags` field (Część 13) — same comma-separated-string-to-normalized-list
-     * parsing either way.
+     * `tags` field — same comma-separated-string-to-normalized-list parsing
+     * either way.
      *
      * @return list<string>
      */

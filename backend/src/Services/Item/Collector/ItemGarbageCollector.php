@@ -10,6 +10,7 @@ use App\Exception\StorageException;
 use App\Repository\GcRunLogRepository;
 use App\Repository\ItemRepository;
 use App\Repository\ItemVersionRepository;
+use App\Repository\PouchRepository;
 use App\Services\Audit\AuditLoggerInterface;
 use App\Services\Storage\StorageServiceInterface;
 use DateInterval;
@@ -30,29 +31,31 @@ class ItemGarbageCollector implements ItemGarbageCollectorInterface
         private readonly ItemRepository $itemRepository,
         private readonly ItemVersionRepository $itemVersionRepository,
         private readonly GcRunLogRepository $gcRunLogRepository,
+        private readonly PouchRepository $pouchRepository,
         private readonly StorageServiceInterface $storageService,
         private readonly AuditLoggerInterface $auditLogger,
         private readonly LoggerInterface $logger,
     ) {}
 
     #[Override]
-    public function run(string $trigger, ?DateTimeImmutable $now = null, ?DateInterval $retention = null): GcRunLog
+    public function run(string $trigger, ?DateTimeImmutable $now = null, ?DateInterval $retention = null, ?int $pouchId = null): GcRunLog
     {
-        $expiredCount = $this->expireOverdueItems($now);
-        $purgedCount = $this->purgeTrash($now, $retention);
+        $expiredCount = $this->expireOverdueItems($now, $pouchId);
+        $purgedCount = $this->purgeTrash($now, $retention, $pouchId);
 
-        $runLog = new GcRunLog(trigger: $trigger, expiredCount: $expiredCount, purgedCount: $purgedCount);
+        $pouch = null !== $pouchId ? $this->pouchRepository->find($pouchId) : null;
+        $runLog = new GcRunLog(trigger: $trigger, expiredCount: $expiredCount, purgedCount: $purgedCount, pouch: $pouch);
         $this->gcRunLogRepository->save($runLog);
 
         return $runLog;
     }
 
     #[Override]
-    public function expireOverdueItems(?DateTimeImmutable $now = null): int
+    public function expireOverdueItems(?DateTimeImmutable $now = null, ?int $pouchId = null): int
     {
         $now ??= new DateTimeImmutable();
 
-        $overdueItems = $this->itemRepository->findOverdueForTrash($now);
+        $overdueItems = $this->itemRepository->findOverdueForTrash($now, $pouchId);
 
         foreach ($overdueItems as $item) {
             $item->trash($now);
@@ -64,13 +67,13 @@ class ItemGarbageCollector implements ItemGarbageCollectorInterface
     }
 
     #[Override]
-    public function purgeTrash(?DateTimeImmutable $now = null, ?DateInterval $retention = null): int
+    public function purgeTrash(?DateTimeImmutable $now = null, ?DateInterval $retention = null, ?int $pouchId = null): int
     {
         $now ??= new DateTimeImmutable();
         $retention ??= new DateInterval(self::DEFAULT_RETENTION);
 
         $trashedBefore = $now->sub($retention);
-        $overdueItems = $this->itemRepository->findOverdueForPurge($trashedBefore);
+        $overdueItems = $this->itemRepository->findOverdueForPurge($trashedBefore, $pouchId);
 
         $purgedCount = 0;
 
@@ -78,6 +81,7 @@ class ItemGarbageCollector implements ItemGarbageCollectorInterface
             // Captured up front: EntityManager::remove() + flush() below leaves
             // $item's identifier inaccessible on the now-removed instance.
             $itemId = $item->getId();
+            $itemPouch = $item->getPouch();
 
             // Part 8: every archived version (see ItemVersion) has its own
             // storage object too, kept around precisely so the version stays
@@ -110,7 +114,7 @@ class ItemGarbageCollector implements ItemGarbageCollectorInterface
             // No $request (this runs from a cron/console command as often as
             // from an admin's manual trigger) and no $user (system-triggered,
             // not any one person's action) — see AuditLoggerInterface.
-            $this->auditLogger->log(AuditLoggerInterface::ACTION_PURGE, AuditLoggerInterface::RESOURCE_ITEM, $itemId, null, null);
+            $this->auditLogger->log(AuditLoggerInterface::ACTION_PURGE, AuditLoggerInterface::RESOURCE_ITEM, $itemId, null, null, $itemPouch);
             ++$purgedCount;
         }
 

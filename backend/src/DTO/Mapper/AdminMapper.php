@@ -24,6 +24,7 @@ final class AdminMapper
             expiredCount: $gcRunLog->getExpiredCount(),
             purgedCount: $gcRunLog->getPurgedCount(),
             runAt: $gcRunLog->getRunAt()->format(DateTimeInterface::ATOM),
+            pouchName: $gcRunLog->getPouch()?->getName(),
         );
     }
 
@@ -48,6 +49,7 @@ final class AdminMapper
             userEmail: $auditLog->getUserEmail(),
             ip: $auditLog->getIp(),
             createdAt: $auditLog->getCreatedAt()->format(DateTimeInterface::ATOM),
+            pouchName: $auditLog->getPouch()?->getName(),
         );
     }
 

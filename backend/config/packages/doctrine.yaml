@@ -22,6 +22,10 @@ doctrine:
                 alias: App
         controller_resolver:
             auto_mapping: false
+        filters:
+            pouch_filter:
+                class: App\Services\Pouch\Filter\PouchFilter
+                enabled: false
 
 when@test:
     doctrine:

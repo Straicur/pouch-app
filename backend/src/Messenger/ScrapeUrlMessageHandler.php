@@ -86,14 +86,11 @@ final readonly class ScrapeUrlMessageHandler
 
     /**
      * A missing/unfetchable/non-image OG thumbnail isn't a scrape failure —
-     * title/description/text are still useful without it.
-     *
-     * Post-review fix: this used to call httpClient->request() directly,
-     * with none of the SSRF protection OpenGraphScraper's own page fetch
-     * has — a page's og:image is exactly as attacker-controlled as the page
-     * itself, so it needs the same treatment (SafeUrlFetcher: DNS-resolved
-     * host check + IP pinning + re-validated on every redirect hop, not just
-     * this first request).
+     * title/description/text are still useful without it. Goes through
+     * SafeUrlFetcher, same as the page fetch itself — a page's og:image is
+     * exactly as attacker-controlled as the page, so it needs the same SSRF
+     * protection (DNS-resolved host check + IP pinning + re-validated on
+     * every redirect hop).
      */
     private function tryDownloadThumbnail(string $imageUrl, int $itemId): ?string
     {

@@ -86,7 +86,7 @@ final readonly class AccessKeyService implements AccessKeyServiceInterface
     #[Override]
     public function setItemKey(int $itemId, ?string $key): Item
     {
-        $item = $this->itemService->getByIdInCurrentPouch($itemId);
+        $item = $this->itemService->getById($itemId);
         $item->setAccessKeyHash(null !== $key ? $this->accessKeyHasher->hash($key) : null);
 
         $this->itemRepository->save($item);
@@ -117,7 +117,7 @@ final readonly class AccessKeyService implements AccessKeyServiceInterface
     {
         $this->accessKeyRateLimiter->consume($request);
 
-        $item = $this->itemService->getByIdInCurrentPouch($itemId);
+        $item = $this->itemService->getById($itemId);
         $itemKeyHash = $item->getAccessKeyHash();
 
         if (null === $itemKeyHash) {

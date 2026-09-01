@@ -5,6 +5,7 @@ import { BackupPage } from "./pages/admin/backup/BackupPage";
 import { ExpiringPage } from "./pages/admin/expiring/ExpiringPage";
 import { GcPage } from "./pages/admin/gc/GcPage";
 import { StoragePage } from "./pages/admin/storage/StoragePage";
+import { UsersPage } from "./pages/admin/users/UsersPage";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { RootLayout } from "./pages/RootLayout";
@@ -13,9 +14,9 @@ import { FavoritesPage } from "./pages/user/favorites/FavoritesPage";
 import { ItemsPage } from "./pages/user/items/ItemsPage";
 import { UserLayout } from "./pages/user/UserLayout";
 
-// Part 11: everything used to sit flat under one router — now nested per
-// area (User / Admin), and within each area, one route per concrete page
-// (UserLayout/AdminLayout own the shared nav, each page owns its own content).
+// Nested per area (User / Admin), and within each area, one route per
+// concrete page (UserLayout/AdminLayout own the shared nav, each page owns
+// its own content).
 export const router = createBrowserRouter([
   {
     element: <RootLayout />,
@@ -42,6 +43,7 @@ export const router = createBrowserRouter([
           { path: "audit-log", element: <AuditLogPage /> },
           { path: "expiring", element: <ExpiringPage /> },
           { path: "backup", element: <BackupPage /> },
+          { path: "users", element: <UsersPage /> },
         ],
       },
     ],

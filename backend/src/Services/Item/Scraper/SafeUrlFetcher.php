@@ -39,20 +39,22 @@ final readonly class SafeUrlFetcher implements SafeUrlFetcherInterface
                 // TOCTOU/DNS-rebinding gap between "we checked" and "we
                 // connected" (see UrlValidator::assertValidAndPin()).
                 //
-                // Post-review fix: keyed by host only, not "host:port" — the
-                // port is derived by the transport itself from the request
-                // URL (see CurlHttpClient's own comment: "curl's resolve
-                // feature varies by host:port but ours varies by host
-                // only"). A "host:port" key here got mangled into
-                // "host:port:port:ip" by cURL and silently mis-resolved (or
-                // fell through to a real DNS lookup) with the Native
-                // transport, defeating the whole point of pinning.
+                // Keyed by host only, not "host:port" — the port is derived
+                // by the transport itself from the request URL (see
+                // CurlHttpClient's own comment: "curl's resolve feature
+                // varies by host:port but ours varies by host only"). A
+                // "host:port" key here silently mis-resolves and defeats the
+                // whole point of pinning.
                 'resolve' => [$pin['host'] => $pin['ip']],
             ]);
 
             $status = $response->getStatusCode();
-            if (300 > $status || 400 <= $status) {
+            if (300 > $status) {
                 return $response;
+            }
+
+            if (400 <= $status) {
+                throw new RuntimeException(sprintf('Fetching "%s" failed with HTTP status %d', $current, $status));
             }
 
             $location = $response->getHeaders(false)['location'][0] ?? null;

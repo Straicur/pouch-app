@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace App\Services\Audit;
 
 use App\Entity\AuditLog;
+use App\Entity\Pouch;
 use App\Entity\User;
 use App\Repository\AuditLogRepository;
 use Override;
@@ -22,7 +23,7 @@ final readonly class AuditLogger implements AuditLoggerInterface
     ) {}
 
     #[Override]
-    public function log(string $action, string $resourceType, int $resourceId, ?User $user, ?Request $request): void
+    public function log(string $action, string $resourceType, int $resourceId, ?User $user, ?Request $request, ?Pouch $pouch = null): void
     {
         try {
             $this->auditLogRepository->save(new AuditLog(
@@ -31,6 +32,7 @@ final readonly class AuditLogger implements AuditLoggerInterface
                 resourceId: $resourceId,
                 user: $user,
                 ip: $request?->getClientIp(),
+                pouch: $pouch,
             ));
         } catch (Throwable $exception) {
             // Never let audit logging itself fail the action it's recording.

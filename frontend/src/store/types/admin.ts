@@ -24,23 +24,28 @@ export interface GcRunLog {
   expiredCount: number;
   purgedCount: number;
   runAt: string;
+  // null dla przebiegu crona (zawsze wszystkie pouche) albo ręcznego bez wybranej pouch.
+  pouchName: string | null;
 }
 
 export interface AuditLogEntry {
   id: number;
   action: "view" | "download" | "delete" | "key_change" | "purge";
-  resourceType: "category" | "item";
+  resourceType: "category" | "item" | "user";
   resourceId: number;
   userId: number | null;
   userEmail: string | null;
   ip: string | null;
   createdAt: string;
+  // null dla akcji bez jednej, wyraźnej "właścicielskiej" pouch.
+  pouchName: string | null;
 }
 
 export interface AuditLogParams {
   limit?: number;
-  resourceType?: "category" | "item";
+  resourceType?: "category" | "item" | "user";
   action?: AuditLogEntry["action"];
+  pouchId?: number | null;
 }
 
 export interface ExtendExpiryRequest {

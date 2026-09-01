@@ -12,6 +12,8 @@ class GcRunLogResponseDTO
         private readonly int $expiredCount,
         private readonly int $purgedCount,
         private readonly string $runAt,
+        // null for a cron sweep (every pouch) or a manual run with no pouch given.
+        private readonly ?string $pouchName,
     ) {}
 
     public function getId(): int
@@ -37,5 +39,10 @@ class GcRunLogResponseDTO
     public function getRunAt(): string
     {
         return $this->runAt;
+    }
+
+    public function getPouchName(): ?string
+    {
+        return $this->pouchName;
     }
 }

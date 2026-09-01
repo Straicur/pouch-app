@@ -38,6 +38,9 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\JoinColumn(name: 'pouch_id', referencedColumnName: 'pouch_id', nullable: false)]
     private Pouch $pouch;
 
+    #[ORM\Column(name: 'enabled', type: Types::BOOLEAN, nullable: false, options: ['default' => true])]
+    private bool $enabled = true;
+
     public function __construct(string $email, string $password, Pouch $pouch)
     {
         $this->email = $email;
@@ -71,6 +74,18 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setPouch(Pouch $pouch): static
     {
         $this->pouch = $pouch;
+
+        return $this;
+    }
+
+    public function isEnabled(): bool
+    {
+        return $this->enabled;
+    }
+
+    public function setEnabled(bool $enabled): static
+    {
+        $this->enabled = $enabled;
 
         return $this;
     }

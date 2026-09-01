@@ -44,6 +44,9 @@ class ItemRepository extends ServiceEntityRepository
         $this->getEntityManager()->flush();
     }
 
+    // Scoped to the current pouch by PouchFilter — both call sites
+    // (ItemService::assertNotDuplicate()/assertNotDuplicateOfAnotherItem())
+    // only ever run for a normal, session-authenticated upload.
     public function findByContentHash(string $contentHash): ?Item
     {
         return $this->findOneBy(['contentHash' => $contentHash, 'trashedAt' => null]);
@@ -114,12 +117,10 @@ class ItemRepository extends ServiceEntityRepository
     }
 
     /**
-     * Post-review fix: paginated counterpart of findFiltered() — that method
-     * stays as-is (unpaginated) for callers that genuinely need the whole
-     * set (CategoryExportService's ZIP walk). GET /api/items used to load
-     * every active item, full note/OCR text included, in one response —
-     * fine for a handful of items, a real problem at any real collection
-     * size (mobile-first, per the product doc).
+     * Paginated counterpart of findFiltered() — that method stays as-is
+     * (unpaginated) for callers that genuinely need the whole set
+     * (CategoryExportService's ZIP walk); a full active-item response is
+     * fine for a handful of items, a real problem at any real collection size.
      *
      * Without free-text search, the DB itself does the LIMIT/OFFSET. With
      * it, ranking needs to see every match before a page can be sliced off
@@ -127,20 +128,17 @@ class ItemRepository extends ServiceEntityRepository
      * slicing happens in PHP there instead, same as findFiltered()'s own
      * re-sort.
      *
-     * $excludedCategoryIds (post-review fix): Part 7 category locks excluded
-     * *after* COUNT/OFFSET/LIMIT used to run — ItemController::list() now
-     * computes what's locked first (AccessKeyGuard::lockedCategoryIds()) and
-     * passes it in here, so the WHERE clause itself never counts or
-     * paginates an item in a locked category. Fetching a page blind to locks
-     * could otherwise come back empty while unlocked items existed on the
-     * next one, and $total leaked how many hidden items existed. An item
-     * locked only by its *own* key (category unlocked) is deliberately
-     * *not* excluded here anymore — it still appears in the page, redacted
-     * to a locked summary by ItemController::list() (Część 13), rather than
-     * disappearing entirely.
+     * $excludedCategoryIds: category locks excluded *before* COUNT/OFFSET/
+     * LIMIT run — ItemController::list() computes what's locked first
+     * (AccessKeyGuard::lockedCategoryIds()) and passes it in here, so a page
+     * can never come back empty while unlocked items exist on the next one,
+     * and $total never counts a hidden item. An item locked only by its
+     * *own* key (category unlocked) is deliberately *not* excluded here — it
+     * still appears in the page, redacted to a locked summary by
+     * ItemController::list(), rather than disappearing entirely.
      *
-     * $pouchId: joins `category` and scopes to one pouch when given (an item
-     * has no pouch column of its own). Optional — omit it to query across pouches.
+     * $pouchId: scopes to one pouch when given. Optional — omit it to query
+     * across pouches.
      *
      * @param list<int> $excludedCategoryIds
      *
@@ -157,8 +155,7 @@ class ItemRepository extends ServiceEntityRepository
             ->where('i.trashedAt IS NULL');
 
         if (null !== $pouchId) {
-            $qb->join('i.category', 'c')
-                ->andWhere('c.pouch = :pouchId')
+            $qb->andWhere('i.pouch = :pouchId')
                 ->setParameter('pouchId', $pouchId);
         }
 
@@ -300,17 +297,21 @@ class ItemRepository extends ServiceEntityRepository
     /**
      * @return list<Item>
      */
-    public function findOverdueForTrash(DateTimeImmutable $now): array
+    public function findOverdueForTrash(DateTimeImmutable $now, ?int $pouchId = null): array
     {
-        /** @var list<Item> $result */
-        $result = $this->createQueryBuilder('i')
+        $qb = $this->createQueryBuilder('i')
             ->where('i.trashedAt IS NULL')
             ->andWhere('i.keepForever = false')
             ->andWhere('i.expiresAt IS NOT NULL')
             ->andWhere('i.expiresAt <= :now')
-            ->setParameter('now', $now)
-            ->getQuery()
-            ->getResult();
+            ->setParameter('now', $now);
+
+        if (null !== $pouchId) {
+            $qb->andWhere('i.pouch = :pouchId')->setParameter('pouchId', $pouchId);
+        }
+
+        /** @var list<Item> $result */
+        $result = $qb->getQuery()->getResult();
 
         return $result;
     }
@@ -318,37 +319,46 @@ class ItemRepository extends ServiceEntityRepository
     /**
      * @return list<Item>
      */
-    public function findOverdueForPurge(DateTimeImmutable $trashedBefore): array
+    public function findOverdueForPurge(DateTimeImmutable $trashedBefore, ?int $pouchId = null): array
     {
-        /** @var list<Item> $result */
-        $result = $this->createQueryBuilder('i')
+        $qb = $this->createQueryBuilder('i')
             ->where('i.trashedAt IS NOT NULL')
             ->andWhere('i.trashedAt <= :trashedBefore')
-            ->setParameter('trashedBefore', $trashedBefore)
-            ->getQuery()
-            ->getResult();
+            ->setParameter('trashedBefore', $trashedBefore);
+
+        if (null !== $pouchId) {
+            $qb->andWhere('i.pouch = :pouchId')->setParameter('pouchId', $pouchId);
+        }
+
+        /** @var list<Item> $result */
+        $result = $qb->getQuery()->getResult();
 
         return $result;
     }
 
     /**
-     * Part 10 storage dashboard: total bytes + item count per type, for
-     * every type that actually carries a $size (URL/NOTE items don't, and
-     * are meaningless as "storage usage") — includes trashed-but-not-yet-
-     * purged items on purpose: their storage object is still sitting in
-     * MinIO/S3 either way, so it's still real usage until GC purges it.
+     * Storage dashboard: total bytes + item count per type, for every type
+     * that actually carries a $size (URL/NOTE items don't, and are
+     * meaningless as "storage usage") — includes trashed-but-not-yet-purged
+     * items on purpose: their storage object is still sitting in MinIO/S3
+     * either way, so it's still real usage until GC purges it. $pouchId
+     * scopes to one pouch when given.
      *
      * @return array<string, array{totalBytes: int, itemCount: int}> keyed by ItemType value
      */
-    public function sumSizeByType(): array
+    public function sumSizeByType(?int $pouchId = null): array
     {
-        /** @var list<array{type: mixed, totalBytes: mixed, itemCount: mixed}> $rows */
-        $rows = $this->createQueryBuilder('i')
+        $qb = $this->createQueryBuilder('i')
             ->select('i.type as type', 'SUM(i.size) as totalBytes', 'COUNT(i.id) as itemCount')
             ->where('i.size IS NOT NULL')
-            ->groupBy('i.type')
-            ->getQuery()
-            ->getArrayResult();
+            ->groupBy('i.type');
+
+        if (null !== $pouchId) {
+            $qb->andWhere('i.pouch = :pouchId')->setParameter('pouchId', $pouchId);
+        }
+
+        /** @var list<array{type: mixed, totalBytes: mixed, itemCount: mixed}> $rows */
+        $rows = $qb->getQuery()->getArrayResult();
 
         $byType = [];
         foreach ($rows as $row) {
@@ -400,25 +410,29 @@ class ItemRepository extends ServiceEntityRepository
     }
 
     /**
-     * Part 10: "lista itemów wygasających w ciągu najbliższych 24h" —
-     * generalized to any window, not just exactly 24h, since the endpoint
-     * itself is the one deciding what "soon" means.
+     * "Lista itemów wygasających w ciągu najbliższych 24h" — generalized to
+     * any window, not just exactly 24h, since the endpoint itself is the one
+     * deciding what "soon" means. $pouchId scopes to one pouch when given.
      *
      * @return list<Item>
      */
-    public function findExpiringBetween(DateTimeImmutable $from, DateTimeImmutable $until): array
+    public function findExpiringBetween(DateTimeImmutable $from, DateTimeImmutable $until, ?int $pouchId = null): array
     {
-        /** @var list<Item> $result */
-        $result = $this->createQueryBuilder('i')
+        $qb = $this->createQueryBuilder('i')
             ->where('i.trashedAt IS NULL')
             ->andWhere('i.keepForever = false')
             ->andWhere('i.expiresAt IS NOT NULL')
             ->andWhere('i.expiresAt BETWEEN :from AND :until')
             ->setParameter('from', $from)
             ->setParameter('until', $until)
-            ->orderBy('i.expiresAt', 'ASC')
-            ->getQuery()
-            ->getResult();
+            ->orderBy('i.expiresAt', 'ASC');
+
+        if (null !== $pouchId) {
+            $qb->andWhere('i.pouch = :pouchId')->setParameter('pouchId', $pouchId);
+        }
+
+        /** @var list<Item> $result */
+        $result = $qb->getQuery()->getResult();
 
         return $result;
     }

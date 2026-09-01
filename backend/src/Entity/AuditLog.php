@@ -40,12 +40,17 @@ class AuditLog
     #[ORM\Column(name: 'created_at', type: Types::DATETIME_IMMUTABLE, nullable: false)]
     private DateTimeImmutable $createdAt;
 
+    #[ORM\ManyToOne(targetEntity: Pouch::class)]
+    #[ORM\JoinColumn(name: 'pouch_id', referencedColumnName: 'pouch_id', nullable: true)]
+    private ?Pouch $pouch;
+
     public function __construct(
         string $action,
         string $resourceType,
         int $resourceId,
         ?User $user,
         ?string $ip,
+        ?Pouch $pouch = null,
     ) {
         $this->action = $action;
         $this->resourceType = $resourceType;
@@ -54,6 +59,7 @@ class AuditLog
         $this->userEmail = $user?->getEmail();
         $this->ip = $ip;
         $this->createdAt = new DateTimeImmutable();
+        $this->pouch = $pouch;
     }
 
     public function getId(): int
@@ -94,5 +100,10 @@ class AuditLog
     public function getCreatedAt(): DateTimeImmutable
     {
         return $this->createdAt;
+    }
+
+    public function getPouch(): ?Pouch
+    {
+        return $this->pouch;
     }
 }

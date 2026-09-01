@@ -39,17 +39,24 @@ class ItemVersionRepository extends ServiceEntityRepository
     }
 
     /**
-     * Part 10 storage dashboard: archived versions occupy real storage too
-     * (that's the whole point of not deleting them — see ItemService::
-     * overwriteFile()), so they count toward total usage even though they're
-     * not reflected in Item::$size for any single item.
+     * Storage dashboard: archived versions occupy real storage too (that's
+     * the whole point of not deleting them — see ItemService::
+     * overwriteFile()), so they count toward total usage even though
+     * they're not reflected in Item::$size for any single item. $pouchId
+     * scopes to one pouch when given (via a join — ItemVersion has no pouch
+     * column of its own, only its Item does).
      */
-    public function sumSize(): int
+    public function sumSize(?int $pouchId = null): int
     {
-        $total = $this->createQueryBuilder('v')
-            ->select('SUM(v.size)')
-            ->getQuery()
-            ->getSingleScalarResult();
+        $qb = $this->createQueryBuilder('v')->select('SUM(v.size)');
+
+        if (null !== $pouchId) {
+            $qb->join('v.item', 'i')
+                ->where('i.pouch = :pouchId')
+                ->setParameter('pouchId', $pouchId);
+        }
+
+        $total = $qb->getQuery()->getSingleScalarResult();
 
         return null !== $total ? (int) $total : 0;
     }

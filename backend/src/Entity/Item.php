@@ -7,17 +7,19 @@ namespace App\Entity;
 use App\Enum\ItemProcessingStatus;
 use App\Enum\ItemType;
 use App\Repository\ItemRepository;
+use App\Services\Pouch\PouchAware;
 use DateTimeImmutable;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use Override;
 
 #[ORM\Entity(repositoryClass: ItemRepository::class)]
 #[ORM\Table(name: 'item')]
 #[ORM\Index(name: 'idx_item_expires_at', fields: ['expiresAt'])]
 #[ORM\Index(name: 'idx_item_trashed_at', fields: ['trashedAt'])]
-class Item
+class Item implements PouchAware
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
@@ -27,6 +29,10 @@ class Item
     #[ORM\ManyToOne(targetEntity: Category::class)]
     #[ORM\JoinColumn(name: 'category_id', referencedColumnName: 'category_id', nullable: false, onDelete: 'CASCADE')]
     private Category $category;
+
+    #[ORM\ManyToOne(targetEntity: Pouch::class)]
+    #[ORM\JoinColumn(name: 'pouch_id', referencedColumnName: 'pouch_id', nullable: false)]
+    private Pouch $pouch;
 
     #[ORM\Column(name: 'type', enumType: ItemType::class)]
     private ItemType $type;
@@ -134,6 +140,7 @@ class Item
         ItemProcessingStatus $processingStatus,
     ) {
         $this->category = $category;
+        $this->pouch = $category->getPouch();
         $this->type = $type;
         $this->name = $name;
         $this->keepForever = $keepForever;
@@ -151,6 +158,12 @@ class Item
     public function getCategory(): Category
     {
         return $this->category;
+    }
+
+    #[Override]
+    public function getPouch(): Pouch
+    {
+        return $this->pouch;
     }
 
     public function getType(): ItemType

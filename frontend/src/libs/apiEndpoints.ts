@@ -33,6 +33,14 @@ export const ApiEndpoints = {
   ADMIN_ITEMS_EXPIRING_SOON: "/api/admin/items/expiring-soon",
   ADMIN_ITEMS_EXTEND: "/api/admin/items/extend",
   ADMIN_BACKUP: "/api/admin/backup",
+  ADMIN_USERS: "/api/admin/users",
+  ADMIN_USER: (id: number) => `/api/admin/users/${id}`,
+  ADMIN_USER_ROLE: (id: number) => `/api/admin/users/${id}/role`,
+  ADMIN_USER_ENABLED: (id: number) => `/api/admin/users/${id}/enabled`,
+  ADMIN_USER_RESET_PASSWORD: (id: number) => `/api/admin/users/${id}/reset-password`,
+  ADMIN_POUCHES: "/api/admin/pouches",
+  ADMIN_ITEMS: "/api/admin/items",
+  ADMIN_ITEM: (id: number) => `/api/admin/items/${id}`,
 } as const;
 
 // A 401 here must not trigger a refresh-and-retry (wrong credentials / dead refresh token).

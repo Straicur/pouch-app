@@ -45,9 +45,9 @@ class CategoryExportService implements CategoryExportServiceInterface
     }
 
     #[Override]
-    public function buildFullBackupZip(Request $request): string
+    public function buildFullBackupZip(Request $request, ?int $pouchId = null): string
     {
-        return $this->buildZipFromRoots($this->categoryRepository->findRootCategories(), $request, bypassLocks: true);
+        return $this->buildZipFromRoots($this->categoryRepository->findRootCategories($pouchId), $request, bypassLocks: true);
     }
 
     /**

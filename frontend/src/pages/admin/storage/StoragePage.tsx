@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toastUtil } from "../../../libs/toastUtil";
+import { usePouchFilter } from "../../../modules/admin/pouchFilter";
+import { AdminItemBrowser } from "../../../modules/admin/storage/AdminItemBrowser";
 import { useGetStorageReportQuery, useSetStorageLimitMutation } from "../../../store/api/adminApi";
 import { Button } from "../../../ui/catalyst/button";
 import { Input } from "../../../ui/catalyst/form/input";
@@ -11,13 +13,15 @@ const formatSize = (bytes: number): string => {
   return bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-// Part 10: "podgląd zużycia (per typ), globalne limity wagowe". Tylko
-// agregaty — celowo brak tu listy/usuwania pojedynczych plików, bo backend
-// nie ma jeszcze endpointu do tego (zarządzanie pojedynczymi itemami jako
-// admin, patrz ROADMAP.md "Wielu użytkowników / zarządzanie kontami").
+// "Podgląd zużycia (per typ), globalne limity wagowe" — usage narrows to the
+// PouchSwitcher's selected pouch (null = every pouch); limits are always
+// system-wide (one config, not per pouch — see AdminController::storage()'s
+// own docblock). "Zarządzanie itemami/plikami per pouch" (AdminItemBrowser)
+// only renders once a specific pouch is picked — it has no "every pouch" mode.
 export function StoragePage() {
   const { t } = useTranslation();
-  const { data: report } = useGetStorageReportQuery();
+  const { pouchId } = usePouchFilter();
+  const { data: report } = useGetStorageReportQuery(pouchId);
   const [setStorageLimit, { isLoading: isSavingLimit }] = useSetStorageLimitMutation();
   const [limitEdits, setLimitEdits] = useState<Record<string, string>>({});
 
@@ -85,6 +89,12 @@ export function StoragePage() {
           </li>
         ))}
       </ul>
+
+      {null !== pouchId ? (
+        <AdminItemBrowser pouchId={pouchId} />
+      ) : (
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">{t("admin.items.selectPouchHint")}</p>
+      )}
     </section>
   );
 }

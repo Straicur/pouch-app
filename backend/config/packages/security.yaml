@@ -32,6 +32,7 @@ security:
             lazy: true
             stateless: true
             provider: app_user_provider
+            user_checker: App\Security\AppUserChecker
             entry_point: jwt
             refresh_jwt:
                 check_path: /api/auth/token/refresh

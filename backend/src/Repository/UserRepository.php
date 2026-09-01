@@ -45,6 +45,12 @@ class UserRepository extends ServiceEntityRepository implements PasswordUpgrader
         $this->getEntityManager()->flush();
     }
 
+    public function remove(User $user): void
+    {
+        $this->getEntityManager()->remove($user);
+        $this->getEntityManager()->flush();
+    }
+
     public function findUserByEmail(string $email): ?User
     {
         return $this->findOneBy(
@@ -52,5 +58,19 @@ class UserRepository extends ServiceEntityRepository implements PasswordUpgrader
                 'email' => $email,
             ]
         );
+    }
+
+    /**
+     * @return list<User>
+     */
+    public function findAllOrderedByEmail(): array
+    {
+        /** @var list<User> $result */
+        $result = $this->createQueryBuilder('u')
+            ->orderBy('u.email', 'ASC')
+            ->getQuery()
+            ->getResult();
+
+        return $result;
     }
 }

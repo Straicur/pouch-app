@@ -11,10 +11,9 @@ use Symfony\Contracts\HttpClient\ResponseStreamInterface;
 
 /**
  * The one place any outbound fetch of a user/page-supplied URL goes through
- * — OpenGraphScraper (the page itself) and ScrapeUrlMessageHandler (the OG
- * image) both used to make their own httpClient->request() calls directly,
- * which is how the OG-image download ended up with none of the SSRF
- * protection the page fetch got (post-review fix).
+ * — both OpenGraphScraper (the page itself) and ScrapeUrlMessageHandler (the
+ * OG image) go through this, so neither can end up with weaker SSRF
+ * protection than the other.
  */
 interface SafeUrlFetcherInterface
 {
@@ -30,7 +29,7 @@ interface SafeUrlFetcherInterface
      * @param array<string, mixed> $options merged into every hop's request options — `max_redirects` and `resolve` are always overridden
      *
      * @throws BadRequestException if $url or any redirect target isn't safe to fetch
-     * @throws RuntimeException    on too many redirects
+     * @throws RuntimeException    on too many redirects, or a final response with HTTP status >= 400
      */
     public function fetch(string $url, array $options = []): ResponseInterface;
 

@@ -129,10 +129,9 @@ function DownloadButton({ item }: DownloadButtonProps) {
   const handleDownload = async () => {
     try {
       const link = await getDownloadLink(item.id).unwrap();
-      // Post-review fix: window.open("", "_blank", "noreferrer") never
-      // actually worked ("noreferrer" implies "noopener", which makes
-      // window.open()'s return value always null) — same-tab navigation
-      // instead, the signed URL responds with Content-Disposition: attachment.
+      // Same-tab navigation, not window.open() — the signed URL responds
+      // with Content-Disposition: attachment, so this still downloads
+      // rather than navigating away.
       window.location.assign(link.url);
     } catch {
       toastUtil.showToast(t("items.downloadError"), "error");
@@ -151,8 +150,6 @@ interface DeleteButtonProps {
   onDeleted: () => void;
 }
 
-// Część 14 — backend miał DELETE /api/items/{id} (przenosi do kosza, patrz
-// ItemGarbageCollector) od dawna, front nigdy nie miał do tego przycisku.
 // Za ConfirmDialogiem — usunięcie itemu jest łatwe do przypadkowego kliknięcia.
 function DeleteButton({ item, onDeleted }: DeleteButtonProps) {
   const { t } = useTranslation();
@@ -187,12 +184,12 @@ function DeleteButton({ item, onDeleted }: DeleteButtonProps) {
   );
 }
 
-// Część 13: jeden modal ze wszystkimi detalami, otwierany kliknięciem karty
-// (ItemCard) — wszystko poniżej pojawia się od razu, bez dodatkowego
-// klikania (poza samą edycją treści/tagów, co jest osobną, świadomą akcją).
+// Jeden modal ze wszystkimi detalami, otwierany kliknięciem karty (ItemCard)
+// — wszystko poniżej pojawia się od razu, bez dodatkowego klikania (poza
+// samą edycją treści/tagów, co jest osobną, świadomą akcją).
 export function ItemDetailsModal({ itemId, open, onClose }: ItemDetailsModalProps) {
   const { t } = useTranslation();
-  const { data: item } = useGetItemQuery(itemId, { skip: !open });
+  const { data: item, error, refetch } = useGetItemQuery(itemId, { skip: !open });
   const { data: categories } = useListCategoriesQuery();
   const [unlockItem] = useUnlockItemMutation();
   const [setItemKey] = useSetItemKeyMutation();
@@ -203,7 +200,21 @@ export function ItemDetailsModal({ itemId, open, onClose }: ItemDetailsModalProp
 
   return (
     <Dialog open={open} onClose={onClose}>
-      {undefined === item ? (
+      {undefined !== error ? (
+        <DialogBody>
+          <div className="flex flex-col items-start gap-3 py-6">
+            <ErrorMessage>{t("items.detailsLoadError")}</ErrorMessage>
+            <div className="flex gap-2">
+              <Button size="small" variant="outline" onClick={() => void refetch()}>
+                {t("common.retry")}
+              </Button>
+              <Button size="small" variant="outline" onClick={onClose}>
+                {t("common.close")}
+              </Button>
+            </div>
+          </div>
+        </DialogBody>
+      ) : undefined === item ? (
         <DialogBody>
           <LoadingIndicator className="py-6" />
         </DialogBody>

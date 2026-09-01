@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toastUtil } from "../../../libs/toastUtil";
+import { usePouchFilter } from "../../../modules/admin/pouchFilter";
 import { ConfirmDialog } from "../../../modules/shared/view/ConfirmDialog";
 import { useExtendExpiryMutation, useListExpiringSoonQuery } from "../../../store/api/adminApi";
 import { Button } from "../../../ui/catalyst/button";
@@ -8,14 +9,14 @@ import { Checkbox } from "../../../ui/catalyst/form/checkbox";
 import { Heading } from "../../../ui/catalyst/heading";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../ui/catalyst/table";
 
-// Part 10: "lista itemów wygasających w ciągu najbliższych 24h + masowe przedłużenie".
-// Część 14 post-review fix: gołe <ul><li><label><input></label></ul> wyglądało
-// niechlujnie — teraz Catalyst Table + Checkbox. Przycisk przedłużenia
-// przeniesiony pod listę (nie tuż pod nagłówkiem) i potwierdzany modalem —
-// masowe przedłużenie wielu itemów naraz to łatwa pomyłka do cofnięcia.
+// "Lista itemów wygasających w ciągu najbliższych 24h + masowe przedłużenie",
+// zawężone do PouchSwitchera wybranej pouch. Przycisk przedłużenia pod listą
+// (nie tuż pod nagłówkiem) i potwierdzany modalem — masowe przedłużenie
+// wielu itemów naraz to łatwa pomyłka do cofnięcia.
 export function ExpiringPage() {
   const { t } = useTranslation();
-  const { data: items } = useListExpiringSoonQuery(24);
+  const { pouchId } = usePouchFilter();
+  const { data: items } = useListExpiringSoonQuery({ withinHours: 24, pouchId });
   const [extendExpiry, { isLoading }] = useExtendExpiryMutation();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);

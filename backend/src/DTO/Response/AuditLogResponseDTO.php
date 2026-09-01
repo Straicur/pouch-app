@@ -15,6 +15,9 @@ class AuditLogResponseDTO
         private readonly ?string $userEmail,
         private readonly ?string $ip,
         private readonly string $createdAt,
+        // null for an action with no single owning pouch (rare — every
+        // resourceType has one today; kept nullable for whatever doesn't, later).
+        private readonly ?string $pouchName,
     ) {}
 
     public function getId(): int
@@ -55,5 +58,10 @@ class AuditLogResponseDTO
     public function getCreatedAt(): string
     {
         return $this->createdAt;
+    }
+
+    public function getPouchName(): ?string
+    {
+        return $this->pouchName;
     }
 }

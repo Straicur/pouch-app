@@ -36,6 +36,12 @@ class TagRepository extends ServiceEntityRepository
      * Making Tag the root and using MEMBER OF in a WHERE EXISTS sidesteps
      * that restriction rather than selecting `i, t` and discarding `i`.
      *
+     * A tag is a `Tag` row shared by name across the whole `item_tag`
+     * table — "in use" only counts an item belonging to the current pouch,
+     * scoped automatically by PouchFilter on the `Item` subquery below (it
+     * applies to every entity reference in a query, including a subquery's),
+     * so this never reveals another pouch's tag names.
+     *
      * @return list<Tag>
      */
     public function findAllOrderedByName(): array

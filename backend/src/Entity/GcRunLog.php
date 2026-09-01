@@ -34,12 +34,17 @@ class GcRunLog
     #[ORM\Column(name: 'run_at', type: Types::DATETIME_IMMUTABLE, nullable: false)]
     private DateTimeImmutable $runAt;
 
-    public function __construct(string $trigger, int $expiredCount, int $purgedCount)
+    #[ORM\ManyToOne(targetEntity: Pouch::class)]
+    #[ORM\JoinColumn(name: 'pouch_id', referencedColumnName: 'pouch_id', nullable: true)]
+    private ?Pouch $pouch;
+
+    public function __construct(string $trigger, int $expiredCount, int $purgedCount, ?Pouch $pouch = null)
     {
         $this->trigger = $trigger;
         $this->expiredCount = $expiredCount;
         $this->purgedCount = $purgedCount;
         $this->runAt = new DateTimeImmutable();
+        $this->pouch = $pouch;
     }
 
     public function getId(): int
@@ -65,5 +70,10 @@ class GcRunLog
     public function getRunAt(): DateTimeImmutable
     {
         return $this->runAt;
+    }
+
+    public function getPouch(): ?Pouch
+    {
+        return $this->pouch;
     }
 }

@@ -31,12 +31,12 @@ final readonly class AuthService implements AuthServiceInterface
             throw new UnauthorizedException();
         }
 
-        // Post-review fix: used to call password_verify() directly — this
-        // goes through the same password_hashers config (security.yaml)
-        // everything else keyed on PasswordAuthenticatedUserInterface does,
-        // instead of assuming plain bcrypt.
         if (false === $this->passwordHasher->isPasswordValid($user, $password)) {
             throw new UnauthorizedException();
+        }
+
+        if (false === $user->isEnabled()) {
+            throw new UnauthorizedException(message: 'auth.account_disabled');
         }
 
         return $user;

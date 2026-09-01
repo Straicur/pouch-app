@@ -88,17 +88,19 @@ final class AccessKeyController extends AbstractController
     {
         $user = $this->assertGranted(CategoryVoter::MANAGE_KEY);
 
+        $category = $this->categoryService->getById($id);
+
         // Part 10: "Reset klucza dostępu" — changing/removing a key that's
         // already protecting this category (own or inherited) requires
         // proving you know it first, same as actually unlocking it, *unless*
         // you're ROLE_ADMIN — that bypass is the whole point of a reset.
         if (false === $this->isGranted('ROLE_ADMIN')) {
-            $this->accessKeyGuard->assertCategoryUnlocked($this->categoryService->getById($id), $request);
+            $this->accessKeyGuard->assertCategoryUnlocked($category, $request);
         }
 
         $setRequestDTO = $this->requestService->getRequestBodyContent($request, AccessKeySetRequestDTO::class);
         $this->accessKeyService->setCategoryKey(categoryId: $id, key: $setRequestDTO->getKey());
-        $this->auditLogger->log(AuditLoggerInterface::ACTION_KEY_CHANGE, AuditLoggerInterface::RESOURCE_CATEGORY, $id, $user, $request);
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_KEY_CHANGE, AuditLoggerInterface::RESOURCE_CATEGORY, $id, $user, $request, $category->getPouch());
 
         return new Response(status: Response::HTTP_NO_CONTENT);
     }
@@ -152,15 +154,17 @@ final class AccessKeyController extends AbstractController
     {
         $user = $this->assertGranted(ItemVoter::MANAGE_KEY);
 
+        $item = $this->itemService->getById($id);
+
         // Part 10: same "Reset klucza dostępu" rule as setCategoryKey() —
         // an item's *own* key only (not its category's, unrelated here).
-        if (false === $this->isGranted('ROLE_ADMIN') && false === $this->accessKeyGuard->isItemOwnKeyUnlocked($this->itemService->getByIdInCurrentPouch($id), $request)) {
+        if (false === $this->isGranted('ROLE_ADMIN') && false === $this->accessKeyGuard->isItemOwnKeyUnlocked($item, $request)) {
             throw new ForbiddenException(message: 'item.locked');
         }
 
         $setRequestDTO = $this->requestService->getRequestBodyContent($request, AccessKeySetRequestDTO::class);
         $this->accessKeyService->setItemKey(itemId: $id, key: $setRequestDTO->getKey());
-        $this->auditLogger->log(AuditLoggerInterface::ACTION_KEY_CHANGE, AuditLoggerInterface::RESOURCE_ITEM, $id, $user, $request);
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_KEY_CHANGE, AuditLoggerInterface::RESOURCE_ITEM, $id, $user, $request, $item->getPouch());
 
         return new Response(status: Response::HTTP_NO_CONTENT);
     }

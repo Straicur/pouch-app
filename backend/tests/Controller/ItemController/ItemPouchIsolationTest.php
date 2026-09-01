@@ -111,4 +111,88 @@ class ItemPouchIsolationTest extends WebTest
         self::assertResponseStatusCodeSame(Response::HTTP_NOT_FOUND);
         $this->responseTool->testNotFoundRequestResponseData($this->webClient);
     }
+
+    /**
+     * ItemService's mutating methods (updateNoteContent/delete/setFavorite/
+     * replaceTags/overwriteFile) all go through getById() internally, scoped
+     * to the current pouch by PouchFilter for a normal session request.
+     */
+    public function testMutatingAnotherPouchsItemReturnsNotFound(): void
+    {
+        $itemBId = $this->createNoteAs($this->userB, $this->categoryB, 'B note');
+
+        $this->authAs($this->userA);
+
+        $this->webClient->request(
+            method: Request::METHOD_PATCH,
+            uri: sprintf('/api/items/%d/note', $itemBId),
+            content: json_encode(['content' => 'sneaky edit']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_NOT_FOUND);
+
+        $this->webClient->request(method: Request::METHOD_PUT, uri: sprintf('/api/items/%d/favorite', $itemBId));
+        self::assertResponseStatusCodeSame(Response::HTTP_NOT_FOUND);
+
+        $this->webClient->request(method: Request::METHOD_DELETE, uri: sprintf('/api/items/%d', $itemBId));
+        self::assertResponseStatusCodeSame(Response::HTTP_NOT_FOUND);
+    }
+
+    /**
+     * Content-hash dedup used to be checked (and DB-uniquely enforced)
+     * globally — two pouches could not independently hold the same file, and
+     * a 409 conflict response leaked the conflicting item's id/name from a
+     * pouch the caller has no access to.
+     */
+    public function testTwoPouchesCanIndependentlyUploadIdenticalContent(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'pouch-isolation-test-');
+        file_put_contents($path, 'identical content');
+
+        $this->authAs($this->userA);
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/files',
+            parameters: ['categoryId' => (string) $this->categoryA->getId()],
+            files: ['file' => new UploadedFile($path, 'shared.txt', 'text/plain', null, true)],
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+
+        $this->authAs($this->userB);
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/files',
+            parameters: ['categoryId' => (string) $this->categoryB->getId()],
+            files: ['file' => new UploadedFile($path, 'shared.txt', 'text/plain', null, true)],
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+    }
+
+    /**
+     * TagRepository::findAllOrderedByName() used to list every tag attached
+     * to any active item system-wide — GET /api/tags leaked another pouch's
+     * tag names to any logged-in user.
+     */
+    public function testTagListDoesNotIncludeAnotherPouchsTags(): void
+    {
+        $this->authAs($this->userA);
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/notes',
+            content: json_encode(['categoryId' => $this->categoryA->getId(), 'content' => 'A note', 'tags' => ['pouch-a-tag']]),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+
+        $this->authAs($this->userB);
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/notes',
+            content: json_encode(['categoryId' => $this->categoryB->getId(), 'content' => 'B note', 'tags' => ['pouch-b-tag']]),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+
+        $this->webClient->request(method: Request::METHOD_GET, uri: '/api/tags');
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+        $tags = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        self::assertSame(['pouch-b-tag'], $tags);
+    }
 }

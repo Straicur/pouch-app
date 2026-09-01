@@ -143,10 +143,8 @@ class AppFixtures extends Fixture implements FixtureGroupInterface
         return ['default'];
     }
 
-    // Post-review fix: used App\Util\PasswordHasher (a thin password_hash()
-    // wrapper) — this goes through the real password_hashers config
-    // (security.yaml) via Symfony's own hasher instead, same as every other
-    // User password in the app now does (see AuthService).
+    // Goes through the real password_hashers config (security.yaml) via
+    // Symfony's own hasher, same as every other User password in the app.
     private function createUser(string $email, #[SensitiveParameter] string $plainPassword, Pouch $pouch): User
     {
         $user = new User($email, '', $pouch);

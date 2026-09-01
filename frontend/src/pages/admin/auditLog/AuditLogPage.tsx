@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { usePouchFilter } from "../../../modules/admin/pouchFilter";
 import { useListAuditLogQuery } from "../../../store/api/adminApi";
 import { Heading } from "../../../ui/catalyst/heading";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../ui/catalyst/table";
@@ -11,10 +12,12 @@ const auditActionLabelKey = (action: string): string => {
   return "key_change" === action ? "keyChange" : action;
 };
 
-// Part 10: "kto/kiedy/skąd (IP) podejrzał/pobrał/usunął/zmienił klucz".
+// "Kto/kiedy/skąd (IP) podejrzał/pobrał/usunął/zmienił klucz", zawężone do
+// PouchSwitchera wybranej pouch.
 export function AuditLogPage() {
   const { t } = useTranslation();
-  const { data: entries } = useListAuditLogQuery({ limit: 50 });
+  const { pouchId } = usePouchFilter();
+  const { data: entries } = useListAuditLogQuery({ limit: 50, pouchId });
 
   return (
     <section className="flex flex-col gap-4">
@@ -25,6 +28,7 @@ export function AuditLogPage() {
             <TableHeader>{t("admin.auditLog.when")}</TableHeader>
             <TableHeader>{t("admin.auditLog.action")}</TableHeader>
             <TableHeader>{t("admin.auditLog.resource")}</TableHeader>
+            <TableHeader>{t("admin.auditLog.pouch")}</TableHeader>
             <TableHeader>{t("admin.auditLog.user")}</TableHeader>
             <TableHeader>{t("admin.auditLog.ip")}</TableHeader>
           </TableRow>
@@ -37,6 +41,7 @@ export function AuditLogPage() {
               <TableCell>
                 {t(`admin.auditLog.resourceLabel.${entry.resourceType}`)} #{entry.resourceId}
               </TableCell>
+              <TableCell>{entry.pouchName ?? "—"}</TableCell>
               <TableCell>{entry.userEmail ?? t("admin.auditLog.systemUser")}</TableCell>
               <TableCell>{entry.ip ?? "—"}</TableCell>
             </TableRow>

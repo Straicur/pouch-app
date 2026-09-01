@@ -27,7 +27,7 @@ class AuditLogRepository extends ServiceEntityRepository
     /**
      * @return list<AuditLog> newest first
      */
-    public function findLatest(int $limit, ?string $resourceType, ?string $action): array
+    public function findLatest(int $limit, ?string $resourceType, ?string $action, ?int $pouchId = null): array
     {
         $qb = $this->createQueryBuilder('a')->orderBy('a.createdAt', 'DESC')->setMaxResults($limit);
 
@@ -37,6 +37,10 @@ class AuditLogRepository extends ServiceEntityRepository
 
         if (null !== $action) {
             $qb->andWhere('a.action = :action')->setParameter('action', $action);
+        }
+
+        if (null !== $pouchId) {
+            $qb->andWhere('a.pouch = :pouchId')->setParameter('pouchId', $pouchId);
         }
 
         /** @var list<AuditLog> $result */

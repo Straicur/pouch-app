@@ -1,18 +1,22 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiEndpoints } from "../../../libs/apiEndpoints";
+import { usePouchFilter } from "../../../modules/admin/pouchFilter";
 import { ConfirmDialog } from "../../../modules/shared/view/ConfirmDialog";
 import { Button } from "../../../ui/catalyst/button";
 import { Heading } from "../../../ui/catalyst/heading";
 import { triggerDownload } from "../../../utils/triggerDownload";
 
-// Part 10: "eksport/backup całości jako ZIP".
+// "Eksport/backup całości jako ZIP", zawężone do PouchSwitchera wybranej
+// pouch (pominięte pouchId = backup wszystkiego, tak jak wcześniej).
 export function BackupPage() {
   const { t } = useTranslation();
+  const { pouchId } = usePouchFilter();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
   const handleBackup = () => {
-    triggerDownload(ApiEndpoints.ADMIN_BACKUP);
+    const url = null !== pouchId ? `${ApiEndpoints.ADMIN_BACKUP}?pouchId=${pouchId}` : ApiEndpoints.ADMIN_BACKUP;
+    triggerDownload(url);
     setIsConfirmOpen(false);
   };
 

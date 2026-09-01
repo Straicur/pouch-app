@@ -12,9 +12,11 @@ use App\DTO\Request\AdminExtendExpiryRequestDTO;
 use App\DTO\Request\StorageLimitSetRequestDTO;
 use App\DTO\Response\AuditLogResponseDTO;
 use App\DTO\Response\GcRunLogResponseDTO;
+use App\DTO\Response\ItemListResponseDTO;
 use App\DTO\Response\ItemResponseDTO;
 use App\DTO\Response\StorageReportResponseDTO;
 use App\Entity\GcRunLog;
+use App\Entity\User;
 use App\Enum\ItemType;
 use App\Enum\TtlPreset;
 use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadRequestException;
@@ -32,11 +34,13 @@ use App\Repository\GcRunLogRepository;
 use App\Repository\ItemRepository;
 use App\Repository\ItemVersionRepository;
 use App\Security\AuthorizationServiceInterface;
+use App\Services\Audit\AuditLoggerInterface;
 use App\Services\Category\CategoryExportServiceInterface;
 use App\Services\Item\Collector\ItemGarbageCollectorInterface;
 use App\Services\Item\ItemServiceInterface;
 use App\Services\Item\StorageLimitServiceInterface;
 use App\Services\Item\ValueObject\ItemLifecycleOptions;
+use App\Services\Item\ValueObject\ItemListFilter;
 use App\Services\Request\RequestServiceInterface;
 use DateInterval;
 use DateTimeImmutable;
@@ -52,13 +56,15 @@ use Symfony\Component\Serializer\Encoder\JsonEncoder;
 use Symfony\Component\Serializer\Exception\ExceptionInterface as SerializerExceptionInterface;
 use Symfony\Component\Serializer\SerializerInterface;
 
+use function array_map;
 use function in_array;
+use function is_numeric;
 use function is_string;
 use function max;
 use function min;
 
 /**
- * Part 10. Every action is ROLE_ADMIN-only — a flat role check via
+ * Every action is ROLE_ADMIN-only — a flat role check via
  * isGranted('ROLE_ADMIN'), not a dedicated Voter, since there's no per-resource
  * nuance here the way CategoryVoter/ItemVoter have (nothing here is ever "yours"
  * vs. "someone else's"). "Dodawanie kategorii" and "usuwanie cudzych itemów"
@@ -66,6 +72,11 @@ use function min;
  * work today (POST /api/categories is ROLE_USER+, and ItemVoter::DELETE has
  * never been ownership-restricted — see ItemVoter's docblock); "Reset klucza
  * dostępu" is AccessKeyController's admin bypass, not a route of its own.
+ *
+ * `?pouchId=` (nullablePouchId()) narrows storage/gc/audit-log/expiring/
+ * backup/items to one pouch at a time — an admin picks a pouch on the
+ * frontend and every section here scopes to it; omitting it means "every
+ * pouch", which every one of these endpoints still defaults to.
  */
 #[OA\Response(response: 401, description: 'User not authorized', content: new Model(type: UnauthorizedExceptionModel::class))]
 #[OA\Response(response: 403, description: 'Forbidden — admin only', content: new Model(type: ForbiddenExceptionModel::class))]
@@ -85,6 +96,7 @@ final class AdminController extends AbstractController
         private readonly ItemGarbageCollectorInterface $itemGarbageCollector,
         private readonly ItemServiceInterface $itemService,
         private readonly CategoryExportServiceInterface $categoryExportService,
+        private readonly AuditLoggerInterface $auditLogger,
         private readonly SerializerInterface $serializer,
         private readonly StreamedFileResponseFactoryInterface $streamedFileResponseFactory,
     ) {}
@@ -97,16 +109,19 @@ final class AdminController extends AbstractController
     #[Route('/api/admin/storage', name: 'admin_storage', methods: [Request::METHOD_GET])]
     #[OA\Get(
         description: 'Storage usage per item type, plus archived-version bytes and the current per-type upload '
-            . 'size limits (product doc: "podgląd zużycia" + "globalne limity wagowe")',
+            . 'size limits (product doc: "podgląd zużycia" + "globalne limity wagowe"). Limits are always '
+            . 'system-wide (a single global config, not per pouch); usage narrows to one pouch when pouchId is given.',
+        parameters: [new OA\Parameter(name: 'pouchId', in: 'query', required: false, schema: new OA\Schema(type: 'integer'))],
         responses: [new OA\Response(response: 200, description: 'Success', content: new Model(type: StorageReportResponseDTO::class))],
     )]
-    public function storage(): Response
+    public function storage(Request $request): Response
     {
         $this->assertAdmin();
 
+        $pouchId = $this->nullablePouchId($request);
         $responseDTO = new StorageReportResponseDTO(
-            byType: AdminMapper::toStorageUsageResponseDTOList($this->itemRepository->sumSizeByType()),
-            archivedVersionsBytes: $this->itemVersionRepository->sumSize(),
+            byType: AdminMapper::toStorageUsageResponseDTOList($this->itemRepository->sumSizeByType($pouchId)),
+            archivedVersionsBytes: $this->itemVersionRepository->sumSize($pouchId),
             limits: AdminMapper::toStorageLimitResponseDTOList($this->storageLimitService->getAllMaxSizeBytes()),
         );
 
@@ -149,14 +164,16 @@ final class AdminController extends AbstractController
      */
     #[Route('/api/admin/gc/run', name: 'admin_gc_run', methods: [Request::METHOD_POST])]
     #[OA\Post(
-        description: '"Run Garbage Collection Now" — the exact same two phases the `app:item:gc` cron runs',
+        description: '"Run Garbage Collection Now" — the exact same two phases the `app:item:gc` cron runs, '
+            . 'narrowed to one pouch when pouchId is given (omit it to sweep every pouch, same as the cron).',
+        parameters: [new OA\Parameter(name: 'pouchId', in: 'query', required: false, schema: new OA\Schema(type: 'integer'))],
         responses: [new OA\Response(response: 200, description: 'Success', content: new Model(type: GcRunLogResponseDTO::class))],
     )]
-    public function runGc(): Response
+    public function runGc(Request $request): Response
     {
         $this->assertAdmin();
 
-        $runLog = $this->itemGarbageCollector->run(trigger: GcRunLog::TRIGGER_MANUAL);
+        $runLog = $this->itemGarbageCollector->run(trigger: GcRunLog::TRIGGER_MANUAL, pouchId: $this->nullablePouchId($request));
         $responseDTO = AdminMapper::toGcRunLogResponseDTO($runLog);
 
         return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
@@ -170,8 +187,12 @@ final class AdminController extends AbstractController
     #[Route('/api/admin/gc/runs', name: 'admin_gc_runs', methods: [Request::METHOD_GET])]
     #[OA\Get(
         description: 'GC run history (newest first) — "podgląd automatycznego czyszczenia"; which items each run '
-            . 'actually purged is in the audit log instead (action=purge)',
-        parameters: [new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 50))],
+            . 'actually purged is in the audit log instead (action=purge). pouchId shows only manual runs scoped '
+            . "to that pouch — a cron sweep's own row never matches one (see GcRunLogRepository::findLatest()).",
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 50)),
+            new OA\Parameter(name: 'pouchId', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
+        ],
         responses: [
             new OA\Response(
                 response: 200,
@@ -185,7 +206,7 @@ final class AdminController extends AbstractController
         $this->assertAdmin();
 
         $limit = $this->clampLimit($request, default: 50, max: 200);
-        $responseDTO = AdminMapper::toGcRunLogResponseDTOList($this->gcRunLogRepository->findLatest($limit));
+        $responseDTO = AdminMapper::toGcRunLogResponseDTOList($this->gcRunLogRepository->findLatest($limit, $this->nullablePouchId($request)));
 
         return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
     }
@@ -201,8 +222,9 @@ final class AdminController extends AbstractController
             . 'klucz". See AuditLoggerInterface for exactly which actions are recorded.',
         parameters: [
             new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 50)),
-            new OA\Parameter(name: 'resourceType', in: 'query', required: false, schema: new OA\Schema(type: 'string', enum: ['category', 'item'])),
+            new OA\Parameter(name: 'resourceType', in: 'query', required: false, schema: new OA\Schema(type: 'string', enum: ['category', 'item', 'user'])),
             new OA\Parameter(name: 'action', in: 'query', required: false, schema: new OA\Schema(type: 'string', enum: ['view', 'download', 'delete', 'key_change', 'purge'])),
+            new OA\Parameter(name: 'pouchId', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
         ],
         responses: [
             new OA\Response(
@@ -224,6 +246,7 @@ final class AdminController extends AbstractController
             $limit,
             is_string($resourceType) ? $resourceType : null,
             is_string($action) ? $action : null,
+            $this->nullablePouchId($request),
         );
         $responseDTO = AdminMapper::toAuditLogResponseDTOList($entries);
 
@@ -238,7 +261,10 @@ final class AdminController extends AbstractController
     #[Route('/api/admin/items/expiring-soon', name: 'admin_items_expiring_soon', methods: [Request::METHOD_GET])]
     #[OA\Get(
         description: '"Lista itemów wygasających w ciągu najbliższych 24h" — the window is configurable, default 24h',
-        parameters: [new OA\Parameter(name: 'withinHours', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 24))],
+        parameters: [
+            new OA\Parameter(name: 'withinHours', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 24)),
+            new OA\Parameter(name: 'pouchId', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
+        ],
         responses: [
             new OA\Response(
                 response: 200,
@@ -255,7 +281,7 @@ final class AdminController extends AbstractController
         $now = new DateTimeImmutable();
         $until = $now->add(new DateInterval('PT' . $withinHours . 'H'));
 
-        $responseDTO = ItemMapper::toResponseDTOList($this->itemService->findExpiringBetween($now, $until));
+        $responseDTO = ItemMapper::toResponseDTOList($this->itemService->findExpiringBetween($now, $until, $this->nullablePouchId($request)));
 
         return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
     }
@@ -306,18 +332,88 @@ final class AdminController extends AbstractController
     /**
      * @throws UnauthorizedException
      * @throws ForbiddenException
+     * @throws SerializerExceptionInterface
+     */
+    #[Route('/api/admin/items', name: 'admin_item_list', methods: [Request::METHOD_GET])]
+    #[OA\Get(
+        description: 'Browse individual items in one pouch — "zarządzanie itemami/plikami per pouch" (Krok 3), '
+            . 'since StoragePage otherwise only shows aggregated byType totals. Unlike GET /api/items, pouchId is '
+            . 'required (there is no "current pouch" for an admin browsing someone else\'s) and no access-key '
+            . 'locks apply — same "already-authenticated admin" reasoning as CategoryExportServiceInterface::'
+            . 'buildFullBackupZip().',
+        parameters: [
+            new OA\Parameter(name: 'pouchId', in: 'query', required: true, schema: new OA\Schema(type: 'integer')),
+            new OA\Parameter(name: 'page', description: '1-based, defaults to 1', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
+            new OA\Parameter(name: 'pageSize', description: 'Defaults to 24, capped at 200', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Success', content: new Model(type: ItemListResponseDTO::class)),
+        ]
+    )]
+    #[OA\Response(response: 400, description: 'pouchId is missing', content: new Model(type: BadRequestExceptionModel::class))]
+    public function items(Request $request): Response
+    {
+        $this->assertAdmin();
+
+        $pouchId = $this->nullablePouchId($request);
+        if (null === $pouchId) {
+            throw new BadRequestException(message: 'admin.pouch_id_required');
+        }
+
+        $page = max(1, $request->query->getInt('page', 1));
+        $pageSize = min(200, max(1, $request->query->getInt('pageSize', 24)));
+
+        $result = $this->itemRepository->findFilteredPage(new ItemListFilter(), ($page - 1) * $pageSize, $pageSize, pouchId: $pouchId);
+
+        $responseDTO = new ItemListResponseDTO(
+            items: array_map(ItemMapper::toSummaryResponseDTO(...), $result['items']),
+            total: $result['total'],
+            page: $page,
+            pageSize: $pageSize,
+        );
+
+        return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
+    }
+
+    /**
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
+     * @throws NotFoundException
+     */
+    #[Route('/api/admin/items/{id}', name: 'admin_item_delete', requirements: ['id' => '\d+'], methods: [Request::METHOD_DELETE])]
+    #[OA\Delete(
+        description: 'Move any item, in any pouch, to the trash — unlike DELETE /api/items/{id} (scoped to the '
+            . "caller's own pouch), this is the admin's cross-pouch counterpart backing the item browser above.",
+        responses: [new OA\Response(response: 204, description: 'Trashed')],
+    )]
+    #[OA\Response(response: 404, description: 'Item not found', content: new Model(type: NotFoundExceptionModel::class))]
+    public function deleteItem(Request $request, int $id): Response
+    {
+        $user = $this->assertAdmin();
+
+        $item = $this->itemService->getById($id);
+        $this->itemService->deleteAsAdmin($id);
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_DELETE, AuditLoggerInterface::RESOURCE_ITEM, $id, $user, $request, $item->getPouch());
+
+        return new Response(status: Response::HTTP_NO_CONTENT);
+    }
+
+    /**
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
      */
     #[Route('/api/admin/backup', name: 'admin_backup', methods: [Request::METHOD_GET])]
     #[OA\Get(
         description: '"Eksport/backup całości jako ZIP" — every category tree in one archive (see '
-            . 'CategoryExportServiceInterface::buildFullBackupZip())',
+            . 'CategoryExportServiceInterface::buildFullBackupZip()), narrowed to one pouch when pouchId is given.',
+        parameters: [new OA\Parameter(name: 'pouchId', in: 'query', required: false, schema: new OA\Schema(type: 'integer'))],
         responses: [new OA\Response(response: 200, description: 'The archive, streamed')],
     )]
     public function backup(Request $request): StreamedResponse
     {
         $this->assertAdmin();
 
-        $zipPath = $this->categoryExportService->buildFullBackupZip($request);
+        $zipPath = $this->categoryExportService->buildFullBackupZip($request, $this->nullablePouchId($request));
 
         return $this->streamedFileResponseFactory->fromTemporaryFile(
             localPath: $zipPath,
@@ -326,9 +422,9 @@ final class AdminController extends AbstractController
         );
     }
 
-    private function assertAdmin(): void
+    private function assertAdmin(): User
     {
-        $this->assertGranted('ROLE_ADMIN');
+        return $this->assertGranted('ROLE_ADMIN');
     }
 
     private function clampLimit(Request $request, int $default, int $max): int
@@ -336,6 +432,18 @@ final class AdminController extends AbstractController
         $limit = $request->query->getInt('limit', $default);
 
         return max(1, min($limit, $max));
+    }
+
+    /**
+     * `?pouchId=` on every Krok 3 endpoint — a filter, not a resource lookup
+     * (an unknown/garbage value narrows a query to nothing rather than
+     * 404ing), so this only ever parses, never validates.
+     */
+    private function nullablePouchId(Request $request): ?int
+    {
+        $raw = $request->query->get('pouchId');
+
+        return is_string($raw) && is_numeric($raw) ? (int) $raw : null;
     }
 
     /**

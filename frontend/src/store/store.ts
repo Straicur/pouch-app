@@ -6,6 +6,7 @@ import { categoryApi } from "./api/categoryApi";
 import { itemApi } from "./api/itemApi";
 import { sessionApi } from "./api/sessionApi";
 import { tagApi } from "./api/tagApi";
+import { userApi } from "./api/userApi";
 
 export const store = configureStore({
   reducer: {
@@ -16,6 +17,7 @@ export const store = configureStore({
     [tagApi.reducerPath]: tagApi.reducer,
     [accessKeyApi.reducerPath]: accessKeyApi.reducer,
     [adminApi.reducerPath]: adminApi.reducer,
+    [userApi.reducerPath]: userApi.reducer,
   },
   devTools: import.meta.env.MODE !== "production",
   middleware: (getDefaultMiddleware) =>
@@ -27,6 +29,7 @@ export const store = configureStore({
       tagApi.middleware,
       accessKeyApi.middleware,
       adminApi.middleware,
+      userApi.middleware,
     ),
 });
 

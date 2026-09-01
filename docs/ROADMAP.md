@@ -619,7 +619,7 @@ wprowadzone przez tamte poprawki, nie nowe tematy. Wszystkie naprawione:
       liczy już w ogóle portu (był tylko dla tego jednego, błędnego użycia).
       Test: nowy `SafeUrlFetcherTest::testResolveOptionIsKeyedByHostOnlyNotHostAndPort`
       (przechwytuje realne opcje przekazane do `HttpClientInterface::request()`).
-- [ ] **[P1] Nadpisanie pliku nie było atomowe.** `ItemService::overwriteFile()`
+- [x] **[P1] Nadpisanie pliku nie było atomowe.** `ItemService::overwriteFile()`
       archiwizowało poprzednią wersję i flushowało ją do DB **przed** uploadem
       nowego pliku — nieudany upload zostawiał "wersję" bez faktycznej podmiany;
       nieudany finalny flush osierocał nowy plik w storage. Naprawione:
@@ -627,10 +627,14 @@ wprowadzone przez tamte poprawki, nie nowe tematy. Wszystkie naprawione:
       wersji + aktualizacja itemu w jednej transakcji DB
       (`Connection::transactional()`), z kompensacyjnym `storageService->delete()`
       nowego klucza, jeśli transakcja się nie powiedzie — ten sam wzorzec co
-      istniejące już `saveNewItemOrConflict()`. **Bez automatycznego testu** —
-      symulacja realnej awarii w połowie transakcji wymagałaby infrastruktury
-      do wstrzykiwania błędów (fault injection), której ten projekt nigdzie
-      indziej nie ma; kod przejrzany ręcznie, nie zweryfikowany testem.
+      istniejące już `saveNewItemOrConflict()`. Test dopisany później (patrz
+      Część 16): `ItemServiceOverwriteFileAtomicityTest` — okazało się, że
+      "infrastruktura do wstrzykiwania błędów", której rzekomo brakowało, to
+      po prostu `ItemService` skonstruowany bezpośrednio z mockami zamiast
+      przez kontener; `Connection::transactional()` można podmienić na mock
+      rzucający wyjątek bez żadnej prawdziwej bazy. Dwa przypadki: udana
+      transakcja (upload, bez sprzątania) i nieudana (upload, potem
+      kompensacyjny `delete()` na dokładnie tym samym kluczu).
 - [x] **[P2] `UrlResolver` nie obsługiwał `false` z `parse_url()`.**
       `parse_url($reference, PHP_URL_PATH) ?? ''` — `??` łapie tylko `null`
       (brak komponentu), nie `false` (błędny URL); `false` leciało dalej do
@@ -781,129 +785,252 @@ konta (nie ma jeszcze — patrz "Krok 2" niżej).
       istnieje w cudzym pouchu). Testy: `CategoryPouchIsolationTest`,
       `ItemPouchIsolationTest` — dwóch userów w różnych pouchach, sprawdzone
       że jeden nie widzi/nie może dopisać do/nie może zmienić danych drugiego.
-- [ ] **Znana, świadomie nie domknięta luka**: `ItemService::getById()` (bez
-      `InCurrentPouch`) zostaje **nieopatentowany** dla działań innych niż
-      `get()`/`listPage()` — `updateNote()`/`updateTags()`/ulubione/`delete()`/
-      `overwriteFile()`/historia wersji/klucz dostępu itemu wciąż nie sprawdzają
-      pouch przy bezpośrednim odwołaniu po id. Powód: te metody dzielą
-      `getById()` z `download()`/`thumbnail()`/`versionDownload()`/`publicView()`
-      — jedynymi akcjami w całym `ItemController`, które celowo działają **bez
-      żadnej autoryzacji sesji** (signed URL to własny, niezależny kanał
-      autoryzacji, patrz `ItemController`'s docblock) i przez to nie mają
-      żadnego "bieżącego pouch" do sprawdzenia. Rozdzielenie tych dróg (osobna
-      pouch-scoped wersja każdej mutującej metody) to następny, odrębny krok —
-      dziś praktyczne ryzyko jest niskie (trzeba zgadnąć cudzy numeryczny id
-      itemu), ale to nie jest to samo co realna izolacja.
-- [ ] **Sugestia usera na domknięcie powyższej luki**: zamiast ręcznie
-      dopisywać `WHERE pouch_id = :id` (albo `getByIdInCurrentPouch()`) do
-      każdej metody repozytorium/serwisu z osobna, jeden współdzielony
-      **Doctrine SQL Filter** (`PouchFilter`, włączany raz per request przez
-      `CurrentPouchResolver` — ten sam wzorzec co `WorkshopFilter` z innych
-      projektów) dopisywałby warunek automatycznie do każdego zapytania po
-      encji scope'owanej Pouchem. Nowy kod/repozytorium dostaje izolację "za
-      darmo" bez pamiętania o niej przy każdym nowym query, zamiast
-      polegać na tym, że ktoś nie zapomni wywołać właściwej metody (dokładnie
-      to zawiodło w luce wyżej). Wymaga jawnego `suspend()`/`restore()` tam,
-      gdzie operacja świadomie ma przejść przez wszystkie pouche naraz (panel
-      admina, Krok 3 niżej) — i przemyślenia, czy filtr na `Item` da się
-      wyrazić przez join do `category.pouch`, skoro `Item` sam nie ma
-      kolumny `pouch_id` (patrz decyzja w Kroku 1 wyżej).
-- [ ] **Storage/GC/Backup/Audit Log/Expiring (`AdminController`) zostają
-      świadomie globalne, nie per-pouch** — "Krok 3" niżej.
+- [x] **Znana, świadomie nie domknięta luka — domknięta w code review Kroku 1**
+      (patrz sekcja niżej, znalezisko P1 #1): `updateNoteContent()`/
+      `setFavorite()`/`replaceTags()`/`delete()`/`overwriteFile()`/
+      `listVersions()` przełączone na `getByIdInCurrentPouch()` wewnątrz
+      samego serwisu, nie tylko w kontrolerze. `getVersion()`
+      (współdzielone z `versionDownload()`'s podpisanym linkiem) i cross-pouch
+      admina (`extendExpiry()`) zostają celowo niescope'owane — udokumentowane
+      wprost przy każdej metodzie.
+- [x] **Sugestia usera na domknięcie powyższej luki — zrobione: Doctrine SQL
+      Filter.** `App\Services\Pouch\PouchAware` (interfejs-znacznik,
+      implementują go `Category`/`Item` — **nie** `User`, bo konto musi być
+      znajdywalne po e-mailu zanim jego pouch jest w ogóle znany, przy
+      logowaniu, a zarządzanie kontami w adminie jest z natury cross-pouch) +
+      `App\Services\Pouch\Filter\PouchFilter` (rejestracja w
+      `config/packages/doctrine.yaml` jako `pouch_filter`, domyślnie
+      wyłączony) + `PouchFilterListener` (dwa hooki: `kernel.request` o
+      bardzo wysokim priorytecie zawsze wyłącza filtr na starcie każdego
+      requestu, `kernel.controller` warunkowo włącza go z id bieżącej pouch —
+      dopiero tam auth JWT jest już rozwiązany). Wyłączony (jawnie, przez
+      dopasowanie ścieżki/nazwy trasy w samym listenerze, nie ręczny
+      `suspend()`/`restore()` w każdej akcji) dla `/api/admin/*` i dla
+      rodziny podpisanych linków (`item_download`/`item_thumbnail`/
+      `item_version_download`/`item_public_view`) — te dwa przypadki to
+      dokładnie "operacja świadomie ma przejść przez wszystkie pouche naraz"
+      z tego punktu. `Item` dostał **własną** kolumnę `pouch_id`
+      (denormalizacja z Kroku 1 dedup-fixa, patrz code review niżej) zamiast
+      joina do `category.pouch` — filtr działa na niej wprost, bez joina.
+      Ręczne scope'owanie (`getByIdInCurrentPouch()`, parametry `?pouchId` w
+      `CategoryService`/`ItemService`/`TagRepository`) **usunięte** tam, gdzie
+      filtr je zastępuje; zostaje tam, gdzie musi (raw SQL w
+      `ItemService::saveNewItemOrConflict()` — filtr działa tylko na
+      zapytaniach ORM, nie na surowym SQL — i admin/GC/cron, które
+      jawnie potrzebują dostępu cross-pouch).
+      Po drodze złapane i naprawione dwa realne błędy: (1) `setPouchId()`
+      przez zwykłą właściwość zamiast `SQLFilter::setParameter()` — Doctrine
+      cache'uje wygenerowane SQL per kształt DQL, a nie po treści tego, co
+      zwraca `addFilterConstraint()`, więc pierwsze zapytanie danego kształtu
+      zostawiało w cache'u SQL z zaszytym cudzym `pouchId`; (2)
+      `Repository::find($id)` sprawdza identity mapę Doctrine **przed**
+      jakimkolwiek SQL i pomija filtr całkowicie dla id już załadowanego
+      gdzieś wcześniej w tym samym request — zamienione na
+      `findOneBy(['id' => $id])`, które zawsze idzie przez prawdziwe
+      zapytanie. Testy: `PouchFilterTest` (bezpośrednio na klasie filtra, w
+      tym regresja na błąd #1), `PouchFilterListenerTest` (regresja na
+      "wyciek stanu filtra między requestami" — request, który 401/403-uje
+      się przed dotarciem do kontrolera, nie może zostawić filtra
+      włączonego ze starą wartością pouch dla kolejnych, niepowiązanych
+      zapytań — plus potwierdzenie że `/api/admin` zawsze ma filtr
+      wyłączony). `make cs`/`make phpstan`/`make rector`/`make test-backend`
+      — 237/237 (dwukrotnie z `--order-by=random`). Ręczny test przez realne
+      żądania HTTP: dwa kolejne zapytania o ten sam kształt z różnych pouchy
+      (dokładnie scenariusz, który złapał błąd #1) — poprawnie izolowane;
+      przeglądanie itemów jako admin i lista tagów — bez wycieku.
+- [x] **Storage/GC/Backup/Audit Log/Expiring (`AdminController`)** —
+      dostały `?pouchId=` w Kroku 3 niżej (pełna izolacja, nie tylko widok
+      "superadmina").
 
-### Code review Kroku 1 — do naprawy jutro (nie zaczęte)
+### Code review Kroku 1 (zrobione)
 
 Zewnętrzny code review Kroku 1 — 5 znalezisk, review uznał zmianę za
-niegotową do merge w obecnym stanie. Nie naprawiać teraz, tylko spisać do
-jutra razem z resztą Kroku 1/domknięcia izolacji Pouch.
+niegotową do merge w obecnym stanie. Wszystkie naprawione:
 
-- [ ] **[P1] Izolację Pouch można ominąć przez większość endpointów itemów** —
-      `ItemService::getById()` (`backend/src/Services/Item/ItemService.php:219`)
-      zostaje bez ograniczenia do bieżącego Pouch, a wersja izolowana
-      (`getByIdInCurrentPouch()`) jest używana tylko przy zwykłym
-      `GET /api/items/{id}`. Mutacje, usuwanie, historia wersji oraz
-      generowanie download/public linków nadal korzystają z niescope'owanego
-      odczytu, np. `backend/src/Controller/Api/ItemController.php:666`.
-      Użytkownik znający lub enumerujący numeryczne ID może m.in. usunąć
-      cudzy item, zmienić notatkę/tagi/ulubione, nadpisać cudzy plik, albo
-      wygenerować podpisany/publiczny link do cudzego itemu — brak access
-      key na itemie oznacza, że guard tego nie zatrzyma. Wszystkie endpointy
-      wymagające sesji powinny korzystać z pouch-scoped lookup; osobna,
-      niescope'owana ścieżka może zostać wyłącznie dla już podpisanych URL-i
-      (patrz `PouchFilter`, wyżej, i jego rekomendowane wyjątki).
-- [ ] **[P1] Globalne wykrywanie duplikatów ujawnia dane z innych Pouchy** —
-      `ItemService.php:401` wyszukuje hash globalnie, a odpowiedź konfliktu
-      ujawnia ID i nazwę znalezionego itemu (`ItemService.php:458`). Globalny
-      indeks unikalny dodatkowo uniemożliwia dwóm Pouchom niezależne
-      przechowywanie tego samego pliku. Dedup powinien być ograniczony do
-      Pouch — przy obecnym modelu bez `pouch_id` na `Item` wymaga to zmiany
-      modelu (join do kategorii) lub rezygnacji z globalnej unikalności; sam
-      indeks PostgreSQL nie zapewni unikalności przez join.
-- [ ] **[P1] Endpoint tagów ujawnia tagi ze wszystkich Pouchy** —
-      `TagRepository.php:41` (`findAllOrderedByName()`) zwraca tagi powiązane
-      ze wszystkimi aktywnymi itemami, niezależnie od kategorii/Pouch. Każdy
-      zalogowany user może poznać nazwy tagów innych userów przez
-      `GET /api/tags`. Repozytorium powinno filtrować przez
-      Item → Category → Pouch — potwierdza też decyzję z Części 17: `Tag`
-      docelowo ma być zasobem należącym do Pouch, nie współdzielonym między
-      tenantami.
-- [ ] **[P1] Błędy HTTP scrapera są traktowane jako sukces** —
-      `SafeUrlFetcher.php:53` zwraca odpowiedź także dla statusów 4xx/5xx;
-      scraper przetwarza wtedy puste body i oznacza item jako `COMPLETED`
-      zamiast `FAILED`. Potwierdzone deterministycznie przez
-      `testFetchFailureMarksItemFailedWithoutThrowing` (oczekiwano `FAILED`,
-      otrzymano `COMPLETED` — ten sam test, który wcześniej uznaliśmy za
-      "pre-istniejący flaky", okazuje się realnym bugiem, nie flakiem).
-      Fetcher albo scraper powinien rzucać wyjątek dla statusu ≥ 400.
-- [ ] **[P2] Modal szczegółów pokazuje spinner bez końca po błędzie API** —
-      `ItemDetailsModal.tsx:193` odczytuje wyłącznie `data` z
-      `useGetItemQuery`. Każde 404/403/zerwane połączenie daje
-      `item === undefined`, więc renderuje się bezterminowo `LoadingIndicator`
-      (`ItemDetailsModal.tsx:204`). Trzeba rozróżnić `isLoading` od `error` i
-      pokazać komunikat oraz możliwość zamknięcia/ponowienia.
-- [ ] **Zgodność z CLAUDE.md** — nowy kod wielokrotnie łamie zasadę zakazu
-      komentarzy opisujących etapy/historię zmian (`docs/engineering/
-      project-rules.md`, "Zakres i jakość zmiany" — brak komentarzy
-      narracyjnych). Komentarze zaczynające się od "Część 13", "Część 14",
-      "Post-review fix" (np. `ItemDetailsModal.tsx:190`) — kilkadziesiąt
-      wystąpień w `backend/src`/`frontend/src`. Skrócić do aktualnego,
-      niehistorycznego "dlaczego" albo usunąć.
+- [x] **[P1] Izolację Pouch można ominąć przez większość endpointów itemów** —
+      w międzyczasie (przed tą sesją) `ItemController` już zaczął wołać
+      `getByIdInCurrentPouch()` na wejściu każdej sesyjnej akcji, ale
+      `ItemService`'s własne mutujące metody (`updateNoteContent()`/
+      `delete()`/`setFavorite()`/`replaceTags()`/`overwriteFile()`/
+      `listVersions()`) nadal łapały item przez niescope'owane `getById()`
+      wewnętrznie — bezpieczne tylko dopóki każdy przyszły wywołujący
+      pamięta, żeby zescope'ować dostęp *przed* wywołaniem serwisu, dokładnie
+      ten wzorzec, który już raz zawiódł. Przełączone na
+      `getByIdInCurrentPouch()` wewnątrz samego serwisu (defense-in-depth);
+      `getById()` zostaje udokumentowany jako zarezerwowany dla rodziny
+      podpisanych linków (`download`/`thumbnail`/`versionDownload`/
+      `publicView`) i cross-pouch admina (`extendExpiry()`). Test:
+      `ItemPouchIsolationTest::testMutatingAnotherPouchsItemReturnsNotFound`.
+- [x] **[P1] Globalne wykrywanie duplikatów ujawniało dane z innych Pouchy** —
+      `Item` dostał denormalizowaną kolumnę `pouch_id` (item nigdy nie zmienia
+      kategorii po utworzeniu, więc synchronizacja jest jednorazowa, w
+      konstruktorze) — migracja `Version20260901120000` z backfillem z
+      `category.pouch_id`. Unikalny indeks Postgresa zmieniony z samego
+      `content_hash` na `(pouch_id, content_hash)` — realna, DB-owa gwarancja
+      per pouch, nie tylko sprawdzenie w kodzie. `ItemRepository::
+      findByContentHash()` i race-conditionowy fallback w `ItemService::
+      saveNewItemOrConflict()` scope'owane tym samym `pouch_id`. Test:
+      `ItemPouchIsolationTest::testTwoPouchesCanIndependentlyUploadIdenticalContent`.
+- [x] **[P1] Endpoint tagów ujawniał tagi ze wszystkich Pouchy** —
+      `TagRepository::findAllOrderedByName()` przyjmuje teraz `$pouchId` i
+      filtruje przez `Item → pouch` w `WHERE EXISTS`; `TagService` rozwiązuje
+      bieżący pouch przez `CurrentPouchResolverInterface`, tak jak
+      `ItemService`. Test: `ItemPouchIsolationTest::
+      testTagListDoesNotIncludeAnotherPouchsTags`.
+- [x] **[P1] Błędy HTTP scrapera były traktowane jako sukces** —
+      `SafeUrlFetcher::fetch()` rzuca teraz `RuntimeException` dla statusu
+      ≥ 400 zamiast zwracać tę odpowiedź jak sukces; `OpenGraphScraper`/
+      `ScrapeUrlMessageHandler` już wcześniej łapały `Throwable` i mapowały
+      na `item.markFailed()`/best-effort skip, więc obie strony (scrape
+      strony i OG-image) automatycznie zaczęły zachowywać się poprawnie.
+      Istniejący `testFetchFailureMarksItemFailedWithoutThrowing` (wcześniej
+      fałszywie zielony) teraz realnie sprawdza tę ścieżkę.
+- [x] **[P2] Modal szczegółów pokazywał spinner bez końca po błędzie API** —
+      `ItemDetailsModal` rozróżnia teraz `error` od samego braku danych;
+      błąd pokazuje komunikat + przyciski "Ponów"/"Zamknij" zamiast
+      bezterminowego `LoadingIndicator`.
+- [x] **Zgodność z CLAUDE.md** — komentarze narracyjne ("Część N", "Post-review
+      fix") usunięte z plików dotkniętych tą sesją (`ItemController.php`,
+      `ItemService.php`, `ItemRepository.php`, `SafeUrlFetcher(Interface).php`,
+      `ScrapeUrlMessageHandler.php`, `ItemDetailsModal.tsx`) — plus jeden
+      realny bug po drodze: `admin.storage.archivedVersions` (`pl.ts`) miał
+      "Część 8" wprost w tekście pokazywanym userowi w UI, nie tylko w
+      komentarzu. **Pozostałe ~65 plików** z tym samym wzorcem (patrz Część 18,
+      punkt 2 "Uprościć kod i dokumentację") zostają jako osobna, większa
+      porządkowa sesja — poza rozsądnym zakresem tych 5 znalezisk.
 
-### Krok 2 — panel admina: konta i pouche (nie zaczęte)
+**Weryfikacja:** `make cs`/`make phpstan`/`make rector`/`make test-backend`
+(205/205, w tym 3 nowe testy w `ItemPouchIsolationTest`) — wszystkie zielone,
+kontenery działały przez całą sesję. Migracja uruchomiona na dev **i** test
+(`make migrate`). Frontend: `npm run lint` (jedno niepowiązane pre-existing
+ostrzeżenie w `main.tsx`, jak w Części 12), `tsc -p tsconfig.app.json --noEmit`,
+`npm test` — czysto.
 
-- [ ] **Rejestracja**: tylko admin dodaje konta (potwierdzone) — nowy
-      `UserController`/`Services/User/` (email, hasło tymczasowe albo link do
-      ustawienia hasła, rola, do którego pouch przypisać/czy założyć nowy).
-- [ ] **Panel admina: lista/zarządzanie kontami** — zmiana roli,
-      zablokowanie/usunięcie konta, reset hasła przez admina, przegląd pouchy
-      (nazwa, ile ma userów/kategorii/itemów).
-- [ ] Frontend: nowa strona w `/admin` do tego wszystkiego.
+### Krok 2 — panel admina: konta i pouche (zrobione)
 
-### Krok 3 — reszta panelu admina "per pouch" (nie zaczęte)
+- [x] **Rejestracja**: tylko admin dodaje konta — nowy `UserController`
+      (`/api/admin/users`, `/api/admin/pouches`) + `Services/User/UserService`.
+      Zamiast linku do ustawienia hasła (brak jakiejkolwiek infrastruktury
+      mailowej w projekcie): serwer generuje losowe hasło tymczasowe
+      (`bin2hex(random_bytes(9))`), zwraca je **raz** w odpowiedzi na
+      `POST /api/admin/users`/`POST .../reset-password` — admin przekazuje je
+      dalej poza aplikacją. Wybór pouch: `pouchId` (istniejący) albo
+      `newPouchName` (nowy) — dokładnie jedno z dwóch, inaczej 400
+      (`user.pouch_choice_required`/`_ambiguous`).
+- [x] **Panel admina: lista/zarządzanie kontami** — `PATCH .../role` (zmiana
+      roli), `PATCH .../enabled` (blokada), `POST .../reset-password`,
+      `DELETE /api/admin/users/{id}` (usunięcie — nie kasuje pouch ani jego
+      danych, `User` to tylko login). Admin nie może zablokować/usunąć
+      **własnego** konta (400 `user.cannot_modify_self`) — zabezpieczenie
+      przed zablokowaniem się bez wyjścia. `GET /api/admin/pouches` —
+      przegląd (nazwa, liczba userów/kategorii/aktywnych itemów, trzy
+      skalarne podzapytania w `PouchRepository::countsByPouchId()`).
+- [x] **Blokada konta działa natychmiast, nie tylko na nowym logowaniu** —
+      dwie warstwy: `AuthService::getUserByEmailAndPassword()` odrzuca
+      zablokowane konto przy `/api/login` (401 `auth.account_disabled`), a
+      nowy `AppUserChecker` (wpięty jako `user_checker` firewalla `main` w
+      `security.yaml`) sprawdza to samo przy **każdym** uwierzytelnionym
+      requeście — token wydany *przed* zablokowaniem przestaje działać na
+      swoim najbliższym odświeżeniu (`token_ttl` = 300 s), zamiast być
+      ważny aż do naturalnego wygaśnięcia.
+- [x] Frontend: nowa strona `/admin/users` (`UsersPage.tsx`) — tabela kont
+      (rola/pouch/aktywność edytowalne inline, reset hasła, usunięcie za
+      `ConfirmDialog`), formularz dodania konta (`CreateUserForm.tsx`,
+      wybór istniejącego/nowego pouch), modal z jednorazowym hasłem
+      tymczasowym, tabela przeglądu pouchy. Wpis w nawigacji admina
+      (`adminPages.ts`).
 
-- [ ] **`StoragePage`/Backup/GC/Audit Log/Expiring** dziś operują na całym
-      systemie (wszystkie pouche naraz) — świadomie zostawione tak w Kroku 1.
-      Do ustalenia: admin nadal widzi/zarządza wszystkim (typowy model
-      "superadmina" w multi-tenant) czy dochodzi filtr "per pouch" w samym
-      panelu.
-- [ ] **Zarządzanie itemami/plikami per pouch** — user zgłosił, że
-      `StoragePage` pokazuje tylko zagregowane liczby (per typ), bez
-      możliwości przejrzenia/usunięcia pojedynczych plików. `DELETE
-      /api/items/{id}` już istnieje i ma teraz przycisk w `ItemDetailsModal`
-      (Część 13/14) — ale to działanie usera na własnym itemie, nie
-      admin-owe "przejrzyj/usuń cudze pliki po pouchach".
+**Weryfikacja:** `make cs`/`make phpstan`/`make rector`/`make test-backend`
+(218/218, w tym nowy `UserControllerTest` — 13 testów: 401/403 na każdym
+endpoincie, tworzenie z nowym/istniejącym pouchem, duplikat e-maila,
+wymaganie dokładnie jednego wyboru pouch, zmiana roli, blokada + realny
+401 na już wydanym tokenie (nie tylko na nowym logowaniu), self-block/
+self-delete odrzucone, reset hasła realnie działa (stare hasło przestaje,
+nowe działa), usunięcie konta zostawia pouch nietknięty, przegląd pouchy).
+Migracje (`item.pouch_id` z Kroku 1 + `user.enabled`) uruchomione na dev i
+test. Frontend: `npm run lint`/`tsc -p tsconfig.app.json --noEmit`/`npm test`
+czysto. Ręcznie przez realne żądania HTTP do `:8111` jako `admin@pouch.test`:
+utworzenie konta z nowym pouchem → zwrócone hasło tymczasowe realnie
+logowało → zablokowanie konta → **już zalogowana sesja tego usera dostała
+401 na kolejnym requeście** (`AppUserChecker`, nie tylko `/api/login`) →
+próba nowego logowania też 401 z polskim komunikatem → przegląd pouchy
+pokazał nowy pouch z 1 userem → usunięcie konta → pouch zostaje na liście
+z 0 userami (nietknięty). Dane testowe posprzątane. **UI w przeglądarce nie
+zweryfikowane wizualnie** (brak `/chrome` w tej sesji) — tylko `tsc`/biome/
+`npm test` czysto, jak większość frontendu w tym projekcie do tej pory.
+
+### Krok 3 — reszta panelu admina "per pouch" (zrobione)
+
+Decyzja usera: pełna izolacja, nie tylko widok "superadmina" z opcjonalnym
+filtrem — `StoragePage`/GC/Audit Log/Expiring/Backup dostały wspólny
+`?pouchId=` (pominięty = wszystkie pouche, zachowanie sprzed tego kroku).
+
+- [x] **`?pouchId=` na każdym endpoincie admina** —
+      `AdminController::nullablePouchId()` parsuje go raz, przekazuje dalej:
+      `ItemRepository::sumSizeByType()`/`findOverdueForTrash()`/
+      `findOverdueForPurge()`/`findExpiringBetween()`, `ItemVersionRepository::
+      sumSize()` (join do `item.pouch`, bo `ItemVersion` nie ma własnej
+      kolumny pouch), `CategoryRepository::findRootCategories()` (backup),
+      `AuditLogRepository::findLatest()`, `GcRunLogRepository::findLatest()`.
+      Limity storage (`StorageLimitService`) zostają celowo systemowe — jeden
+      config, nie per pouch (dashboard tylko pokazuje zużycie per pouch, nie
+      pozwala na osobny limit dla każdej).
+- [x] **GC "Run Now" i historia per pouch** — `ItemGarbageCollector::run()`
+      przyjmuje `?pouchId`; `GcRunLog` dostał nullable `pouch` (migracja
+      `Version20260901160000` razem z `audit_log.pouch_id`) — `null` znaczy
+      "cron, wszystkie pouche naraz" (cron nigdy nie przekazuje pouchId),
+      ustawione — ręczny per-pouch run admina. Historia (`GET .../gc/runs`)
+      filtruje po tym polu.
+- [x] **Audit log per pouch** — `AuditLoggerInterface::log()` przyjmuje teraz
+      `?Pouch $pouch` (pouch *zasobu*, nie zawsze wołającego — admin
+      działający cross-pouch loguje pouch celu). Zaktualizowane wszystkie 10
+      miejsc wołających `log()` (`ItemController`, `CategoryController`,
+      `AccessKeyController`, `UserController`, `ItemGarbageCollector`'s
+      purge) — każde już miało zasób w zasięgu, więc żadne nie musiało robić
+      dodatkowego zapytania tylko po to.
+- [x] **Zarządzanie itemami/plikami per pouch** — nowy `GET /api/admin/items`
+      (wymaga `pouchId`, w przeciwieństwie do reszty — nie ma "current pouch"
+      dla admina przeglądającego cudzy) i `DELETE /api/admin/items/{id}`
+      (nowa `ItemServiceInterface::deleteAsAdmin()` — niescope'owana, w
+      odróżnieniu od zwykłego `delete()`, celowo: to jest dokładnie ta
+      cross-pouch ścieżka, której zwykły endpoint po Kroku 1 już nie
+      obsługuje). Frontend: `AdminItemBrowser` w `StoragePage` — tabela +
+      pager + usuwanie za `ConfirmDialog`, widoczna tylko gdy wybrano
+      konkretny pouch.
+- [x] **Frontend: `PouchSwitcher`** w navbarze `/admin` (`PouchFilterProvider`
+      + `usePouchFilter()`) — jeden wybór ("Wszystkie pouche" albo
+      konkretna), który obowiązuje całą resztę panelu; każda strona czyta go
+      zamiast trzymać własny stan.
+
+**Weryfikacja:** `make cs`/`make phpstan`/`make rector`/`make test-backend`
+(226/226, w tym nowy `AdminPouchScopingTest` — 8 testów: storage/GC-run/
+GC-history/audit-log/expiring-soon/backup/item-browser/cross-pouch-delete,
+każdy z dwoma pouchami sprawdzający że jeden nigdy nie widzi danych
+drugiego). Migracja uruchomiona na dev i test. Frontend: `lint`/`tsc`/`test`
+czysto. Ręcznie przez realne żądania HTTP do `:8111` jako `admin@pouch.test`:
+scoped storage/items-browser (400 bez `pouchId`)/delete-cudzego-itemu/
+audit-log (wpis z poprawną `pouchName`)/GC-run scoped (2 itemy wygasłe w
+wybranym pouchu, `pouchName` w odpowiedzi)/GC-history scoped/backup scoped
+(prawdziwy ZIP z tylko kategoriami tej pouch)/expiring-soon scoped —
+wszystko zwróciło oczekiwane dane.
 
 ### Dalej, nie zaczęte
 
 - [ ] **RODO/eksport i usunięcie danych użytkownika** — "usuń moje konto i
       wszystkie moje dane"/"pobierz wszystkie moje dane" (Część 9 ma już
       eksport kategorii jako ZIP — częściowo reużywalne).
-- [ ] **Współdzielenie między kontami** — dziś `AccessKeyGuard`
-      (Część 7)/publiczne linki (Część 9) to jedyne formy "udostępniania", obie
-      nie wymagają drugiego konta. Prawdziwy multi-user może chcieć
-      "udostępnij Jankowi tę kategorię" zamiast tylko anonimowego linku —
-      prawdopodobnie: dodać drugiego usera do tego samego pouch, albo osobny
-      mechanizm współdzielenia między pouchami.
+- [x] **Współdzielenie między kontami — mechanizm istnieje od Części 16
+      (Krok 2), świadomie bez dedykowanego UX-u "zaproś".** Zaproponowane tu
+      rozwiązanie ("dodać drugiego usera do tego samego pouch") to dokładnie
+      to, co `POST /api/admin/users` z `pouchId` istniejącego pouch już robi
+      — Janek dodany do tego samego pouch widzi/edytuje wszystko w nim,
+      dokładnie jak właściciel. Czego **nie ma** i co zostaje jako osobna
+      praca, jeśli będzie potrzebna: (1) samoobsługowe "zaproś Janka" przez
+      usera (dziś tylko admin dodaje konta — świadoma decyzja z Kroku 2, nie
+      przeoczenie), (2) udostępnianie **pojedynczej kategorii** zamiast
+      całego pouch naraz (dodanie do pouch to wszystko-albo-nic) —
+      `AccessKeyGuard`/publiczne linki zostają jedynym sposobem na to
+      drugie, węższe udostępnianie.
 
 ---
 

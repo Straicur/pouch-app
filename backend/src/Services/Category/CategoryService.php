@@ -24,17 +24,20 @@ class CategoryService implements CategoryServiceInterface
     #[Override]
     public function list(): array
     {
-        return $this->categoryRepository->findAllForPouchOrderedByName($this->currentPouchResolver->resolve());
+        return $this->categoryRepository->findAllOrderedByName();
     }
 
     #[Override]
     public function getById(int $id): Category
     {
-        $category = $this->categoryRepository->find($id);
-        $currentPouchId = $this->currentPouchResolver->resolve()->getId();
-
-        // Another pouch's category looks exactly like a missing one — never 403.
-        if (null === $category || $category->getPouch()->getId() !== $currentPouchId) {
+        // findOneBy(), not find(): find() checks Doctrine's identity map
+        // *before* running any SQL, bypassing PouchFilter entirely for an
+        // id already loaded elsewhere in this request — findOneBy() always
+        // executes the (filtered) query. Another pouch's category is
+        // filtered out at the SQL level and so looks exactly like a missing
+        // one — never 403.
+        $category = $this->categoryRepository->findOneBy(['id' => $id]);
+        if (null === $category) {
             throw new NotFoundException(message: 'category.not_found');
         }
 
@@ -92,16 +95,12 @@ class CategoryService implements CategoryServiceInterface
     {
         $category = $this->getById($id);
 
-        // Post-review fix: used to just remove the row and let the DB cascade
-        // to descendants (ON DELETE CASCADE) — ItemGarbageCollector::
-        // purgeTrash() (the only place that deletes storage objects from
-        // S3/MinIO) never got a chance to see items wiped out that way, so
-        // their files were orphaned in the bucket forever. Option (a) from
-        // the roadmap: block the delete outright while it or any descendant
-        // still holds ANY item — including one already trashed but not yet
-        // purged (an earlier version of this check only looked at active
-        // items, which still let a category full of trashed-but-unpurged
-        // items through). Trash/move/wait-for-GC first, then delete the
+        // Blocks the delete outright while it or any descendant still holds
+        // ANY item — including one already trashed but not yet purged: just
+        // removing the row and letting the DB cascade (ON DELETE CASCADE)
+        // would skip ItemGarbageCollector::purgeTrash(), the only place that
+        // deletes storage objects from S3/MinIO, orphaning them in the
+        // bucket forever. Trash/move/wait-for-GC first, then delete the
         // truly-empty category.
         if ($this->itemRepository->existsInCategories($this->collectSubtreeIds($category))) {
             throw new ConflictException(message: 'category.not_empty');
@@ -134,9 +133,9 @@ class CategoryService implements CategoryServiceInterface
         return $this->getById($parentId);
     }
 
-    // Część 13: kategorie mogą mieć co najwyżej jeden poziom zagnieżdżenia
-    // (kategoria główna + jej bezpośrednie podkategorie) — podkategoria nie
-    // może mieć własnej podkategorii. $parent tu to już *rozwiązany* nowy
+    // Kategorie mogą mieć co najwyżej jeden poziom zagnieżdżenia (kategoria
+    // główna + jej bezpośrednie podkategorie) — podkategoria nie może mieć
+    // własnej podkategorii. $parent tu to już *rozwiązany* nowy
     // rodzic (po resolveParent()), więc "$parent ma rodzica" znaczy "$parent
     // sam jest podkategorią".
     private function assertMaxDepth(?Category $parent): void

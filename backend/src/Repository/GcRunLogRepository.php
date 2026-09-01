@@ -25,10 +25,17 @@ class GcRunLogRepository extends ServiceEntityRepository
     }
 
     /**
+     * $pouchId omitted returns every run (cron sweeps and any manual run,
+     * across every pouch); given, only manual runs scoped to that pouch —
+     * a cron sweep's own GcRunLog row always has pouch = null (see
+     * ItemGarbageCollector::run()), so it never matches a specific pouch id.
+     *
      * @return list<GcRunLog> newest first
      */
-    public function findLatest(int $limit): array
+    public function findLatest(int $limit, ?int $pouchId = null): array
     {
-        return array_values($this->findBy([], ['runAt' => 'DESC'], $limit));
+        $criteria = null !== $pouchId ? ['pouch' => $pouchId] : [];
+
+        return array_values($this->findBy($criteria, ['runAt' => 'DESC'], $limit));
     }
 }

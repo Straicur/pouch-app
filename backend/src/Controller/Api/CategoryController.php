@@ -297,8 +297,9 @@ final class CategoryController extends AbstractController
     {
         $user = $this->assertGranted(CategoryVoter::DELETE);
 
+        $pouch = $this->categoryService->getById($id)->getPouch();
         $this->categoryService->delete($id);
-        $this->auditLogger->log(AuditLoggerInterface::ACTION_DELETE, AuditLoggerInterface::RESOURCE_CATEGORY, $id, $user, $request);
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_DELETE, AuditLoggerInterface::RESOURCE_CATEGORY, $id, $user, $request, $pouch);
 
         return new Response(status: Response::HTTP_NO_CONTENT);
     }

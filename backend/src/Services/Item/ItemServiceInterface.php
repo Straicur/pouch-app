@@ -16,9 +16,9 @@ use DateTimeImmutable;
 interface ItemServiceInterface
 {
     /**
-     * Część 13: $content is an optional free-text description stored the
-     * same way a NOTE item's body is (Item::$noteContent) — unlike a NOTE,
-     * it's set once at creation and not editable afterwards through
+     * $content is an optional free-text description stored the same way a
+     * NOTE item's body is (Item::$noteContent) — unlike a NOTE, it's set
+     * once at creation and not editable afterwards through
      * updateNoteContent() (that stays NOTE-only, see its own guard).
      *
      * @param list<string> $tags
@@ -91,20 +91,15 @@ interface ItemServiceInterface
     public function updateNoteContent(int $id, string $content): Item;
 
     /**
-     * Unscoped by pouch — also reached with no authenticated user at all by
-     * the signed-URL-only actions (see ItemController's own docblock).
+     * Scoped to the current pouch automatically for a normal,
+     * session-authenticated request (PouchFilter — see PouchFilterListener);
+     * unscoped for the signed-URL-only actions and for /api/admin, where
+     * that filter is deliberately left off (see ItemController's and
+     * AdminController's own docblocks).
      *
-     * @throws NotFoundException if $id doesn't exist or is already trashed
+     * @throws NotFoundException if $id doesn't exist, is already trashed, or (when scoped) belongs to another pouch
      */
     public function getById(int $id): Item;
-
-    /**
-     * Same as getById(), scoped to the current session's pouch. Use for
-     * anything reached only by an authenticated session.
-     *
-     * @throws NotFoundException if $id doesn't exist, is already trashed, or belongs to another pouch
-     */
-    public function getByIdInCurrentPouch(int $id): Item;
 
     /**
      * @return list<Item>
@@ -123,6 +118,16 @@ interface ItemServiceInterface
 
     /** @throws NotFoundException */
     public function delete(int $id): void;
+
+    /**
+     * Admin's cross-pouch delete (AdminController) — unlike delete(), not
+     * scoped to the caller's own pouch; the whole point is browsing/removing
+     * files across any pouch. Never reachable from a regular user-facing
+     * endpoint.
+     *
+     * @throws NotFoundException
+     */
+    public function deleteAsAdmin(int $id): void;
 
     /** @throws NotFoundException */
     public function setFavorite(int $id, bool $favorite): Item;
@@ -167,16 +172,17 @@ interface ItemServiceInterface
     public function getVersion(int $itemId, int $version): ItemVersion;
 
     /**
-     * Part 10: "lista itemów wygasających w ciągu najbliższych 24h" —
-     * generalized to any window (the endpoint decides what "soon" means).
+     * "Lista itemów wygasających w ciągu najbliższych 24h" — generalized to
+     * any window (the endpoint decides what "soon" means). $pouchId scopes
+     * to one pouch when given.
      *
      * @return list<Item> ordered by expiresAt, soonest first
      */
-    public function findExpiringBetween(DateTimeImmutable $from, DateTimeImmutable $until): array;
+    public function findExpiringBetween(DateTimeImmutable $from, DateTimeImmutable $until, ?int $pouchId = null): array;
 
     /**
-     * Part 10: "masowe przedłużenie ważności wybranych itemów" — the exact
-     * same lifecycle rules createFile()/createUrl()/etc. use (see
+     * "Masowe przedłużenie ważności wybranych itemów" — the exact same
+     * lifecycle rules createFile()/createUrl()/etc. use (see
      * ItemLifecycleOptions), just applied to items that already exist rather
      * than one being created.
      *

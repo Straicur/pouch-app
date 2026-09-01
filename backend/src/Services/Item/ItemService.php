@@ -23,7 +23,6 @@ use App\Services\Item\Validator\NoteValidator;
 use App\Services\Item\Validator\UrlValidator;
 use App\Services\Item\ValueObject\ItemLifecycleOptions;
 use App\Services\Item\ValueObject\ItemListFilter;
-use App\Services\Pouch\CurrentPouchResolverInterface;
 use App\Services\Storage\StorageServiceInterface;
 use App\Services\Tag\TagServiceInterface;
 use DateInterval;
@@ -74,7 +73,6 @@ class ItemService implements ItemServiceInterface
         private readonly TranslatorInterface $translator,
         private readonly Connection $connection,
         private readonly LoggerInterface $logger,
-        private readonly CurrentPouchResolverInterface $currentPouchResolver,
     ) {}
 
     #[Override]
@@ -215,25 +213,23 @@ class ItemService implements ItemServiceInterface
         return $item;
     }
 
+    // Scoped to the current pouch by PouchFilter for a normal,
+    // session-authenticated request (see PouchFilterListener), so this
+    // stays a plain lookup rather than a separate pouch-checking method.
+    // PouchFilterListener leaves the filter off for the signed-URL download
+    // family and for /api/admin, where this same method is deliberately
+    // unscoped instead.
+    //
+    // findOneBy(), not find(): find() checks Doctrine's identity map
+    // *before* running any SQL, bypassing PouchFilter entirely for an id
+    // already loaded elsewhere in this request — findOneBy() always
+    // executes the (filtered) query.
     #[Override]
     public function getById(int $id): Item
     {
-        $item = $this->itemRepository->find($id);
+        $item = $this->itemRepository->findOneBy(['id' => $id]);
 
         if (null === $item || $item->isTrashed()) {
-            throw new NotFoundException(message: 'item.not_found');
-        }
-
-        return $item;
-    }
-
-    #[Override]
-    public function getByIdInCurrentPouch(int $id): Item
-    {
-        $item = $this->getById($id);
-
-        // Another pouch's item looks exactly like a missing one — never 403.
-        if ($item->getCategory()->getPouch()->getId() !== $this->currentPouchResolver->resolve()->getId()) {
             throw new NotFoundException(message: 'item.not_found');
         }
 
@@ -249,17 +245,24 @@ class ItemService implements ItemServiceInterface
     #[Override]
     public function listPage(ItemListFilter $filter, int $offset, int $limit, array $excludedCategoryIds = []): array
     {
-        return $this->itemRepository->findFilteredPage(
-            $filter,
-            $offset,
-            $limit,
-            $excludedCategoryIds,
-            pouchId: $this->currentPouchResolver->resolve()->getId(),
-        );
+        // No explicit pouchId here — PouchFilter already scopes this query
+        // to the current pouch (see getById()'s own comment). AdminController's
+        // item browser passes one explicitly instead, since /api/admin has
+        // the filter off and no "current pouch" of its own to fall back on.
+        return $this->itemRepository->findFilteredPage($filter, $offset, $limit, $excludedCategoryIds);
     }
 
     #[Override]
     public function delete(int $id): void
+    {
+        $item = $this->getById($id);
+        $item->trash(new DateTimeImmutable());
+
+        $this->itemRepository->save($item);
+    }
+
+    #[Override]
+    public function deleteAsAdmin(int $id): void
     {
         $item = $this->getById($id);
         $item->trash(new DateTimeImmutable());
@@ -305,12 +308,8 @@ class ItemService implements ItemServiceInterface
         $this->fileValidator->assertValid($originalFilename, $mimeType, $size);
         $contentHash = $this->assertNotDuplicateOfAnotherItem($tmpPath, $item);
 
-        // Post-review fix: the previous version used to be archived and
-        // flushed to the DB *before* the new file was even uploaded — a
-        // failed upload then left a "version" on record for a swap that
-        // never actually happened (and a retry would archive the same
-        // never-changed content again under a new version number). Upload
-        // first, so a failure here leaves nothing behind to clean up at all.
+        // Upload first — a failed upload here leaves nothing behind to clean
+        // up, unlike archiving the version first and only then uploading.
         $newStorageKey = $this->uploadToStorage($tmpPath, $originalFilename);
 
         // The item's *current* file becomes the archived version — captured
@@ -326,12 +325,10 @@ class ItemService implements ItemServiceInterface
         );
 
         try {
-            // Post-review fix: archiving the previous version and pointing
-            // the item at the new file must succeed or fail *together* — one
-            // flush() failing after the other already committed used to be
-            // able to leave a version on record for a swap that never
-            // completed, or an item still pointing at its old file while a
-            // version row claimed otherwise.
+            // Archiving the previous version and pointing the item at the new
+            // file must succeed or fail together — one flush() failing after
+            // the other already committed would otherwise leave a version on
+            // record for a swap that never completed.
             $this->connection->transactional(function () use ($item, $previousVersion, $originalFilename, $mimeType, $size, $newStorageKey, $contentHash): void {
                 $this->itemVersionRepository->save($previousVersion);
                 $item->setFileData($originalFilename, $mimeType, $size, $newStorageKey, $contentHash);
@@ -374,11 +371,13 @@ class ItemService implements ItemServiceInterface
     }
 
     #[Override]
-    public function findExpiringBetween(DateTimeImmutable $from, DateTimeImmutable $until): array
+    public function findExpiringBetween(DateTimeImmutable $from, DateTimeImmutable $until, ?int $pouchId = null): array
     {
-        return $this->itemRepository->findExpiringBetween($from, $until);
+        return $this->itemRepository->findExpiringBetween($from, $until, $pouchId);
     }
 
+    // Deliberately unscoped: admin's cross-pouch bulk extend (AdminController),
+    // not reachable from any regular user-facing endpoint.
     #[Override]
     public function extendExpiry(array $itemIds, ItemLifecycleOptions $options): array
     {
@@ -474,7 +473,9 @@ class ItemService implements ItemServiceInterface
      *
      * A failed flush leaves Doctrine's EntityManager closed for further ORM
      * operations, so the follow-up lookup goes through the raw DBAL
-     * connection ($this->connection) instead of the (now unusable) repository.
+     * connection ($this->connection) instead of the (now unusable) repository
+     * — and unlike everywhere else in this class, PouchFilter can't scope a
+     * raw SQL query, so $item->getPouch() is passed explicitly here.
      *
      * The file itself is already sitting in storage by the time this runs
      * (uploadToStorage() happens before this is called) — a rejected save
@@ -500,8 +501,8 @@ class ItemService implements ItemServiceInterface
             }
 
             $row = $this->connection->fetchAssociative(
-                'SELECT item_id, name FROM item WHERE content_hash = :hash AND trashed_at IS NULL',
-                ['hash' => $item->getContentHash()],
+                'SELECT item_id, name FROM item WHERE content_hash = :hash AND pouch_id = :pouchId AND trashed_at IS NULL',
+                ['hash' => $item->getContentHash(), 'pouchId' => $item->getPouch()->getId()],
             );
 
             $conflictingItemId = is_array($row) && is_numeric($row['item_id'] ?? null) ? (int) $row['item_id'] : null;

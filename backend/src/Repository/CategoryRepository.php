@@ -5,7 +5,6 @@ declare(strict_types = 1);
 namespace App\Repository;
 
 use App\Entity\Category;
-use App\Entity\Pouch;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -37,11 +36,14 @@ class CategoryRepository extends ServiceEntityRepository
     }
 
     /**
+     * Scoped to the current pouch by PouchFilter (see PouchFilterListener) —
+     * not a query-time parameter here.
+     *
      * @return list<Category>
      */
-    public function findAllForPouchOrderedByName(Pouch $pouch): array
+    public function findAllOrderedByName(): array
     {
-        return array_values($this->findBy(['pouch' => $pouch], ['name' => 'ASC']));
+        return array_values($this->findBy([], ['name' => 'ASC']));
     }
 
     /**
@@ -49,11 +51,19 @@ class CategoryRepository extends ServiceEntityRepository
      * category with no parent, plus (recursively, via Category::getChildren())
      * everything under each of them.
      *
+     * $pouchId scopes to one pouch when given — used by the admin backup's
+     * per-pouch mode (CategoryExportService::buildFullBackupZip()).
+     *
      * @return list<Category>
      */
-    public function findRootCategories(): array
+    public function findRootCategories(?int $pouchId = null): array
     {
-        return array_values($this->findBy(['parent' => null], ['name' => 'ASC']));
+        $criteria = ['parent' => null];
+        if (null !== $pouchId) {
+            $criteria['pouch'] = $pouchId;
+        }
+
+        return array_values($this->findBy($criteria, ['name' => 'ASC']));
     }
 
     /**

@@ -5,14 +5,16 @@ declare(strict_types = 1);
 namespace App\Entity;
 
 use App\Repository\CategoryRepository;
+use App\Services\Pouch\PouchAware;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use Override;
 
 #[ORM\Entity(repositoryClass: CategoryRepository::class)]
 #[ORM\Table(name: 'category')]
-class Category
+class Category implements PouchAware
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
@@ -67,6 +69,7 @@ class Category
         return $this;
     }
 
+    #[Override]
     public function getPouch(): Pouch
     {
         return $this->pouch;

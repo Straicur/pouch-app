@@ -28,21 +28,22 @@ interface CategoryExportServiceInterface
     public function buildZip(int $categoryId, Request $request): string;
 
     /**
-     * Part 10: "eksport/backup całości jako ZIP" — every root category (and
-     * its full subtree) in one archive.
+     * "Eksport/backup całości jako ZIP" — every root category (and its full
+     * subtree) in one archive; $pouchId narrows that to one pouch's root
+     * categories instead of every pouch's.
      *
-     * Post-review fix: admin-only (see AdminController::backup()) and
-     * deliberately does NOT apply Part 7 locks the way buildZip() does — a
-     * full disaster-recovery backup by an already-authenticated admin is a
-     * different action than ordinary browsing, and locks exist to gate the
-     * latter (same reasoning as AccessKeyController's admin key-reset
-     * bypass, which doesn't require proving the current key either).
-     * Explicit, intentional policy, not an oversight: an admin backup always
-     * includes everything.
+     * Admin-only (see AdminController::backup()) and deliberately does NOT
+     * apply Part 7 locks the way buildZip() does — a disaster-recovery
+     * backup by an already-authenticated admin is a different action than
+     * ordinary browsing, and locks exist to gate the latter (same reasoning
+     * as AccessKeyController's admin key-reset bypass, which doesn't
+     * require proving the current key either). Explicit, intentional
+     * policy, not an oversight: an admin backup always includes everything
+     * *for the pouch(es) it covers*.
      *
      * @return string absolute path to the finished archive on local disk —
      *                the caller streams it out and is responsible for
      *                deleting it once done
      */
-    public function buildFullBackupZip(Request $request): string;
+    public function buildFullBackupZip(Request $request, ?int $pouchId = null): string;
 }
