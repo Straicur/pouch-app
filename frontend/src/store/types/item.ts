@@ -52,6 +52,11 @@ export interface ItemSummary extends ItemBase {
   // null/false/[]. LockedItemCard renders these by name only, with an
   // inline unlock.
   locked: boolean;
+  // Set only when the list was filtered by a free-text query and a
+  // fragment of this item's own text matched it — the matched part is
+  // wrapped in HIGHLIGHT_START/END (see itemSnippet.ts), not HTML. Render
+  // it via highlightSnippetSegments(), never dangerouslySetInnerHTML.
+  snippet: string | null;
 }
 
 // GET /api/items/{id} and every create/update mutation's response — the full

@@ -9,6 +9,7 @@ use App\Enum\ItemType;
 use App\Services\Item\ValueObject\ItemListFilter;
 use DateTimeImmutable;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\Persistence\ManagerRegistry;
 
 use function array_filter;
@@ -19,6 +20,7 @@ use function count;
 use function implode;
 use function is_numeric;
 use function is_scalar;
+use function is_string;
 use function preg_match_all;
 use function str_replace;
 
@@ -27,6 +29,35 @@ use function str_replace;
  */
 class ItemRepository extends ServiceEntityRepository
 {
+    /**
+     * Wrap a ts_headline() match in these instead of its default `<b>...</b>`
+     * — Private Use Area codepoints, never present in real content, that
+     * ItemCard splits on to render highlighted segments as plain React text
+     * nodes. ts_headline() returns the original document text verbatim
+     * around them (Postgres doesn't escape/tokenize it), so treating that
+     * output as HTML would be a stored-XSS hole for anyone who can plant
+     * item content another account then searches for (OCR text, a note, a
+     * scraped page) — see docs/ROADMAP.md's Część 17 note on this.
+     */
+    public const string SNIPPET_HIGHLIGHT_START = "\u{E000}";
+
+    public const string SNIPPET_HIGHLIGHT_END = "\u{E001}";
+
+    /**
+     * Same field list/order as search_vector's own weighting (Version20260901200000)
+     * — kept as one constant so the exact search, the typo-tolerant fallback,
+     * and snippet highlighting all read exactly the same text.
+     */
+    private const string DOCUMENT_EXPRESSION = "coalesce(i.name, '') || ' ' || coalesce(i.page_title, '') || ' ' || coalesce(i.note_content, '') || ' ' || coalesce(i.extracted_text, '') || ' ' || coalesce(i.page_description, '') || ' ' || coalesce(i.url, '')";
+
+    /**
+     * Below this, a trigram "match" is noise, not a plausible typo — high
+     * enough to keep two-letter words from matching almost everything.
+     */
+    private const float FUZZY_SIMILARITY_THRESHOLD = 0.2;
+
+    private const int FUZZY_MATCH_LIMIT = 50;
+
     public function __construct(ManagerRegistry $registry)
     {
         parent::__construct($registry, Item::class);
@@ -116,7 +147,7 @@ class ItemRepository extends ServiceEntityRepository
                 ->setParameter('matchingIds', $rankedIds);
         }
 
-        $qb->orderBy('i.createdAt', 'DESC');
+        $qb->orderBy('i.createdAt', 'DESC')->addOrderBy('i.id', 'DESC');
 
         /** @var list<Item> $items */
         $items = $qb->getQuery()->getResult();
@@ -207,6 +238,7 @@ class ItemRepository extends ServiceEntityRepository
 
             /** @var list<Item> $items */
             $items = $qb->orderBy('i.createdAt', 'DESC')
+                ->addOrderBy('i.id', 'DESC')
                 ->setFirstResult($offset)
                 ->setMaxResults($limit)
                 ->getQuery()
@@ -256,11 +288,68 @@ class ItemRepository extends ServiceEntityRepository
     }
 
     /**
+     * A short excerpt per item, matched fragment wrapped in
+     * SNIPPET_HIGHLIGHT_START/END, for whichever of $itemIds actually got a
+     * text match — computed only for a page's worth of ids (the caller's
+     * job), never the full result set, since ts_headline() re-runs full text
+     * matching against each document instead of reading search_vector.
+     *
+     * Same field list/order as search_vector's own weighting (name >
+     * page_title > note_content > extracted_text/page_description/url) —
+     * ts_headline() picks its fragment from wherever $query actually landed
+     * in that combined text, tag-only matches included (a tag match has
+     * nothing here to highlight, so it's simply absent from the result).
+     *
+     * @param list<int> $itemIds
+     *
+     * @return array<int, string> keyed by item id
+     */
+    public function findSnippets(array $itemIds, string $query): array
+    {
+        if ([] === $itemIds) {
+            return [];
+        }
+
+        $document = self::DOCUMENT_EXPRESSION;
+        $sql = <<<SQL
+            SELECT i.item_id, ts_headline(
+                'simple',
+                {$document},
+                to_tsquery('simple', :tsQuery),
+                :options
+            ) AS snippet
+            FROM item i
+            WHERE i.item_id IN (:itemIds)
+            SQL;
+
+        $rows = $this->getEntityManager()->getConnection()->fetchAllKeyValue($sql, [
+            'tsQuery' => $this->buildPrefixTsQuery($query),
+            'options' => 'StartSel=' . self::SNIPPET_HIGHLIGHT_START . ', StopSel=' . self::SNIPPET_HIGHLIGHT_END . ', MaxFragments=1, MaxWords=15, MinWords=5',
+            'itemIds' => $itemIds,
+        ], [
+            'itemIds' => ArrayParameterType::INTEGER,
+        ]);
+
+        $snippets = [];
+        foreach ($rows as $itemId => $snippet) {
+            $snippets[(int) $itemId] = is_string($snippet) ? $snippet : '';
+        }
+
+        return $snippets;
+    }
+
+    /**
      * Free-text search across name, tags, note content, OCR text and
      * OpenGraph title/description in one query — item.search_vector is a
      * generated column combining the item's own text fields (see the Part 6
      * migration); tag names are matched separately since they live in a
      * joined table a generated column can't reach.
+     *
+     * Falls back to trigram similarity (pg_trgm) only when this exact,
+     * prefix-based match returns nothing — a typo anywhere in the query
+     * makes `to_tsquery`'s prefix match fail outright, and re-running that
+     * same failing match on every keystroke would be wasted work on the
+     * common (correctly spelled) path.
      *
      * @return list<int> item ids, ordered by relevance (best match first)
      */
@@ -278,12 +367,38 @@ class ItemRepository extends ServiceEntityRepository
                       WHERE it.item_id = i.item_id AND t.name ILIKE :likeQuery ESCAPE '\'
                   )
               )
-            ORDER BY rank DESC, i.created_at DESC
+            ORDER BY rank DESC, i.created_at DESC, i.item_id DESC
             SQL;
 
         $rows = $this->getEntityManager()->getConnection()->fetchFirstColumn($sql, [
             'tsQuery'   => $this->buildPrefixTsQuery($query),
             'likeQuery' => '%' . $this->escapeLikeWildcards($query) . '%',
+        ]);
+
+        $ids = array_map(static fn (mixed $id): int => is_numeric($id) ? (int) $id : 0, $rows);
+
+        return [] !== $ids ? $ids : $this->searchMatchingIdsFuzzy($query);
+    }
+
+    /**
+     * @return list<int> item ids, ordered by similarity (closest match first)
+     */
+    private function searchMatchingIdsFuzzy(string $query): array
+    {
+        $document = self::DOCUMENT_EXPRESSION;
+        $sql = <<<SQL
+            SELECT i.item_id
+            FROM item i
+            WHERE i.trashed_at IS NULL
+              AND similarity({$document}, :query) > :threshold
+            ORDER BY similarity({$document}, :query) DESC, i.created_at DESC, i.item_id DESC
+            LIMIT :limit
+            SQL;
+
+        $rows = $this->getEntityManager()->getConnection()->fetchFirstColumn($sql, [
+            'query'     => $query,
+            'threshold' => self::FUZZY_SIMILARITY_THRESHOLD,
+            'limit'     => self::FUZZY_MATCH_LIMIT,
         ]);
 
         return array_map(static fn (mixed $id): int => is_numeric($id) ? (int) $id : 0, $rows);

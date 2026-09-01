@@ -6,9 +6,11 @@ namespace App\Tests;
 
 use App\Entity\Category;
 use App\Entity\Pouch;
+use App\Entity\Tag;
 use App\Entity\User;
 use App\Repository\CategoryRepository;
 use App\Repository\PouchRepository;
+use App\Repository\TagRepository;
 use App\Repository\UserRepository;
 use App\Security\ConfigService;
 use App\Security\CookieService;
@@ -90,6 +92,19 @@ class DatabaseMockManager
         $categoryRepository->save($category);
 
         return $category;
+    }
+
+    public function createTag(string $name, ?Pouch $pouch = null): Tag
+    {
+        /**
+         * @var TagRepository $tagRepository
+         */
+        $tagRepository = $this->getService(TagRepository::class);
+
+        $tag = new Tag($name, $pouch ?? $this->defaultPouch());
+        $tagRepository->save($tag);
+
+        return $tag;
     }
 
     public function loginUser(User $user): Cookie

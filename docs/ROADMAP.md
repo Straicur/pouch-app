@@ -1055,7 +1055,7 @@ wszystko zwróciło oczekiwane dane.
 
 ---
 
-## Część 17 — Tagi jako pełnoprawny zasób + 4 usprawnienia wyszukiwarki (nie zaczęte)
+## Część 17 — Tagi jako pełnoprawny zasób + 4 usprawnienia wyszukiwarki
 
 Zgłoszone przez usera w tej samej rozmowie co ranking pól/prefix-matching/
 kategorie i tagi jako twarde filtry (już zrobione — patrz
@@ -1064,77 +1064,72 @@ kategorie i tagi jako twarde filtry (już zrobione — patrz
 zabrakło tokenów w tamtej sesji, i w międzyczasie okazało się, że pierwszy
 punkt zależy od jeszcze niedomkniętej Części 16 (patrz niżej).
 
-- [ ] **Tagi: prosty CRUD + strona w panelu bocznym**, analogicznie do
-      `CategoriesPage`. Dziś `TagController` jest read-only — `GET /api/tags`
-      zwraca tylko nazwy tagów faktycznie użytych na jakimś aktywnym itemie
-      (do filtra/autouzupełniania), a same tagi powstają wyłącznie przy
-      okazji tagowania itemu (`TagService::resolveTags()`,
-      `TagRepository::findOrCreateByNames()`). Do zrobienia: `create`/
-      `rename`/`delete` (mirror `CategoryController`/`CategoryService` —
-      nowy `TagVoter` z tymi samymi progami ról co `CategoryVoter`:
-      `CREATE`/`RENAME` = `ROLE_USER`, `DELETE` = `ROLE_ADMIN`), nowy endpoint
-      zwracający **wszystkie** tagi, nie tylko "w użyciu" (np.
-      `GET /api/tags/all`), do samego zarządzania — plus wpis w sidebarze i
-      nowa `TagsPage`.
-  - **Decyzja usera w tej rozmowie**: tagi mają być scope'owane per Pouch,
-    tak jak `Category` (Część 16), nie globalne. `Tag` dziś nie ma żadnej
-    relacji do `Category`/`Pouch` (współdzielony przez `item_tag`, bez
-    własnej kolumny) — wymaga nowej migracji dodającej `tag.pouch_id`, tym
-    samym wzorcem backfill co `Version20260831190537.php` dla
-    `category`/`user`. Jeśli do tego czasu powstanie `PouchFilter` (patrz
-    Część 16, Krok 1, ostatni punkt), tagi powinny iść przez ten sam filtr,
-    nie przez osobny ręczny warunek.
-  - **Zależność, nie blocker**: sensowne dopiero, gdy Część 16 (izolacja
-    itemów po Pouchu, w tym znana luka z Kroku 1) jest stabilna — inaczej
-    dokłada się kolejny zasób do modelu, który sam jeszcze nie domyka
-    izolacji do końca.
-  - [ ] **Lista itemów "skacze" (zmienia kolejność) po kliknięciu gwiazdki** —
-    zgłoszone przez usera. `ItemRepository`'s `ORDER BY` (`findFiltered()`,
-    `findFilteredPage()`, i `rank DESC, i.created_at DESC` w
-    `searchMatchingIds()`) sortuje tylko po `i.createdAt`, bez żadnego
-    deterministycznego drugiego klucza. `created_at` to `TIMESTAMP(0)`
-    (precyzja sekundy), więc kilka itemów utworzonych w tej samej sekundzie
-    (typowe dla fixtures, ale zdarza się i przy realnym użyciu) to
-    remis — a Postgres nie gwarantuje stałej kolejności remisów między
-    dwoma wywołaniami tego samego zapytania. `markFavorite`/
-    `unmarkFavorite` invalidują tag `Item` w RTK Query, co odpala refetch
-    bieżącej strony z tymi samymi filtrami — i ten refetch potrafi
-    zwrócić remisy w innej kolejności niż poprzednio, co user widzi jako
-    "elementy zmieniają kolejność". Naprawa: dodać stały drugi klucz
-    sortowania (np. `i.id DESC`) do wszystkich trzech `ORDER BY` wyżej.
-- [ ] **Wyszukiwarka — 4 dodatkowe usprawnienia** (poza już zrobionym
-      rankingiem/prefix-matchingiem/twardymi filtrami kategorii/tagów):
-  1. **URL jako przeszukiwalne pole** — `item.search_vector` dziś nie
-     zawiera `url` (tylko `page_title`/`page_description`/`extracted_text`),
-     więc wpisanie samej domeny (np. "github") nie trafi linku, jeśli
-     scrapowany tytuł jej nie zawiera. Dorzucić `url` do wagi D w kolejnej
-     migracji (ten sam wzorzec drop+recreate co `Version20260831190000.php`).
-  2. **Komunikat pustego wyniku dopasowany do kontekstu** — `items.empty`
-     ("Brak itemów do pokazania") pokazuje się identycznie przy braku
-     itemów w ogóle i przy zerowym trafieniu wyszukiwania; potrzebny osobny
-     klucz i18n (np. `items.emptySearch`, z `{{query}}`), używany gdy
-     `filters.q` jest ustawione.
-  3. **Podświetlanie dopasowanego fragmentu** (`ts_headline`) — dziś karta
-     itemu nie pokazuje *dlaczego* coś trafiło, jeśli dopasowanie jest w
-     OCR-u/opisie strony, nie w nazwie. Wymaga nowego pola w
-     `ItemSummaryResponseDTO` (snippet, budowany tylko gdy `q` aktywne) —
-     **bez `dangerouslySetInnerHTML` na froncie**: `ts_headline` niesie
-     surowy tekst usera (notatka/OCR), więc podświetlenie musi iść przez
-     sentinel (parę niedrukowalnych znaków zamiast `<mark>`) i bezpieczne
-     renderowanie jako segmenty tekstu w Reakcie — inaczej to realny wektor
-     stored-XSS w pouchach współdzielonych z innymi kontami (Część 16:
-     "rodzina/zespół", nie jedno konto).
-  4. **Tolerancja literówek** (`pg_trgm`) — dziś literówka w zapytaniu =
-     zero wyników (`to_tsquery` wymaga dokładnego prefiksu). Propozycja:
-     fallback na `similarity()`/trigram tylko gdy główne zapytanie
-     (`buildPrefixTsQuery()`) zwróci pustą listę, żeby nie komplikować/nie
-     spowalniać najczęstszej ścieżki. Wymaga `CREATE EXTENSION IF NOT
-     EXISTS pg_trgm` + indeksu trigramowego.
-
-**Nie blokuje** niczego wcześniejszego — oba wątki to rozszerzenia istniejącej,
-już działającej wyszukiwarki/tagowania, nie naprawa czegoś zepsutego. Punkt
-"tagi" **zależy** od Części 16 (patrz wyżej), punkty wyszukiwarki są od niej
-niezależne i mogą ruszyć w dowolnej kolejności.
+- [x] **Tagi: prosty CRUD + strona w panelu bocznym — zrobione, scope'owane
+      per Pouch.** `TagController` ma teraz `POST /api/tags` (create),
+      `PATCH /api/tags/{id}/rename`, `DELETE /api/tags/{id}` (admin-only, jak
+      `CategoryVoter`), `GET /api/tags/all` (wszystkie tagi w pouch, nie
+      tylko "w użyciu" — dla strony zarządzania; `GET /api/tags` zostaje bez
+      zmian, dalej tylko nazwy tagów w użyciu, dla filtra/autouzupełniania).
+      Nowy `TagVoter` (`CREATE`/`RENAME` = `ROLE_USER`, `DELETE` =
+      `ROLE_ADMIN`). Usunięcie tagu nie wymaga żeby był nieużywany —
+      `item_tag.tag_id` jest `ON DELETE CASCADE`, więc usunięcie po prostu
+      odtagowuje itemy, nic nie jest osierocone. Audit log: nowy
+      `RESOURCE_TAG`.
+  - **Pouch-scoping**: migracja `Version20260901094931.php` dodaje
+    `tag.pouch_id` (`NOT NULL`, unique teraz `(name, pouch_id)` zamiast
+    samego `name`) — hand-written backfill z `item_tag`/`item.pouch_id`
+    (każdy tag dostaje pouch większości/jedynego pouch swoich itemów), z
+    `DO $$ ... RAISE EXCEPTION` jako zabezpieczeniem gdyby jakiś tag miał
+    itemy w więcej niż jednym pouch (na dev-DB w chwili pisania migracji: 0
+    takich przypadków — sprawdzone przed napisaniem). Tag bez żadnego itemu
+    (osierocony) jest usuwany zamiast backfillowany — i tak nie pojawiał się
+    w `GET /api/tags` ("w użyciu"). `Tag implements PouchAware`, więc
+    `PouchFilter` (Część 16) scope'uje go automatycznie tak jak `Category`.
+    `TagRepository::findOrCreateByNames()` teraz przyjmuje `Pouch` explicite
+    (insert nie widzi SQLFilter). Testy: `TagControllerTest` (11),
+    `TagPouchIsolationTest` (4) — w tym że ta sama nazwa tagu jest wolna do
+    użycia w dwóch różnych pouch.
+  - [x] **Lista itemów "skacze" (zmienia kolejność) po kliknięciu gwiazdki —
+    naprawione.** Wszystkie trzy `ORDER BY` w `ItemRepository`
+    (`findFiltered()`, `findFilteredPage()`, `searchMatchingIds()`) mają
+    teraz `id DESC` jako deterministyczny drugi klucz po `createdAt DESC`/
+    `rank DESC`, więc remis na `createdAt` (TIMESTAMP(0), precyzja sekundy)
+    sortuje się identycznie przy każdym kolejnym zapytaniu zamiast po
+    uznaniu Postgresa. Test: `ItemListOrderingStabilityTest` (wymusza remis
+    przez ręczny `UPDATE ... SET created_at = now()` na trzech itemach,
+    sprawdza że dwa kolejne `GET /api/items` zwracają identyczną kolejność,
+    i że jest to konkretnie `id DESC`).
+- [x] **Wyszukiwarka — 4 dodatkowe usprawnienia — zrobione** (poza już
+      wcześniej zrobionym rankingiem/prefix-matchingiem/twardymi filtrami
+      kategorii/tagów):
+  1. **URL jako przeszukiwalne pole — zrobione.** Migracja
+     `Version20260901200000.php` dorzuca `url` do wagi D `search_vector`
+     (drop+recreate, jak `Version20260831190000.php`). Test:
+     `testSearchMatchesByUrlWhenTitleAndDescriptionDoNotContainTheQuery`.
+  2. **Komunikat pustego wyniku dopasowany do kontekstu — zrobione.**
+     `ItemsPage.tsx` pokazuje `items.emptySearch` (z `{{query}}`) zamiast
+     `items.empty`, gdy `filters.q` jest ustawione.
+  3. **Podświetlanie dopasowanego fragmentu — zrobione.**
+     `ItemRepository::findSnippets()` liczy `ts_headline()` (te same
+     pola/kolejność co `search_vector`) tylko dla itemów na bieżącej
+     stronie wyniku, opakowując trafienie w
+     `ItemRepository::SNIPPET_HIGHLIGHT_START`/`END` (Private Use Area,
+     `\u{E000}`/`\u{E001}`) zamiast domyślnego `<b>`. Nowe pole
+     `ItemSummaryResponseDTO::$snippet` (tylko gdy `q` aktywne).
+     Frontend: `utils/itemSnippet.ts`'s `highlightSnippetSegments()` dzieli
+     snippet na segmenty tekstu, `ItemCard` renderuje je jako zwykłe węzły
+     Reacta (`<mark>` dla trafienia) — **bez `dangerouslySetInnerHTML`**,
+     zgodnie z zastrzeżeniem o stored-XSS przy współdzielonym pouchu.
+     Testy: `testSearchResultCarriesAHighlightedSnippetOfTheMatch`,
+     `testListWithoutASearchQueryCarriesNoSnippet`.
+  4. **Tolerancja literówek — zrobione.** Migracja
+     `Version20260901210000.php`: `CREATE EXTENSION IF NOT EXISTS pg_trgm` +
+     GIN trigram index na tym samym wyrażeniu co `search_vector`.
+     `ItemRepository::searchMatchingIds()` odpala `searchMatchingIdsFuzzy()`
+     (próg `similarity() > 0.2`, limit 50) tylko gdy dokładne
+     `to_tsquery`-owe dopasowanie zwróci pustą listę — najczęstsza
+     (poprawnie napisana) ścieżka nie płaci za to nic dodatkowego. Test:
+     `testSearchToleratesATypoViaTrigramFallback`.
 
 ---
 

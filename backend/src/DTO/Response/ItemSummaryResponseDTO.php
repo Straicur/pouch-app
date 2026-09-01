@@ -41,6 +41,12 @@ class ItemSummaryResponseDTO
         private readonly ?string $trashedAt,
         private readonly string $createdAt,
         private readonly bool $locked,
+        // Set only when the list was filtered by a free-text query and a
+        // fragment of this item's own text (not just a tag) matched it — see
+        // ItemRepository::findSnippets(). The matched part is wrapped in
+        // ItemRepository::SNIPPET_HIGHLIGHT_START/END, not HTML — the
+        // frontend renders it as plain text segments, never raw markup.
+        private readonly ?string $snippet = null,
     ) {}
 
     public function getId(): int
@@ -149,5 +155,10 @@ class ItemSummaryResponseDTO
     public function isLocked(): bool
     {
         return $this->locked;
+    }
+
+    public function getSnippet(): ?string
+    {
+        return $this->snippet;
     }
 }

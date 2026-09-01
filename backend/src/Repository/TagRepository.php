@@ -5,12 +5,14 @@ declare(strict_types = 1);
 namespace App\Repository;
 
 use App\Entity\Item;
+use App\Entity\Pouch;
 use App\Entity\Tag;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
 use function array_diff;
 use function array_map;
+use function array_values;
 
 /**
  * @extends ServiceEntityRepository<Tag>
@@ -22,12 +24,38 @@ class TagRepository extends ServiceEntityRepository
         parent::__construct($registry, Tag::class);
     }
 
+    public function save(Tag $tag): void
+    {
+        $this->getEntityManager()->persist($tag);
+        $this->getEntityManager()->flush();
+    }
+
+    public function remove(Tag $tag): void
+    {
+        $this->getEntityManager()->remove($tag);
+        $this->getEntityManager()->flush();
+    }
+
+    /**
+     * Every tag in the current pouch (scoped by PouchFilter — Tag is
+     * PouchAware), regardless of whether it's attached to any item — the
+     * management page (create/rename/delete) needs to show a tag someone
+     * just created but hasn't tagged anything with yet, unlike
+     * findInUseOrderedByName() below.
+     *
+     * @return list<Tag>
+     */
+    public function findAllOrderedByName(): array
+    {
+        return array_values($this->findBy([], ['name' => 'ASC']));
+    }
+
     /**
      * Only tags actually attached to a live (non-trashed) item — a name that
      * lost its last item (replaced away, or the item trashed/deleted) isn't
-     * "in use" any more, even though the Tag row itself lingers (tags have no
-     * delete-on-orphan cleanup; a row is cheap to keep, a stale autocomplete
-     * suggestion isn't).
+     * "in use" any more, even though the Tag row itself lingers. Feeds the
+     * item filter/autocomplete UI (GET /api/tags), not the tag-management
+     * page (GET /api/tags/all, findAllOrderedByName() above).
      *
      * `SELECT t FROM Item i JOIN i.tags t` reads naturally but DQL rejects
      * it outright — a query's root alias (`i`, from Item's FROM) must be
@@ -36,15 +64,9 @@ class TagRepository extends ServiceEntityRepository
      * Making Tag the root and using MEMBER OF in a WHERE EXISTS sidesteps
      * that restriction rather than selecting `i, t` and discarding `i`.
      *
-     * A tag is a `Tag` row shared by name across the whole `item_tag`
-     * table — "in use" only counts an item belonging to the current pouch,
-     * scoped automatically by PouchFilter on the `Item` subquery below (it
-     * applies to every entity reference in a query, including a subquery's),
-     * so this never reveals another pouch's tag names.
-     *
      * @return list<Tag>
      */
-    public function findAllOrderedByName(): array
+    public function findInUseOrderedByName(): array
     {
         /** @var list<Tag> $result */
         $result = $this->createQueryBuilder('t')
@@ -57,15 +79,15 @@ class TagRepository extends ServiceEntityRepository
     }
 
     /**
-     * Looks up existing tags by (already normalized — see TagService) name
-     * and creates the ones that don't exist yet, so callers never have to
-     * care which tags are new.
+     * Looks up existing tags by (already normalized — see TagService) name,
+     * scoped to $pouch by PouchFilter, and creates the ones that don't exist
+     * yet in that pouch — so callers never have to care which tags are new.
      *
      * @param list<string> $names
      *
      * @return list<Tag>
      */
-    public function findOrCreateByNames(array $names): array
+    public function findOrCreateByNames(array $names, Pouch $pouch): array
     {
         if ([] === $names) {
             return [];
@@ -83,7 +105,7 @@ class TagRepository extends ServiceEntityRepository
 
         $created = [];
         foreach ($missingNames as $name) {
-            $tag = new Tag($name);
+            $tag = new Tag($name, $pouch);
             $this->getEntityManager()->persist($tag);
             $created[] = $tag;
         }

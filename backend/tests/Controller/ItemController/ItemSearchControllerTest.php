@@ -237,6 +237,101 @@ class ItemSearchControllerTest extends WebTest
         self::assertCount(1, $this->search('koalasearchword'));
     }
 
+    /**
+     * Część 17: item.url is now part of search_vector (weight D) too — a
+     * bare domain/URL fragment matches even when the scraped title/
+     * description never happens to repeat it.
+     */
+    public function testSearchMatchesByUrlWhenTitleAndDescriptionDoNotContainTheQuery(): void
+    {
+        /** @var ItemRepository $itemRepository */
+        $itemRepository = $this->getService(ItemRepository::class);
+
+        $item = new Item(
+            category: $this->category,
+            type: ItemType::URL,
+            name: 'Some link',
+            keepForever: false,
+            expiresAt: new DateTimeImmutable('+1 day'),
+            processingStatus: ItemProcessingStatus::COMPLETED,
+        );
+        $item->setUrl('https://urlsearchhost.example/some-path');
+        $item->setPageMetadata('Completely unrelated title', 'Completely unrelated description');
+        $itemRepository->save($item);
+
+        self::assertCount(1, $this->search('urlsearchhost'));
+    }
+
+    /**
+     * Część 17: a search result carries a highlighted excerpt of the
+     * matched text — wrapped in ItemRepository::SNIPPET_HIGHLIGHT_START/END
+     * sentinels, not HTML (ItemCard renders it as plain text segments; see
+     * that constant's own doc comment for why raw HTML here would be a
+     * stored-XSS hole).
+     */
+    public function testSearchResultCarriesAHighlightedSnippetOfTheMatch(): void
+    {
+        $this->authAsUser();
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/notes',
+            content: json_encode(['categoryId' => $this->category->getId(), 'content' => 'a note about snippetmarkerword right here']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+
+        $items = $this->search('snippetmarkerword');
+        self::assertCount(1, $items);
+        self::assertNotNull($items[0]['snippet']);
+        self::assertStringContainsString(
+            ItemRepository::SNIPPET_HIGHLIGHT_START . 'snippetmarkerword' . ItemRepository::SNIPPET_HIGHLIGHT_END,
+            $items[0]['snippet'],
+        );
+        self::assertStringNotContainsString('<b>', $items[0]['snippet']);
+    }
+
+    /**
+     * Część 17: a misspelled query that the exact prefix search can't match
+     * at all still finds the item via pg_trgm similarity — the fallback
+     * only kicks in once the exact search comes back empty (see
+     * ItemRepository::searchMatchingIds()).
+     */
+    public function testSearchToleratesATypoViaTrigramFallback(): void
+    {
+        $this->authAsUser();
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/notes',
+            content: json_encode(['categoryId' => $this->category->getId(), 'content' => 'irrelevant content', 'name' => 'Typosearchterm']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+
+        // One letter swapped ("typpsearchterm") — to_tsquery's prefix match
+        // fails outright on this, only trigram similarity can still find it.
+        $items = $this->search('typpsearchterm');
+        self::assertCount(1, $items);
+        self::assertSame('Typosearchterm', $items[0]['name']);
+    }
+
+    /**
+     * A plain (non-search) list carries no snippet at all — it's only
+     * computed when $filter->query is actually set (ItemController::list()).
+     */
+    public function testListWithoutASearchQueryCarriesNoSnippet(): void
+    {
+        $this->authAsUser();
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/notes',
+            content: json_encode(['categoryId' => $this->category->getId(), 'content' => 'plain listing content']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+
+        $this->webClient->request(method: Request::METHOD_GET, uri: '/api/items');
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+        $body = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        self::assertNull($body['items'][0]['snippet']);
+    }
+
     public function testSearchCombinesWithCategoryAndFavoriteFilters(): void
     {
         $this->authAsUser();

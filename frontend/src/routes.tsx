@@ -13,6 +13,7 @@ import { CategoriesPage } from "./pages/user/categories/CategoriesPage";
 import { FavoritesPage } from "./pages/user/favorites/FavoritesPage";
 import { ItemsPage } from "./pages/user/items/ItemsPage";
 import { SettingsPage } from "./pages/user/settings/SettingsPage";
+import { TagsPage } from "./pages/user/tags/TagsPage";
 import { UserLayout } from "./pages/user/UserLayout";
 
 // Nested per area (User / Admin), and within each area, one route per
@@ -32,6 +33,7 @@ export const router = createBrowserRouter([
           { path: "items", element: <ItemsPage /> },
           { path: "favorites", element: <FavoritesPage /> },
           { path: "categories", element: <CategoriesPage /> },
+          { path: "tags", element: <TagsPage /> },
           { path: "settings", element: <SettingsPage /> },
         ],
       },

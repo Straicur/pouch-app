@@ -42,7 +42,13 @@ export function ItemsPage() {
 
       {isLoading && <LoadingIndicator />}
       {undefined !== error && <p className="text-red-600 dark:text-red-400">{t("items.fetchError")}</p>}
-      {undefined !== data && 0 === data.items.length && <p>{t("items.empty")}</p>}
+      {undefined !== data && 0 === data.items.length && (
+        <p>
+          {undefined !== filters.q && "" !== filters.q
+            ? t("items.emptySearch", { query: filters.q })
+            : t("items.empty")}
+        </p>
+      )}
 
       {undefined !== data && data.items.length > 0 && <ItemGrid items={data.items} />}
 

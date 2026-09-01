@@ -205,13 +205,19 @@ final class ItemController extends AbstractController
             fn (Item $item): bool => $this->accessKeyGuard->isCategoryUnlocked($item->getCategory(), $request),
         ));
 
+        // Only for a page's worth of ids, and only when a free-text query is
+        // actually active — see ItemService::getSearchSnippets()'s own comment.
+        $snippets = null !== $filter->query
+            ? $this->itemService->getSearchSnippets(array_map(static fn (Item $item): int => $item->getId(), $visibleItems), $filter->query)
+            : [];
+
         // An item locked only by its own key no longer disappears from the
         // list entirely — it appears redacted to a name-only summary, so the
         // frontend can offer an inline unlock instead of requiring the id to
         // already be known some other way.
         $summaries = array_map(
             fn (Item $item): ItemSummaryResponseDTO => $this->accessKeyGuard->isItemOwnKeyUnlocked($item, $request)
-                ? ItemMapper::toSummaryResponseDTO($item)
+                ? ItemMapper::toSummaryResponseDTO($item, $snippets[$item->getId()] ?? null)
                 : ItemMapper::toLockedSummaryResponseDTO($item),
             $visibleItems,
         );

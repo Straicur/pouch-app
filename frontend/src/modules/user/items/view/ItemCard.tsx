@@ -4,6 +4,7 @@ import { useListCategoriesQuery } from "../../../../store/api/categoryApi";
 import { useGetItemThumbnailLinkMutation } from "../../../../store/api/itemApi";
 import type { ItemBaseLike, ItemSummary } from "../../../../store/types/item";
 import { Badge } from "../../../../ui/catalyst/badge";
+import { highlightSnippetSegments } from "../../../../utils/itemSnippet";
 import { FavoriteStar } from "./FavoriteStar";
 import { ItemDetailsModal } from "./ItemDetailsModal";
 
@@ -71,8 +72,24 @@ export function ItemCard({ item }: ItemCardProps) {
         {null !== thumbnailUrl && <img src={thumbnailUrl} alt="" className="aspect-video w-full object-cover" />}
         <div className="flex flex-col gap-2 p-4">
           <h3 className="pr-6 text-base font-semibold text-zinc-950 dark:text-white">{title}</h3>
-          {null !== description && (
-            <p className="line-clamp-3 text-sm text-zinc-600 dark:text-zinc-400">{description}</p>
+          {null !== item.snippet ? (
+            <p className="line-clamp-3 text-sm text-zinc-600 dark:text-zinc-400">
+              {highlightSnippetSegments(item.snippet).map((segment, index) =>
+                segment.highlighted ? (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: segments are derived fresh from item.snippet every render, never reordered/filtered independently
+                  <mark key={index} className="rounded-sm bg-yellow-200 px-0.5 dark:bg-yellow-900">
+                    {segment.text}
+                  </mark>
+                ) : (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: see above
+                  <span key={index}>{segment.text}</span>
+                ),
+              )}
+            </p>
+          ) : (
+            null !== description && (
+              <p className="line-clamp-3 text-sm text-zinc-600 dark:text-zinc-400">{description}</p>
+            )
           )}
           <div className="flex flex-wrap items-center gap-1.5">
             {item.tags.length > 0 ? (

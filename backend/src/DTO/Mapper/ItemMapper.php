@@ -63,7 +63,7 @@ final class ItemMapper
         );
     }
 
-    public static function toSummaryResponseDTO(Item $item): ItemSummaryResponseDTO
+    public static function toSummaryResponseDTO(Item $item, ?string $snippet = null): ItemSummaryResponseDTO
     {
         return new ItemSummaryResponseDTO(
             id: $item->getId(),
@@ -90,6 +90,7 @@ final class ItemMapper
             trashedAt: $item->getTrashedAt()?->format(DateTimeInterface::ATOM),
             createdAt: $item->getCreatedAt()->format(DateTimeInterface::ATOM),
             locked: false,
+            snippet: $snippet,
         );
     }
 

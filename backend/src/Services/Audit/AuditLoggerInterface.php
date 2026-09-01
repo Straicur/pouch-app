@@ -26,6 +26,8 @@ interface AuditLoggerInterface
 
     public const string RESOURCE_USER = 'user';
 
+    public const string RESOURCE_TAG = 'tag';
+
     /**
      * Fire-and-forget — a failure to write an audit row is logged (see the
      * implementation), never thrown, so audit logging can't itself break the

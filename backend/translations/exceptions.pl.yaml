@@ -68,6 +68,9 @@ pouch.has_other_users: "Ten pouch ma inne konta poza Twoim — usuń lub przenie
 # Tag
 tag.too_long: "Nazwa tagu może mieć maksymalnie 50 znaków."
 tag.too_many: "Można przypisać maksymalnie 20 tagów do jednego itemu."
+tag.blank: "Nazwa tagu nie może być pusta."
+tag.not_found: "Nie znaleziono tagu."
+tag.name_taken: "Tag o tej nazwie już istnieje."
 
 # Note items
 note.content_empty: "Treść notatki nie może być pusta."

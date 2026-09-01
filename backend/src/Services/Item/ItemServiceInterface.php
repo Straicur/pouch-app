@@ -116,6 +116,17 @@ interface ItemServiceInterface
      */
     public function listPage(ItemListFilter $filter, int $offset, int $limit, array $excludedCategoryIds = []): array;
 
+    /**
+     * Highlighted excerpts for a page's worth of search results — see
+     * ItemRepository::findSnippets(). Only meaningful when the list was
+     * actually filtered by a free-text query.
+     *
+     * @param list<int> $itemIds
+     *
+     * @return array<int, string> keyed by item id
+     */
+    public function getSearchSnippets(array $itemIds, string $query): array;
+
     /** @throws NotFoundException */
     public function delete(int $id): void;
 

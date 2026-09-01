@@ -168,9 +168,9 @@ class ItemPouchIsolationTest extends WebTest
     }
 
     /**
-     * TagRepository::findAllOrderedByName() used to list every tag attached
-     * to any active item system-wide — GET /api/tags leaked another pouch's
-     * tag names to any logged-in user.
+     * TagRepository::findInUseOrderedByName() used to list every tag
+     * attached to any active item system-wide — GET /api/tags leaked
+     * another pouch's tag names to any logged-in user.
      */
     public function testTagListDoesNotIncludeAnotherPouchsTags(): void
     {

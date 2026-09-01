@@ -253,6 +253,12 @@ class ItemService implements ItemServiceInterface
     }
 
     #[Override]
+    public function getSearchSnippets(array $itemIds, string $query): array
+    {
+        return $this->itemRepository->findSnippets($itemIds, $query);
+    }
+
+    #[Override]
     public function delete(int $id): void
     {
         $item = $this->getById($id);

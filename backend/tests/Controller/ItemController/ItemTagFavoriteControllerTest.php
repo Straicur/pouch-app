@@ -140,7 +140,7 @@ class ItemTagFavoriteControllerTest extends WebTest
     }
 
     // A tag that lost its last item shouldn't keep haunting the autocomplete
-    // list — see TagRepository::findAllOrderedByName().
+    // list — see TagRepository::findInUseOrderedByName().
     public function testTagListEndpointOmitsTagsNoLongerUsedByAnyItem(): void
     {
         $item = $this->createNote('orphaned tag source');
