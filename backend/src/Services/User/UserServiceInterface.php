@@ -52,4 +52,18 @@ interface UserServiceInterface
      * @throws BadRequestException $id is $currentUserId (an admin can't delete their own account)
      */
     public function delete(int $id, int $currentUserId): void;
+
+    /**
+     * Self-service "usuń moje konto" — the pouch and everything in it are
+     * untouched, same as delete() (a User is just a login). ROLE_ADMIN
+     * accounts are refused here on purpose: deleting *just* an admin's own
+     * login while leaving its pouch behind isn't a coherent action for a
+     * role that's meant to own/manage that pouch — see
+     * PouchDeletionServiceInterface::deleteOwnPouch() for what an admin gets
+     * instead.
+     *
+     * @throws NotFoundException   $id doesn't exist
+     * @throws BadRequestException $id belongs to a ROLE_ADMIN account
+     */
+    public function deleteOwnAccount(int $id): void;
 }

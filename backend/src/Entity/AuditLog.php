@@ -41,7 +41,7 @@ class AuditLog
     private DateTimeImmutable $createdAt;
 
     #[ORM\ManyToOne(targetEntity: Pouch::class)]
-    #[ORM\JoinColumn(name: 'pouch_id', referencedColumnName: 'pouch_id', nullable: true)]
+    #[ORM\JoinColumn(name: 'pouch_id', referencedColumnName: 'pouch_id', nullable: true, onDelete: 'SET NULL')]
     private ?Pouch $pouch;
 
     public function __construct(

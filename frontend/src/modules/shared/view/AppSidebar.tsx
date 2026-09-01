@@ -84,6 +84,9 @@ export function AppSidebar() {
       </SidebarBody>
       <SidebarFooter>
         <ThemeSwitch />
+        <SidebarItem href="/user/settings" current={pathname.startsWith("/user/settings")}>
+          <SidebarLabel>{t("nav.settings")}</SidebarLabel>
+        </SidebarItem>
         <SidebarItem onClick={handleLogout}>
           <SidebarLabel>{t("auth.logoutButton")}</SidebarLabel>
         </SidebarItem>

@@ -26,6 +26,12 @@ class PouchRepository extends ServiceEntityRepository
         $this->getEntityManager()->flush();
     }
 
+    public function remove(Pouch $pouch): void
+    {
+        $this->getEntityManager()->remove($pouch);
+        $this->getEntityManager()->flush();
+    }
+
     /**
      * @return list<Pouch>
      */

@@ -4,6 +4,8 @@ export const ApiEndpoints = {
   LOGOUT: "/api/logout",
   REFRESH_TOKEN: "/api/auth/token/refresh",
   WHOAMI: "/api/whoami",
+  ACCOUNT: "/api/account",
+  ACCOUNT_POUCH: "/api/account/pouch",
   ITEMS: "/api/items",
   ITEM: (id: number) => `/api/items/${id}`,
   ITEM_FILES: "/api/items/files",

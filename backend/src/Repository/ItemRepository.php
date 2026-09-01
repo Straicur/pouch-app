@@ -44,6 +44,28 @@ class ItemRepository extends ServiceEntityRepository
         $this->getEntityManager()->flush();
     }
 
+    /**
+     * Every item in the pouch, any state (trashed or not) — an admin's
+     * self-service "delete my whole pouch" wipes everything immediately,
+     * not just what GC would eventually get to. Explicit `i.pouch = :pouchId`
+     * rather than relying on PouchFilter, since this is exactly the kind of
+     * operation that must be scoped correctly regardless of whether the
+     * filter happens to be active for the calling route.
+     *
+     * @return list<Item>
+     */
+    public function findAllInPouch(int $pouchId): array
+    {
+        /** @var list<Item> $result */
+        $result = $this->createQueryBuilder('i')
+            ->where('i.pouch = :pouchId')
+            ->setParameter('pouchId', $pouchId)
+            ->getQuery()
+            ->getResult();
+
+        return $result;
+    }
+
     // Scoped to the current pouch by PouchFilter — both call sites
     // (ItemService::assertNotDuplicate()/assertNotDuplicateOfAnotherItem())
     // only ever run for a normal, session-authenticated upload.

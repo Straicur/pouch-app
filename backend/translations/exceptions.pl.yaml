@@ -60,7 +60,10 @@ user.email_taken: "Ten adres e-mail jest już zajęty."
 user.cannot_modify_self: "Nie można wykonać tej operacji na własnym koncie."
 user.pouch_choice_required: "Podaj albo istniejący pouch (pouchId), albo nazwę nowego (newPouchName)."
 user.pouch_choice_ambiguous: "Podaj tylko jedno: istniejący pouch (pouchId) albo nazwę nowego (newPouchName), nie oba naraz."
+user.admin_cannot_delete_own_account: "Administrator nie może usunąć samego konta — użyj opcji usunięcia całego pouch."
+user.cannot_delete_last_admin: "Nie można usunąć jedynego konta administratora w systemie."
 pouch.not_found: "Nie znaleziono pouch."
+pouch.has_other_users: "Ten pouch ma inne konta poza Twoim — usuń lub przenieś je najpierw w panelu admina."
 
 # Tag
 tag.too_long: "Nazwa tagu może mieć maksymalnie 50 znaków."

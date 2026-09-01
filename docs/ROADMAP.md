@@ -1016,9 +1016,30 @@ wszystko zwróciło oczekiwane dane.
 
 ### Dalej, nie zaczęte
 
-- [ ] **RODO/eksport i usunięcie danych użytkownika** — "usuń moje konto i
-      wszystkie moje dane"/"pobierz wszystkie moje dane" (Część 9 ma już
-      eksport kategorii jako ZIP — częściowo reużywalne).
+- [x] **Usunięcie własnego konta — zrobione, świadomie zawężone do
+      usunięcia (bez eksportu danych, patrz niżej).** `DELETE /api/account`
+      (zwykłe konto): kasuje tylko login, pouch i dane w nim zostają
+      nietknięte — jak dotychczasowe admin-delete. Konto z `ROLE_ADMIN` nie
+      może użyć tego endpointu (`BadRequestException` — pouch admina zawsze
+      ma co najmniej jedno konto, więc "usuń tylko login" nie ma sensu dla
+      admina, patrz niżej). `DELETE /api/account/pouch` (tylko
+      `ROLE_ADMIN`): kasuje cały pouch razem z adminem — wszystkie konta w
+      pouch, kategorie (kaskadowo), itemy wraz z plikami w storage (włącznie
+      z wersjami i miniaturami). Odmawia gdy: (1) w pouch jest jeszcze inne
+      konto poza wywołującym (`ConflictException` — najpierw usuń/przenieś w
+      panelu admina), (2) wywołujący jest jedynym adminem w systemie i
+      istnieją inne konta gdzie indziej, które zostałyby bez żadnego admina
+      (`BadRequestException`) — czysto solo-adminowa instalacja (ten pouch to
+      cały system) może się skasować w całości bez przeszkód. Frontend:
+      `/user/settings` (link w sidebarze), pierwsza i jedyna dziś opcja —
+      "Usuń moje konto" dla zwykłych kont, "Usuń cały pouch" (bez zwykłej
+      opcji) dla admina, oba za `ConfirmDialog`. Backend:
+      `AccountController`, `UserService::deleteOwnAccount()`,
+      `PouchDeletionService`, testy `AccountControllerTest` (5/5).
+      **Nie zrobione i świadomie poza zakresem tej pracy: eksport danych
+      użytkownika** ("pobierz wszystkie moje dane") — Część 9 ma eksport
+      kategorii jako ZIP, częściowo reużywalne, ale osobna praca jeśli
+      będzie potrzebna.
 - [x] **Współdzielenie między kontami — mechanizm istnieje od Części 16
       (Krok 2), świadomie bez dedykowanego UX-u "zaproś".** Zaproponowane tu
       rozwiązanie ("dodać drugiego usera do tego samego pouch") to dokładnie

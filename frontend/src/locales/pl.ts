@@ -52,6 +52,7 @@ const pl = {
     adminExpiring: "Wygasające",
     adminBackup: "Backup",
     adminUsers: "Konta",
+    settings: "Ustawienia",
   },
   items: {
     addItemButton: "Dodaj item",
@@ -171,6 +172,25 @@ const pl = {
   },
   favorites: {
     empty: "Brak ulubionych itemów.",
+  },
+  settings: {
+    title: "Ustawienia",
+    dangerZoneTitle: "Strefa zagrożenia",
+    deleteAccountExplanation:
+      "Usunięcie konta kasuje tylko Twój login — pouch i wszystkie dane w nim pozostają nienaruszone.",
+    deleteAccountButton: "Usuń moje konto",
+    deleteAccountConfirmTitle: "Usunąć konto?",
+    deleteAccountConfirmDescription: "Ta operacja jest nieodwracalna. Zostaniesz wylogowany.",
+    deleteAccountError: "Nie udało się usunąć konta. Spróbuj ponownie.",
+    deletePouchExplanation:
+      "Jako administrator nie możesz usunąć samego konta — usunięcie pouch kasuje cały pouch razem z Tobą, wszystkimi kontami, kategoriami i itemami w nim (łącznie z plikami w storage).",
+    deletePouchButton: "Usuń cały pouch",
+    deletePouchConfirmTitle: "Usunąć cały pouch?",
+    deletePouchConfirmDescription:
+      "Ta operacja jest nieodwracalna i kasuje wszystko w tym pouch — konta, kategorie, itemy i pliki. Zostaniesz wylogowany.",
+    deletePouchError: "Nie udało się usunąć pouch. Spróbuj ponownie.",
+    deletePouchConflict: "W tym pouch są jeszcze inne konta — usuń lub przenieś je najpierw w panelu admina.",
+    deletePouchLastAdmin: "Nie możesz usunąć jedynego konta administratora w systemie.",
   },
   tags: {
     markFavorite: "Dodaj do ulubionych",

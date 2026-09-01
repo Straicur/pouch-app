@@ -1,5 +1,6 @@
 import { configureStore } from "@reduxjs/toolkit";
 import { accessKeyApi } from "./api/accessKeyApi";
+import { accountApi } from "./api/accountApi";
 import { adminApi } from "./api/adminApi";
 import { authApi } from "./api/authApi";
 import { categoryApi } from "./api/categoryApi";
@@ -18,6 +19,7 @@ export const store = configureStore({
     [accessKeyApi.reducerPath]: accessKeyApi.reducer,
     [adminApi.reducerPath]: adminApi.reducer,
     [userApi.reducerPath]: userApi.reducer,
+    [accountApi.reducerPath]: accountApi.reducer,
   },
   devTools: import.meta.env.MODE !== "production",
   middleware: (getDefaultMiddleware) =>
@@ -30,6 +32,7 @@ export const store = configureStore({
       accessKeyApi.middleware,
       adminApi.middleware,
       userApi.middleware,
+      accountApi.middleware,
     ),
 });
 

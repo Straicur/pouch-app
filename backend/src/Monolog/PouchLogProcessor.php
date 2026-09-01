@@ -5,10 +5,10 @@ declare(strict_types = 1);
 namespace App\Monolog;
 
 use App\Services\Pouch\CurrentPouchResolverInterface;
-use LogicException;
 use Monolog\LogRecord;
 use Monolog\Processor\ProcessorInterface;
 use Override;
+use Throwable;
 
 /**
  * Tags every log record with the current request's pouch id, so a call site
@@ -17,6 +17,15 @@ use Override;
  * ProcessorInterface implementations on its own). Silently a no-op outside
  * an authenticated HTTP request (console command, Messenger worker, a
  * request with no session) — there's no "current pouch" to tag there.
+ *
+ * Catches Throwable, not just resolve()'s documented LogicException — a
+ * request that deletes its own account/pouch (AccountController) still
+ * holds a Security token pointing at the now-removed User/Pouch for any log
+ * line between that deletion and the token being cleared; touching that
+ * stale entity graph can throw a plain PHP Error (an uninitialized typed
+ * property on a Doctrine proxy that can no longer load), not a
+ * LogicException. A log-enrichment processor must never be the thing that
+ * turns a successful request into a 500.
  */
 final readonly class PouchLogProcessor implements ProcessorInterface
 {
@@ -29,7 +38,7 @@ final readonly class PouchLogProcessor implements ProcessorInterface
     {
         try {
             $pouchId = $this->currentPouchResolver->resolve()->getId();
-        } catch (LogicException) {
+        } catch (Throwable) {
             return $record;
         }
 

@@ -35,7 +35,7 @@ class GcRunLog
     private DateTimeImmutable $runAt;
 
     #[ORM\ManyToOne(targetEntity: Pouch::class)]
-    #[ORM\JoinColumn(name: 'pouch_id', referencedColumnName: 'pouch_id', nullable: true)]
+    #[ORM\JoinColumn(name: 'pouch_id', referencedColumnName: 'pouch_id', nullable: true, onDelete: 'SET NULL')]
     private ?Pouch $pouch;
 
     public function __construct(string $trigger, int $expiredCount, int $purgedCount, ?Pouch $pouch = null)

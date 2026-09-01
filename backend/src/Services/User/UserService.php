@@ -15,6 +15,7 @@ use Override;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 use function bin2hex;
+use function in_array;
 use function random_bytes;
 
 class UserService implements UserServiceInterface
@@ -107,6 +108,18 @@ class UserService implements UserServiceInterface
         }
 
         $user = $this->getById($id);
+        $this->userRepository->remove($user);
+    }
+
+    #[Override]
+    public function deleteOwnAccount(int $id): void
+    {
+        $user = $this->getById($id);
+
+        if (in_array('ROLE_ADMIN', $user->getRoles(), true)) {
+            throw new BadRequestException(message: 'user.admin_cannot_delete_own_account');
+        }
+
         $this->userRepository->remove($user);
     }
 
