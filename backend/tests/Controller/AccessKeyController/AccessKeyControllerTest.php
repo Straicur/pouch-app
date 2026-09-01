@@ -196,6 +196,33 @@ class AccessKeyControllerTest extends WebTest
     }
 
     /**
+     * Część 18 point 4 — AccessKeyResource folds the unlocking user's own id
+     * into the signed resource string (see its own doc comment), so a grant
+     * only ever matches for the account it was issued to — even another
+     * account in the very same pouch (so this isn't just pouch isolation
+     * doing the work) can't submit someone else's grant and have it count.
+     */
+    public function testAGrantIssuedToOneUserDoesNotUnlockAnythingForAnotherUserInTheSamePouch(): void
+    {
+        $category = $this->databaseMockManager->createCategory('Shared-pouch locked category');
+        $this->setCategoryKey($category->getId(), 'sekret123');
+        $grant = $this->unlockCategory($category->getId(), 'sekret123');
+
+        // $this->admin shares the same default pouch as $this->user (no
+        // explicit pouch given to either in setUp()) — a 403 here can only
+        // be the grant's own user-binding, not pouch scoping.
+        $this->setAuthCookie($this->databaseMockManager->loginUser($this->admin));
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/notes',
+            server: $this->grantsHeader($grant),
+            content: json_encode(['categoryId' => $category->getId(), 'content' => 'sneaky note', 'keepForever' => true]),
+        );
+
+        self::assertResponseStatusCodeSame(Response::HTTP_FORBIDDEN);
+    }
+
+    /**
      * A regression test for a bug the manual test caught: an item with no key
      * of its own, sitting in a locked category, used to be reported as
      * "item.locked" — misleading, since unlocking the item (which has no key)

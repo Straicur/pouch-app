@@ -114,6 +114,40 @@ class ItemDownloadTest extends WebTest
         $this->responseTool->testForbiddenRequestResponseData($this->webClient);
     }
 
+    /**
+     * Część 18 point 4 — the signature is computed over "item-download:{id}",
+     * so a valid (expires, signature) pair minted for one item must not
+     * authorize a download of a *different* item just because the URL's id
+     * segment gets swapped — the signature simply won't match the resource
+     * string the new id produces.
+     */
+    public function testSwappingTheIdInAValidDownloadLinkIsForbidden(): void
+    {
+        $link = $this->requestDownloadLink();
+        $query = [];
+        parse_str((string) parse_url($link['url'], PHP_URL_QUERY), $query);
+
+        $otherPath = tempnam(sys_get_temp_dir(), 'pouch-download-test-other-');
+        file_put_contents($otherPath, 'different content');
+        $this->authAsUser();
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/files',
+            parameters: ['categoryId' => (string) $this->category->getId()],
+            files: ['file' => new UploadedFile($otherPath, 'other.txt', 'text/plain', null, true)],
+        );
+        $otherItem = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+
+        $this->webClient->getCookieJar()->clear();
+        $this->webClient->request(
+            method: Request::METHOD_GET,
+            uri: sprintf('/api/items/%d/download?%s', $otherItem['id'], http_build_query($query)),
+        );
+
+        self::assertResponseStatusCodeSame(Response::HTTP_FORBIDDEN);
+        $this->responseTool->testForbiddenRequestResponseData($this->webClient);
+    }
+
     public function testDownloadLinkGenerationRequiresAuth(): void
     {
         // setUp() authenticated to upload the fixture item — clear that first.

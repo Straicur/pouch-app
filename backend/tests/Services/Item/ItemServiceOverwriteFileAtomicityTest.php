@@ -17,6 +17,7 @@ use App\Services\Item\Validator\FileValidator;
 use App\Services\Item\Validator\ImageValidator;
 use App\Services\Item\Validator\NoteValidator;
 use App\Services\Item\Validator\UrlValidator;
+use App\Services\Pouch\CurrentPouchResolverInterface;
 use App\Services\Storage\StorageServiceInterface;
 use App\Services\Tag\TagServiceInterface;
 use Doctrine\DBAL\Connection;
@@ -118,6 +119,7 @@ class ItemServiceOverwriteFileAtomicityTest extends TestCase
             translator: $this->createStub(TranslatorInterface::class),
             connection: $connection,
             logger: $this->createStub(LoggerInterface::class),
+            currentPouchResolver: $this->createStub(CurrentPouchResolverInterface::class),
         );
 
         $this->expectExceptionObject($transactionFailure);
@@ -175,6 +177,7 @@ class ItemServiceOverwriteFileAtomicityTest extends TestCase
             translator: $this->createStub(TranslatorInterface::class),
             connection: $connection,
             logger: $this->createStub(LoggerInterface::class),
+            currentPouchResolver: $this->createStub(CurrentPouchResolverInterface::class),
         );
 
         $updated = $itemService->overwriteFile(

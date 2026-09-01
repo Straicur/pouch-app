@@ -1077,18 +1077,33 @@ punkt zależy od jeszcze niedomkniętej Części 16 (patrz niżej).
       `RESOURCE_TAG`.
   - **Pouch-scoping**: migracja `Version20260901094931.php` dodaje
     `tag.pouch_id` (`NOT NULL`, unique teraz `(name, pouch_id)` zamiast
-    samego `name`) — hand-written backfill z `item_tag`/`item.pouch_id`
-    (każdy tag dostaje pouch większości/jedynego pouch swoich itemów), z
-    `DO $$ ... RAISE EXCEPTION` jako zabezpieczeniem gdyby jakiś tag miał
-    itemy w więcej niż jednym pouch (na dev-DB w chwili pisania migracji: 0
-    takich przypadków — sprawdzone przed napisaniem). Tag bez żadnego itemu
-    (osierocony) jest usuwany zamiast backfillowany — i tak nie pojawiał się
-    w `GET /api/tags` ("w użyciu"). `Tag implements PouchAware`, więc
-    `PouchFilter` (Część 16) scope'uje go automatycznie tak jak `Category`.
-    `TagRepository::findOrCreateByNames()` teraz przyjmuje `Pouch` explicite
-    (insert nie widzi SQLFilter). Testy: `TagControllerTest` (11),
-    `TagPouchIsolationTest` (4) — w tym że ta sama nazwa tagu jest wolna do
-    użycia w dwóch różnych pouch.
+    samego `name`) — hand-written backfill z `item_tag`/`item.pouch_id`.
+    Tag bez żadnego itemu (osierocony) jest usuwany zamiast backfillowany —
+    i tak nie pojawiał się w `GET /api/tags` ("w użyciu"). `Tag implements
+    PouchAware`, więc `PouchFilter` (Część 16) scope'uje go automatycznie
+    tak jak `Category`. `TagRepository::findOrCreateByNames()` teraz
+    przyjmuje `Pouch` explicite (insert nie widzi SQLFilter). Testy:
+    `TagControllerTest` (11), `TagPouchIsolationTest` (4) — w tym że ta sama
+    nazwa tagu jest wolna do użycia w dwóch różnych pouch.
+    - **Code-review fix**: pierwsza wersja tej migracji przerywała się
+      (`RAISE EXCEPTION`) jeśli jeden tag miał itemy w więcej niż jednym
+      pouchu — pod starym, globalnym modelem nazw to był normalny,
+      oczekiwany stan (dwa niezależne pouche tagujące czymś tym samym
+      słowem), nie edge case. Migracja teraz **rozdziela** taki tag: pouch z
+      `MIN(pouch_id)` jego itemów zatrzymuje oryginalny wiersz, każdy inny
+      pouch dostaje nowy wiersz o tej samej nazwie, a `item_tag` jest
+      przepinany do właściwego (`tag_pouch_pairs`/`tag_primary_pouch`/
+      `tag_split_map`, tymczasowe tabele w `up()`). `down()` scala rozdzielone
+      wiersze z powrotem po nazwie (najniższe `tag_id` wygrywa) przed
+      odtworzeniem globalnego unikalnego indeksu — inaczej padłby na
+      duplikacie nazwy. Logika zweryfikowana ręcznie na jednorazowej bazie
+      scratch (`CREATE DATABASE migration_scratch`, usunięta po teście) z
+      syntetycznym scenariuszem cross-pouch przed wpisaniem do pliku
+      migracji — sama migracja nie jest pokryta automatycznym testem
+      (projekt nie ma dziś precedensu testowania migracji, a to jednorazowy,
+      już wykonany krok historyczny). Na dev-DB w chwili pisania: 0 tagów
+      cross-pouch, więc realny stan bazy się nie zmienił — poprawka dotyczy
+      przyszłych/innych środowisk (świeży clone, CI), nie obecnych danych.
   - [x] **Lista itemów "skacze" (zmienia kolejność) po kliknięciu gwiazdki —
     naprawione.** Wszystkie trzy `ORDER BY` w `ItemRepository`
     (`findFiltered()`, `findFilteredPage()`, `searchMatchingIds()`) mają
@@ -1122,6 +1137,15 @@ punkt zależy od jeszcze niedomkniętej Części 16 (patrz niżej).
      zgodnie z zastrzeżeniem o stored-XSS przy współdzielonym pouchu.
      Testy: `testSearchResultCarriesAHighlightedSnippetOfTheMatch`,
      `testListWithoutASearchQueryCarriesNoSnippet`.
+     - **Code-review fix**: `findSnippets()` liczyło `ts_headline()` dla
+       każdego przekazanego id bez sprawdzenia, czy `search_vector`
+       faktycznie zawiera `q` — trafienie tylko-po-tagu albo przez fuzzy
+       fallback (które z definicji nie ma dopasowania w `search_vector`)
+       dostawało losowy, niepodświetlony początek dokumentu zamiast `null`,
+       i frontend pokazywał to jako "wyjaśnienie" trafienia, którym nie
+       było. Zapytanie ma teraz dodatkowo
+       `AND i.search_vector @@ to_tsquery('simple', :tsQuery)`. Testy:
+       `testATagOnlyMatchCarriesNoSnippet`, `testAFuzzyMatchCarriesNoSnippet`.
   4. **Tolerancja literówek — zrobione.** Migracja
      `Version20260901210000.php`: `CREATE EXTENSION IF NOT EXISTS pg_trgm` +
      GIN trigram index na tym samym wyrażeniu co `search_vector`.
@@ -1130,6 +1154,30 @@ punkt zależy od jeszcze niedomkniętej Części 16 (patrz niżej).
      `to_tsquery`-owe dopasowanie zwróci pustą listę — najczęstsza
      (poprawnie napisana) ścieżka nie płaci za to nic dodatkowego. Test:
      `testSearchToleratesATypoViaTrigramFallback`.
+     - **Code-review fix**: obie funkcje (dokładne dopasowanie i fuzzy)
+       wykonywały surowe SQL bez żadnego pouch-scopingu, mimo że dostępny
+       jest `ItemRepository::findFilteredPage()`'owy `$pouchId`. Efekt:
+       dokładne trafienie w pouchu B ustawiało "coś znaleziono" globalnie i
+       **wyłączało fuzzy fallback dla poucha A**, nawet jeśli pouch A miał
+       tylko literówkę bez dokładnego trafienia — użytkownik A dostawał
+       zero wyników zamiast fuzzy-matcha. Dodatkowo globalny `LIMIT 50` na
+       fuzzy mógł zapełnić się wynikami z cudzych pouchów, wycinając
+       trafienia z własnego. `searchMatchingIds()`/`searchMatchingIdsFuzzy()`
+       przyjmują teraz `?int $pouchId` i filtrują `AND (:pouchId::int IS
+       NULL OR i.pouch_id = :pouchId)` w obu zapytaniach (rzutowanie
+       `::int` konieczne — Postgres odrzuca `SQLSTATE[42P18]` bez jawnego
+       typu przy parametrze użytym tylko w `IS NULL`). `ItemService` odzyskał
+       (świadomie, udokumentowany wyjątek od zasady "PouchFilter wszystko
+       załatwia" z Części 16 — to surowe SQL poza DQL, którego SQLFilter nie
+       dotyka) `CurrentPouchResolverInterface`, żeby przekazać realny pouch
+       do `listPage()`/`list()`; `AdminController` woła repozytorium wprost
+       z własnym (czasem `null` = wszystkie pouche) `$pouchId`, bez zmian.
+       Test: `testExactMatchInAnotherPouchDoesNotSuppressThisPouchsFuzzyFallback`.
+
+**Wszystkie cztery punkty wyszukiwarki plus tagi przeszły dodatkową rundę
+code review (poza tą sesją) — 4 realne findingi (P1×3, P2×1), wszystkie
+potwierdzone i naprawione jak opisano wyżej. `make cs`/`make phpstan`/
+`make rector`/`make test-backend`: 265/265 zielone po poprawkach.**
 
 ---
 
@@ -1202,27 +1250,55 @@ Największy problem to nie brak funkcji, tylko rozjazd między deklarowaną
 jakością a faktycznym domknięciem niektórych mechanizmów. Przed dokładaniem
 kolejnych modułów wskazany etap stabilizacyjny, nie kolejne funkcje.
 
-### 1. Domknąć izolację Pouch (absolutny priorytet)
+### 1. Domknąć izolację Pouch (absolutny priorytet) — zrobione
 
-Kontynuacja Części 16/17 — każda operacja użytkownika powinna być
-automatycznie ograniczona do jego Pouch, nie tylko `get()`/`listPage()`:
+Ta lista powstała przed `PouchFilter` (Część 16, Krok 1) — w międzyczasie
+(Części 16/17 + ta sesja) `PouchFilter` faktycznie objął każdy z punktów
+poniżej, bo wszystkie idą przez `CategoryService::getById()`/
+`ItemService::getById()`/`ItemRepository::findByContentHash()`, a te
+korzystają z `findOneBy()` (DQL), nie `find()` — więc `PouchFilter` scope'uje
+je automatycznie, tak samo jak zwykły `get()`/`listPage()`. Audyt (przegląd
+kodu + nowe testy regresyjne) potwierdził każdy punkt z osobna:
 
-- [ ] Aktualizacja i usuwanie itemów.
-- [ ] Generowanie publicznych i download linków.
-- [ ] Historia wersji.
-- [ ] Access keys.
-- [ ] Tagi.
-- [ ] Wykrywanie duplikatów (`findByContentHash`).
+- [x] **Aktualizacja i usuwanie itemów** — `updateNoteContent`/`delete`/
+      `setFavorite`/`replaceTags`/`overwriteFile` wszystkie przez
+      `getById()`. Testy: `ItemPouchIsolationTest`'s
+      `testMutatingAnotherPouchsItemReturnsNotFound`,
+      `testReplacingTagsOnAnotherPouchsItemReturnsNotFound`,
+      `testOverwritingAnotherPouchsFileItemReturnsNotFound`.
+- [x] **Generowanie publicznych i download linków** — `downloadLink()`/
+      `thumbnailLink()`/`versionDownloadLink()` (samo *generowanie* linku,
+      normalny request z sesją) przez `getById()`, więc scope'owane. Sam
+      *pobierany* plik (`download()`/`thumbnail()`/`versionDownload()`/
+      `publicView()`) zostaje **świadomie** unscoped — `PouchFilterListener`'s
+      `UNFILTERED_ROUTES` — bo to inny, niezależny kanał autoryzacji: ważny
+      podpis mógł powstać tylko przez kogoś, kto miał dostęp w momencie
+      generowania linku, więc sam podpis jest dowodem dostępu (to nie luka,
+      tylko udokumentowana decyzja z Części 16). Test:
+      `ItemPouchIsolationTest::testGeneratingADownloadLinkForAnotherPouchsItemReturnsNotFound`.
+- [x] **Historia wersji** — `listVersions()`/`getVersion()` przez
+      `getById()`. Test:
+      `ItemPouchIsolationTest::testListingAnotherPouchsItemVersionsReturnsNotFound`.
+- [x] **Access keys** — `AccessKeyService::setCategoryKey`/`setItemKey`/
+      `unlockCategory`/`unlockItem` przez `categoryService.getById()`/
+      `itemService.getById()`. Nowy plik testowy:
+      `AccessKeyPouchIsolationTest` (4 testy — ustawianie i odblokowywanie
+      klucza kategorii i itemu w cudzym pouchu).
+- [x] **Tagi** — zrobione w Części 17 (`Tag implements PouchAware`).
+- [x] **Wykrywanie duplikatów (`findByContentHash`)** — `findOneBy()`
+      wewnątrz, scope'owane. Test:
+      `ItemPouchIsolationTest::testTwoPouchesCanIndependentlyUploadIdenticalContent`.
 
-Rekomendacja: jeden centralny mechanizm zamiast pamiętania o
-`getByIdInCurrentPouch()` w każdym endpoincie osobno — Doctrine filter (patrz
-`PouchFilter` w Części 16, Krok 1) może być dobrym rozwiązaniem, ale trzeba
-bardzo jawnie obsłużyć wyjątki, gdzie filtr **nie** powinien działać: worker
-Messengera (`ScrapeUrlMessageHandler`/`ProcessPhotoMessageHandler` — brak
-requestu/sesji), GC (`ItemGarbageCollector` — działa na wszystkich pouchach
-naraz), panel admina (Część 16, Krok 3 — świadomie cross-pouch), i podpisane
-linki (`download()`/`thumbnail()`/`versionDownload()`/`publicView()` —
-własny, niezależny kanał autoryzacji, patrz Część 16's znana luka).
+Zamiast osobnego `getByIdInCurrentPouch()` w każdym miejscu — dokładnie ten
+"jeden centralny mechanizm" (`PouchFilter`) — z wyjątkami tam, gdzie
+faktycznie **nie** powinien działać, i gdzie faktycznie nie działa: worker
+Messengera (brak requestu/sesji), GC (działa na wszystkich pouchach naraz),
+panel admina (Część 16, Krok 3 — świadomie cross-pouch), podpisane linki
+(wyżej). Wyszukiwarka (`ItemRepository::searchMatchingIds()`/
+`searchMatchingIdsFuzzy()`) to jedyne miejsce, gdzie `PouchFilter` faktycznie
+nie sięga (surowe SQL poza DQL) — naprawione osobno w tej samej sesji (patrz
+code-review fix przy Części 17 wyżej), nie było na tej liście, ale ten sam
+temat.
 
 ### 2. Uprościć kod i dokumentację
 
@@ -1253,22 +1329,49 @@ scenariusze (zachowanie użytkownika, nie każdy komponent Catalyst z osobna):
 - [ ] Usuwanie z potwierdzeniem (`ConfirmDialog`).
 - [ ] Odświeżanie cache RTK Query po mutacji.
 
-### 4. Dodać testy bezpieczeństwa jako osobną kategorię
+### 4. Dodać testy bezpieczeństwa jako osobną kategorię — zrobione
 
 Dla aplikacji przechowującej prywatne materiały: tabelaryczny zestaw testów
 "user A nie może wykonać operacji na zasobie usera B", przechodzący przez
-**wszystkie** endpointy itemu, nie tylko listę i szczegóły (uzupełnia
-`ItemPouchIsolationTest`/`CategoryPouchIsolationTest` z Części 16 o resztę
-operacji z punktu 1 wyżej). Dodatkowo:
+**wszystkie** endpointy itemu, nie tylko listę i szczegóły — uzupełnione o
+resztę operacji z punktu 1 wyżej (`replaceTags`/`overwriteFile`/
+`listVersions`/generowanie linków/access keys, patrz punkt 1). Dodatkowo:
 
-- [ ] SSRF dla przekierowań i nietypowych adresów (rozszerzenie
-      `OpenGraphScraperTest` z Części 12 o więcej przypadków brzegowych).
-- [ ] Access grant przypisany do innego użytkownika.
-- [ ] Manipulowanie podpisanym URL-em (zmieniony `expires`/`signature`/id).
-- [ ] Upload tego samego pliku w dwóch różnych Pouchach (czy
-      `content_hash`'a unikalny indeks nie blokuje tego między pouchami).
-- [ ] Wycieki przez tagi, wyszukiwarkę i `total` w paginacji (czy widać, że
-      coś istnieje w cudzym pouchu, nawet jeśli samej treści nie widać).
+- [x] **SSRF dla przekierowań i nietypowych adresów.**
+      `SafeUrlFetcherTest::testRejectsAPrivateAddressReachedOnTheSecondRedirectHop`
+      — wcześniejsze testy (Część 12/"Opcjonalne do naprawy") sprawdzały
+      tylko pierwszy hop przekierowania; ten dowodzi, że pętla w
+      `SafeUrlFetcher::fetch()` faktycznie re-waliduje **każdy** hop, nie
+      tylko pierwszy. `UrlValidatorTest`: literał IPv4-mapped-IPv6
+      (`::ffff:127.0.0.1`, `::ffff:169.254.169.254` — klasyczny sposób
+      przemycenia prywatnego adresu obok sprawdzenia liczącego się tylko z
+      czystym IPv4) i notacja dziesiętna (`2130706433` = `127.0.0.1`) — oba
+      już były poprawnie odrzucane przez istniejący
+      `FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE`, tylko bez
+      testu to pinającego.
+- [x] **Access grant przypisany do innego użytkownika.**
+      `AccessKeyControllerTest::testAGrantIssuedToOneUserDoesNotUnlockAnythingForAnotherUserInTheSamePouch`
+      — dwa konta w **tym samym** pouchu (żeby wynik nie był tylko efektem
+      izolacji pouchowej), grant usera A nie działa dla usera B, bo
+      `AccessKeyResource` wiąże grant z `userId` (już zaimplementowane
+      wcześniej jako "post-review fix", tu dopiero pokryte testem).
+- [x] **Manipulowanie podpisanym URL-em.** `expires`/`signature` już były
+      pokryte (`ItemDownloadTest`). Dodane:
+      `testSwappingTheIdInAValidDownloadLinkIsForbidden` — ważny podpis z
+      linku itemu X nie odblokowuje pobrania itemu Y (sygnatura liczona jest
+      po `item-download:{id}`, więc podmiana `id` w URL-u unieważnia
+      dopasowanie).
+- [x] **Upload tego samego pliku w dwóch różnych Pouchach** — już pokryte
+      (`ItemPouchIsolationTest::testTwoPouchesCanIndependentlyUploadIdenticalContent`,
+      Część 16).
+- [x] **Wycieki przez tagi, wyszukiwarkę i `total` w paginacji.** Tagi i
+      `total` już pokryte (Część 16/17). Dodane:
+      `ItemPouchIsolationTest::testSearchDoesNotReturnAnotherPouchsItems` —
+      słowo istniejące tylko w cudzym pouchu daje `{items: [], total: 0}`,
+      nie tylko puste `items` z niezerowym `total`.
+
+**Stan po tej rundzie:** `make cs`/`make phpstan`/`make rector`/
+`make test-backend` — 280/280 zielone, w tym `--order-by=random`.
 
 ### 5. Generować kontrakt frontendu z OpenAPI
 

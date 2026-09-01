@@ -113,12 +113,20 @@ class ItemRepository extends ServiceEntityRepository
      * too, so every criterion — including the text search — applies
      * together, not as two separate result sets ANDed in PHP.
      *
+     * $pouchId: see findFilteredPage()'s own comment — matters for
+     * searchMatchingIds() specifically, not just this method's own WHERE.
+     *
      * @return list<Item>
      */
-    public function findFiltered(ItemListFilter $filter): array
+    public function findFiltered(ItemListFilter $filter, ?int $pouchId = null): array
     {
         $qb = $this->createQueryBuilder('i')
             ->where('i.trashedAt IS NULL');
+
+        if (null !== $pouchId) {
+            $qb->andWhere('i.pouch = :pouchId')
+                ->setParameter('pouchId', $pouchId);
+        }
 
         if ([] !== $filter->categoryIds) {
             $qb->andWhere('i.category IN (:categoryIds)')
@@ -138,7 +146,7 @@ class ItemRepository extends ServiceEntityRepository
 
         $rankedIds = null;
         if (null !== $filter->query) {
-            $rankedIds = $this->searchMatchingIds($filter->query);
+            $rankedIds = $this->searchMatchingIds($filter->query, $pouchId);
             if ([] === $rankedIds) {
                 return [];
             }
@@ -191,7 +199,15 @@ class ItemRepository extends ServiceEntityRepository
      * ItemController::list(), rather than disappearing entirely.
      *
      * $pouchId: scopes to one pouch when given. Optional — omit it to query
-     * across pouches.
+     * across pouches (AdminController's cross-pouch item browser does, when
+     * no pouch is picked). Also threaded into searchMatchingIds() itself —
+     * that raw SQL sits outside Doctrine's ORM/DQL layer, so PouchFilter
+     * (Część 16) can't scope it the way it scopes this method's own query
+     * builder; without $pouchId reaching it too, an exact match in another
+     * pouch would (a) still get filtered out of the final result correctly
+     * by the WHERE below, but (b) wrongly count as "found something",
+     * suppressing the typo-tolerant fallback for a pouch that actually had
+     * no match at all — see docs/ROADMAP.md's Część 17/18 note on this.
      *
      * @param list<int> $excludedCategoryIds
      *
@@ -247,7 +263,7 @@ class ItemRepository extends ServiceEntityRepository
             return ['items' => $items, 'total' => is_numeric($total) ? (int) $total : 0];
         }
 
-        $rankedIds = $this->searchMatchingIds($filter->query);
+        $rankedIds = $this->searchMatchingIds($filter->query, $pouchId);
         if ([] === $rankedIds) {
             return ['items' => [], 'total' => 0];
         }
@@ -290,15 +306,22 @@ class ItemRepository extends ServiceEntityRepository
     /**
      * A short excerpt per item, matched fragment wrapped in
      * SNIPPET_HIGHLIGHT_START/END, for whichever of $itemIds actually got a
-     * text match — computed only for a page's worth of ids (the caller's
+     * *text* match — computed only for a page's worth of ids (the caller's
      * job), never the full result set, since ts_headline() re-runs full text
      * matching against each document instead of reading search_vector.
+     *
+     * An id in $itemIds that matched only by tag (search_vector itself
+     * doesn't contain $query) or only via the typo-tolerant trigram fallback
+     * (search_vector by definition doesn't contain $query either — that's
+     * why the fallback ran at all) simply doesn't come back in the result:
+     * ts_headline() has nothing to legitimately highlight there, and
+     * returning an arbitrary, unhighlighted excerpt of the document's start
+     * instead would look like a match explanation without being one.
      *
      * Same field list/order as search_vector's own weighting (name >
      * page_title > note_content > extracted_text/page_description/url) —
      * ts_headline() picks its fragment from wherever $query actually landed
-     * in that combined text, tag-only matches included (a tag match has
-     * nothing here to highlight, so it's simply absent from the result).
+     * in that combined text.
      *
      * @param list<int> $itemIds
      *
@@ -320,6 +343,7 @@ class ItemRepository extends ServiceEntityRepository
             ) AS snippet
             FROM item i
             WHERE i.item_id IN (:itemIds)
+              AND i.search_vector @@ to_tsquery('simple', :tsQuery)
             SQL;
 
         $rows = $this->getEntityManager()->getConnection()->fetchAllKeyValue($sql, [
@@ -351,14 +375,28 @@ class ItemRepository extends ServiceEntityRepository
      * same failing match on every keystroke would be wasted work on the
      * common (correctly spelled) path.
      *
+     * $pouchId: this raw SQL sits outside Doctrine's ORM/DQL layer, so
+     * PouchFilter can't scope it automatically the way it scopes every
+     * other item lookup — omitting it here isn't just a privacy gap (the
+     * caller's own DQL requery already filters the *result* correctly), it
+     * breaks the "did we find anything" decision this method's caller makes:
+     * an exact match that only exists in a *different* pouch would still
+     * make this return a non-empty list, wrongly skipping the fuzzy
+     * fallback for a pouch that had no match of its own at all. Passing it
+     * through to the fallback too keeps FUZZY_MATCH_LIMIT a per-pouch limit
+     * instead of one another pouch's matches could fill up entirely. Null
+     * (AdminController's cross-pouch browse) keeps both queries unscoped,
+     * same as before.
+     *
      * @return list<int> item ids, ordered by relevance (best match first)
      */
-    private function searchMatchingIds(string $query): array
+    private function searchMatchingIds(string $query, ?int $pouchId): array
     {
         $sql = <<<'SQL'
             SELECT i.item_id, ts_rank(i.search_vector, to_tsquery('simple', :tsQuery)) AS rank
             FROM item i
             WHERE i.trashed_at IS NULL
+              AND (:pouchId::int IS NULL OR i.pouch_id = :pouchId)
               AND (
                   i.search_vector @@ to_tsquery('simple', :tsQuery)
                   OR EXISTS (
@@ -373,23 +411,25 @@ class ItemRepository extends ServiceEntityRepository
         $rows = $this->getEntityManager()->getConnection()->fetchFirstColumn($sql, [
             'tsQuery'   => $this->buildPrefixTsQuery($query),
             'likeQuery' => '%' . $this->escapeLikeWildcards($query) . '%',
+            'pouchId'   => $pouchId,
         ]);
 
         $ids = array_map(static fn (mixed $id): int => is_numeric($id) ? (int) $id : 0, $rows);
 
-        return [] !== $ids ? $ids : $this->searchMatchingIdsFuzzy($query);
+        return [] !== $ids ? $ids : $this->searchMatchingIdsFuzzy($query, $pouchId);
     }
 
     /**
      * @return list<int> item ids, ordered by similarity (closest match first)
      */
-    private function searchMatchingIdsFuzzy(string $query): array
+    private function searchMatchingIdsFuzzy(string $query, ?int $pouchId): array
     {
         $document = self::DOCUMENT_EXPRESSION;
         $sql = <<<SQL
             SELECT i.item_id
             FROM item i
             WHERE i.trashed_at IS NULL
+              AND (:pouchId::int IS NULL OR i.pouch_id = :pouchId)
               AND similarity({$document}, :query) > :threshold
             ORDER BY similarity({$document}, :query) DESC, i.created_at DESC, i.item_id DESC
             LIMIT :limit
@@ -399,6 +439,7 @@ class ItemRepository extends ServiceEntityRepository
             'query'     => $query,
             'threshold' => self::FUZZY_SIMILARITY_THRESHOLD,
             'limit'     => self::FUZZY_MATCH_LIMIT,
+            'pouchId'   => $pouchId,
         ]);
 
         return array_map(static fn (mixed $id): int => is_numeric($id) ? (int) $id : 0, $rows);

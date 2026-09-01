@@ -23,6 +23,7 @@ use App\Services\Item\Validator\NoteValidator;
 use App\Services\Item\Validator\UrlValidator;
 use App\Services\Item\ValueObject\ItemLifecycleOptions;
 use App\Services\Item\ValueObject\ItemListFilter;
+use App\Services\Pouch\CurrentPouchResolverInterface;
 use App\Services\Storage\StorageServiceInterface;
 use App\Services\Tag\TagServiceInterface;
 use DateInterval;
@@ -73,6 +74,13 @@ class ItemService implements ItemServiceInterface
         private readonly TranslatorInterface $translator,
         private readonly Connection $connection,
         private readonly LoggerInterface $logger,
+        // Only for list()/listPage()'s free-text search — searchMatchingIds()
+        // runs outside Doctrine's ORM/DQL layer (raw SQL), so PouchFilter
+        // (Część 16) can't scope it the way it scopes every other lookup
+        // here. Not a reintroduction of manual scoping generally, just the
+        // one place it structurally has to stay manual — see
+        // ItemRepository::findFilteredPage()'s own comment on $pouchId.
+        private readonly CurrentPouchResolverInterface $currentPouchResolver,
     ) {}
 
     #[Override]
@@ -239,17 +247,24 @@ class ItemService implements ItemServiceInterface
     #[Override]
     public function list(ItemListFilter $filter): array
     {
-        return $this->itemRepository->findFiltered($filter);
+        // Explicit pouchId (unlike most lookups here) only because
+        // findFiltered() -> searchMatchingIds() sits outside PouchFilter's
+        // reach when $filter->query is set — see the constructor's own
+        // comment on $currentPouchResolver. Every other criterion is still
+        // scoped automatically by PouchFilter regardless.
+        return $this->itemRepository->findFiltered($filter, $this->currentPouchResolver->resolve()->getId());
     }
 
     #[Override]
     public function listPage(ItemListFilter $filter, int $offset, int $limit, array $excludedCategoryIds = []): array
     {
-        // No explicit pouchId here — PouchFilter already scopes this query
-        // to the current pouch (see getById()'s own comment). AdminController's
-        // item browser passes one explicitly instead, since /api/admin has
-        // the filter off and no "current pouch" of its own to fall back on.
-        return $this->itemRepository->findFilteredPage($filter, $offset, $limit, $excludedCategoryIds);
+        // Passed through to findFilteredPage() only for its own
+        // searchMatchingIds() call (see that method's $pouchId doc comment)
+        // — every other criterion here is still scoped by PouchFilter, not
+        // this. AdminController's item browser calls the repository
+        // directly instead, with its own explicit (possibly null,
+        // meaning "all pouches") pouchId — it never goes through this method.
+        return $this->itemRepository->findFilteredPage($filter, $offset, $limit, $excludedCategoryIds, $this->currentPouchResolver->resolve()->getId());
     }
 
     #[Override]

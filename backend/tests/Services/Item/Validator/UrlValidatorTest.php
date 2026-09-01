@@ -83,4 +83,38 @@ final class UrlValidatorTest extends TestCase
 
         $this->validator()->assertValid('http://[::1]/');
     }
+
+    /**
+     * Część 18 point 4 — an IPv4-mapped IPv6 literal is a well-known way to
+     * smuggle a private address past a check that only accounts for the
+     * plain-IPv4 form; PHP's FILTER_FLAG_NO_PRIV_RANGE/NO_RES_RANGE combo
+     * does recognize it correctly, but that was never pinned down by a test.
+     */
+    public function testRejectsAnIpv4MappedIpv6LoopbackLiteral(): void
+    {
+        $this->expectException(BadRequestException::class);
+
+        $this->validator()->assertValid('http://[::ffff:127.0.0.1]/');
+    }
+
+    public function testRejectsAnIpv4MappedIpv6CloudMetadataLiteral(): void
+    {
+        $this->expectException(BadRequestException::class);
+
+        $this->validator()->assertValid('http://[::ffff:169.254.169.254]/');
+    }
+
+    /**
+     * Decimal-notation IPs (127.0.0.1 written as the single integer
+     * 2130706433) aren't a bypass here — filter_var() doesn't recognize the
+     * form as an IP at all, so it falls through to DNS resolution, which
+     * fails for a numeric non-hostname and is rejected the same way any
+     * other unresolvable host is.
+     */
+    public function testRejectsADecimalNotationIpAsAnUnresolvableHost(): void
+    {
+        $this->expectException(BadRequestException::class);
+
+        $this->validator()->assertValid('http://2130706433/');
+    }
 }

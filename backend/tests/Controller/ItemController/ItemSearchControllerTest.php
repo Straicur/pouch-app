@@ -357,4 +357,102 @@ class ItemSearchControllerTest extends WebTest
         self::assertCount(1, $items);
         self::assertSame($item['id'], $items[0]['id']);
     }
+
+    /**
+     * Code-review regression: an exact match in *another* pouch used to make
+     * searchMatchingIds() return a non-empty list globally, which suppressed
+     * the typo-tolerant fallback for a pouch that had no match of its own at
+     * all — pouch A's typo search came back empty even though pouch A had a
+     * plausible fuzzy match, purely because pouch B happened to have an
+     * exact one for a similar word. searchMatchingIds()/searchMatchingIdsFuzzy()
+     * now take $pouchId explicitly instead of relying on the later DQL
+     * requery (PouchFilter) to catch it after the fact.
+     */
+    public function testExactMatchInAnotherPouchDoesNotSuppressThisPouchsFuzzyFallback(): void
+    {
+        $pouchA = $this->databaseMockManager->createPouch('Fuzzy pouch A');
+        $pouchB = $this->databaseMockManager->createPouch('Fuzzy pouch B');
+        $userA = $this->databaseMockManager->createUser(new UserTestDTO('fuzzy-pouch-a@example.com', 'zaq12wsx'), $pouchA);
+        $userB = $this->databaseMockManager->createUser(new UserTestDTO('fuzzy-pouch-b@example.com', 'zaq12wsx'), $pouchB);
+        $categoryA = $this->databaseMockManager->createCategory('Fuzzy category A', pouch: $pouchA);
+        $categoryB = $this->databaseMockManager->createCategory('Fuzzy category B', pouch: $pouchB);
+
+        // Pouch B: an exact match for the un-misspelled word.
+        $this->setAuthCookie($this->databaseMockManager->loginUser($userB));
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/notes',
+            content: json_encode(['categoryId' => $categoryB->getId(), 'content' => 'irrelevant', 'name' => 'Crossfuzzyword']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+
+        // Pouch A: only a misspelled version — no exact match here at all.
+        $this->setAuthCookie($this->databaseMockManager->loginUser($userA));
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/notes',
+            content: json_encode(['categoryId' => $categoryA->getId(), 'content' => 'irrelevant', 'name' => 'Crossfuzzywrd']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+
+        $this->setAuthCookie($this->databaseMockManager->loginUser($userA));
+        $this->webClient->request(method: Request::METHOD_GET, uri: '/api/items?q=crossfuzzyword');
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+        $body = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+
+        self::assertCount(1, $body['items']);
+        self::assertSame('Crossfuzzywrd', $body['items'][0]['name']);
+    }
+
+    /**
+     * Code-review regression: findSnippets() used to run ts_headline() for
+     * every id it was given regardless of whether search_vector actually
+     * contained $query — a tag-only match (or a fuzzy match, which by
+     * definition doesn't satisfy the exact tsquery either) got an arbitrary,
+     * unhighlighted excerpt from the start of the document, which the
+     * frontend then displayed as if it were a real match explanation.
+     */
+    public function testATagOnlyMatchCarriesNoSnippet(): void
+    {
+        $this->authAsUser();
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/notes',
+            content: json_encode(['categoryId' => $this->category->getId(), 'content' => 'nothing relevant in the body here']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+        $item = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+
+        $this->webClient->request(
+            method: Request::METHOD_PUT,
+            uri: sprintf('/api/items/%d/tags', $item['id']),
+            content: json_encode(['tags' => ['tagonlysnippetmarker']]),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+
+        $items = $this->search('tagonlysnippetmarker');
+        self::assertCount(1, $items);
+        self::assertNull($items[0]['snippet']);
+    }
+
+    /**
+     * Same regression as testATagOnlyMatchCarriesNoSnippet(), for the other
+     * source of a non-text match: search_vector doesn't contain the typo'd
+     * query either — that's exactly why the fuzzy fallback ran at all.
+     */
+    public function testAFuzzyMatchCarriesNoSnippet(): void
+    {
+        $this->authAsUser();
+        $this->webClient->request(
+            method: Request::METHOD_POST,
+            uri: '/api/items/notes',
+            content: json_encode(['categoryId' => $this->category->getId(), 'content' => 'irrelevant content', 'name' => 'Fuzzysnippetterm']),
+        );
+        self::assertResponseStatusCodeSame(Response::HTTP_CREATED);
+
+        $items = $this->search('fuzzysnippetterrm');
+        self::assertCount(1, $items);
+        self::assertSame('Fuzzysnippetterm', $items[0]['name']);
+        self::assertNull($items[0]['snippet']);
+    }
 }
