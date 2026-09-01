@@ -51,6 +51,9 @@ export function AppSidebar() {
           <SidebarItem href="/user/items" current={pathname.startsWith("/user/items")}>
             <SidebarLabel>{t("nav.items")}</SidebarLabel>
           </SidebarItem>
+          <SidebarItem href="/user/recent" current={pathname.startsWith("/user/recent")}>
+            <SidebarLabel>{t("nav.recent")}</SidebarLabel>
+          </SidebarItem>
           <SidebarItem href="/user/favorites" current={pathname.startsWith("/user/favorites")}>
             <SidebarLabel>{t("nav.favorites")}</SidebarLabel>
           </SidebarItem>

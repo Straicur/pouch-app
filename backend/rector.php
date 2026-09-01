@@ -13,6 +13,7 @@ use Rector\Php80\Rector\Class_\ClassPropertyAssignToConstructorPromotionRector;
 use Rector\Php80\Rector\ClassConstFetch\ClassOnThisVariableObjectRector;
 use Rector\Set\ValueObject\LevelSetList;
 use Rector\Strict\Rector\Empty_\DisallowedEmptyRuleFixerRector;
+use Rector\Php81\Rector\FuncCall\NullToStrictStringFuncCallArgRector;
 
 return RectorConfig::configure()
     ->withRootFiles()
@@ -36,7 +37,10 @@ return RectorConfig::configure()
         InlineConstructorDefaultToPropertyRector::class,
         ClassOnThisVariableObjectRector::class,
         // strict booleans
-        DisallowedEmptyRuleFixerRector::class
+        DisallowedEmptyRuleFixerRector::class,
+        NullToStrictStringFuncCallArgRector::class => [
+            __DIR__ . '/src/ControllerHelper/Traits/ParsesCommaSeparatedValuesTrait.php'
+        ]
     ])
      ->withPhpSets(php84: true)
      ->withAttributesSets()

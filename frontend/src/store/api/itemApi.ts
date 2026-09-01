@@ -3,10 +3,13 @@ import { ApiEndpoints } from "../../libs/apiEndpoints";
 import type {
   CreateFileRequest,
   CreateNoteRequest,
+  CreatePhotoRequest,
+  CreateUrlRequest,
   ItemDetail,
   ItemListParams,
   ItemListResult,
   ItemVersion,
+  MoveItemRequest,
   OverwriteFileRequest,
   PublicLink,
   SignedLink,
@@ -61,6 +64,10 @@ export const itemApi = createApi({
       query: (id) => ({ url: ApiEndpoints.ITEM(id), method: "DELETE" }),
       invalidatesTags: ["Item"],
     }),
+    moveItem: builder.mutation<ItemDetail, MoveItemRequest>({
+      query: ({ id, categoryId }) => ({ url: ApiEndpoints.ITEM_MOVE(id), method: "PATCH", data: { categoryId } }),
+      invalidatesTags: ["Item"],
+    }),
     getItemThumbnailLink: builder.mutation<SignedLink, number>({
       query: (id) => ({ url: ApiEndpoints.ITEM_THUMBNAIL_LINK(id), method: "POST", data: {} }),
     }),
@@ -103,6 +110,24 @@ export const itemApi = createApi({
       }),
       invalidatesTags: ["Item"],
     }),
+    createPhoto: builder.mutation<ItemDetail, CreatePhotoRequest>({
+      query: ({ categoryId, file, name, keepForever, ttlPreset, expiresAt }) => ({
+        url: ApiEndpoints.ITEM_PHOTOS,
+        method: "POST",
+        data: fileFormData(file, {
+          categoryId: String(categoryId),
+          ...(undefined !== name ? { name } : {}),
+          ...(undefined !== keepForever ? { keepForever: String(keepForever) } : {}),
+          ...(undefined !== ttlPreset ? { ttlPreset } : {}),
+          ...(undefined !== expiresAt ? { expiresAt } : {}),
+        }),
+      }),
+      invalidatesTags: ["Item"],
+    }),
+    createUrl: builder.mutation<ItemDetail, CreateUrlRequest>({
+      query: (body) => ({ url: ApiEndpoints.ITEM_URLS, method: "POST", data: body }),
+      invalidatesTags: ["Item"],
+    }),
     // Part 8 — same id/URL afterwards, see ItemServiceInterface::overwriteFile().
     overwriteFile: builder.mutation<ItemDetail, OverwriteFileRequest>({
       query: ({ id, file }) => ({ url: ApiEndpoints.ITEM_FILE(id), method: "POST", data: fileFormData(file) }),
@@ -132,6 +157,7 @@ export const {
   useListItemsQuery,
   useGetItemQuery,
   useDeleteItemMutation,
+  useMoveItemMutation,
   useGetItemThumbnailLinkMutation,
   useGetItemDownloadLinkMutation,
   useCreateNoteMutation,
@@ -140,6 +166,8 @@ export const {
   useMarkFavoriteMutation,
   useUnmarkFavoriteMutation,
   useCreateFileMutation,
+  useCreatePhotoMutation,
+  useCreateUrlMutation,
   useOverwriteFileMutation,
   useListVersionsQuery,
   useGetVersionDownloadLinkMutation,

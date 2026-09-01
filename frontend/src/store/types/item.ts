@@ -128,6 +128,11 @@ export interface UpdateTagsRequest {
   tags: string[];
 }
 
+export interface MoveItemRequest {
+  id: number;
+  categoryId: number;
+}
+
 export interface CreateFileRequest extends ItemLifecycleFields {
   categoryId: number;
   file: File;
@@ -136,6 +141,20 @@ export interface CreateFileRequest extends ItemLifecycleFields {
   // item's body is (see backend's ItemServiceInterface::createFile()).
   content?: string;
   tags?: string[];
+}
+
+// No `tags` — unlike file/note, ItemService::createPhoto()/createUrl() don't
+// take one at creation time; add tags afterward via ItemDetailsModal instead.
+export interface CreatePhotoRequest extends ItemLifecycleFields {
+  categoryId: number;
+  file: File;
+  name?: string;
+}
+
+export interface CreateUrlRequest extends ItemLifecycleFields {
+  categoryId: number;
+  url: string;
+  name?: string;
 }
 
 export interface OverwriteFileRequest {

@@ -221,6 +221,21 @@ class ItemService implements ItemServiceInterface
         return $item;
     }
 
+    #[Override]
+    public function move(int $id, int $categoryId): Item
+    {
+        $item = $this->getById($id);
+        // Pouch-scoped, same as getById() — a category id from another
+        // pouch 404s here, so an item can never end up pointing at a
+        // category outside its own (denormalized, never-changing) pouch.
+        $category = $this->categoryService->getById($categoryId);
+
+        $item->setCategory($category);
+        $this->itemRepository->save($item);
+
+        return $item;
+    }
+
     // Scoped to the current pouch by PouchFilter for a normal,
     // session-authenticated request (see PouchFilterListener), so this
     // stays a plain lookup rather than a separate pouch-checking method.

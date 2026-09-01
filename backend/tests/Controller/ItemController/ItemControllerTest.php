@@ -268,6 +268,42 @@ class ItemControllerTest extends WebTest
         self::assertNotContains($item['id'], array_column($body['items'], 'id'));
     }
 
+    public function testMoveItemToAnotherCategory(): void
+    {
+        $item = $this->uploadFile('content', 'to-move.txt');
+        $otherCategory = $this->databaseMockManager->createCategory('Other');
+
+        $this->authAsUser();
+        $this->webClient->request(
+            method: Request::METHOD_PATCH,
+            uri: sprintf('/api/items/%d/move', $item['id']),
+            content: json_encode(['categoryId' => $otherCategory->getId()]),
+        );
+
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+        $moved = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        self::assertSame($otherCategory->getId(), $moved['categoryId']);
+
+        $this->webClient->request(method: Request::METHOD_GET, uri: sprintf('/api/items/%d', $item['id']));
+        $refreshed = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        self::assertSame($otherCategory->getId(), $refreshed['categoryId']);
+    }
+
+    public function testMoveToMissingCategoryReturnsNotFound(): void
+    {
+        $item = $this->uploadFile('content', 'to-move.txt');
+
+        $this->authAsUser();
+        $this->webClient->request(
+            method: Request::METHOD_PATCH,
+            uri: sprintf('/api/items/%d/move', $item['id']),
+            content: json_encode(['categoryId' => 999999]),
+        );
+
+        self::assertResponseStatusCodeSame(Response::HTTP_NOT_FOUND);
+        $this->responseTool->testNotFoundRequestResponseData($this->webClient);
+    }
+
     public function testUnauthenticatedRequestReturnsUnauthorized(): void
     {
         $this->webClient->request(method: Request::METHOD_GET, uri: '/api/items');

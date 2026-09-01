@@ -3,19 +3,22 @@ import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import { toastUtil } from "../../../../libs/toastUtil";
 import { useSetItemKeyMutation, useUnlockItemMutation } from "../../../../store/api/accessKeyApi";
+import type { Category } from "../../../../store/api/categoryApi";
 import { useListCategoriesQuery } from "../../../../store/api/categoryApi";
 import {
   useDeleteItemMutation,
   useGetItemDownloadLinkMutation,
   useGetItemQuery,
+  useMoveItemMutation,
   useUpdateNoteMutation,
   useUpdateTagsMutation,
 } from "../../../../store/api/itemApi";
 import type { ItemDetail } from "../../../../store/types/item";
 import { Badge } from "../../../../ui/catalyst/badge";
 import { Button } from "../../../../ui/catalyst/button";
-import { Dialog, DialogBody, DialogTitle } from "../../../../ui/catalyst/dialog";
-import { ErrorMessage } from "../../../../ui/catalyst/form/fieldset";
+import { Dialog, DialogActions, DialogBody, DialogTitle } from "../../../../ui/catalyst/dialog";
+import { ErrorMessage, Field, Label } from "../../../../ui/catalyst/form/fieldset";
+import { Select } from "../../../../ui/catalyst/form/select";
 import { Textarea } from "../../../../ui/catalyst/form/textarea";
 import { ConfirmDialog } from "../../../shared/view/ConfirmDialog";
 import { LoadingIndicator } from "../../../shared/view/LoadingIndicator";
@@ -184,6 +187,55 @@ function DeleteButton({ item, onDeleted }: DeleteButtonProps) {
   );
 }
 
+interface MoveItemButtonProps {
+  item: ItemDetail;
+  categories: Category[];
+}
+
+function MoveItemButton({ item, categories }: MoveItemButtonProps) {
+  const { t } = useTranslation();
+  const [moveItem, { isLoading }] = useMoveItemMutation();
+  const [isOpen, setIsOpen] = useState(false);
+  const [target, setTarget] = useState(String(item.categoryId));
+
+  const handleMove = async () => {
+    try {
+      await moveItem({ id: item.id, categoryId: Number(target) }).unwrap();
+      setIsOpen(false);
+    } catch {
+      toastUtil.showToast(t("items.moveError"), "error");
+    }
+  };
+
+  return (
+    <>
+      <Button size="small" variant="outline" onClick={() => setIsOpen(true)}>
+        {t("items.moveButton")}
+      </Button>
+      <Dialog open={isOpen} onClose={setIsOpen}>
+        <DialogTitle>{t("items.moveTitle", { name: item.name })}</DialogTitle>
+        <DialogBody>
+          <Field>
+            <Label>{t("items.moveTargetLabel")}</Label>
+            <Select value={target} onChange={(event) => setTarget(event.target.value)}>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </DialogBody>
+        <DialogActions>
+          <Button onClick={() => void handleMove()} disabled={isLoading || target === String(item.categoryId)}>
+            {isLoading ? t("items.moving") : t("items.moveSubmit")}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
+}
+
 // Jeden modal ze wszystkimi detalami, otwierany kliknięciem karty (ItemCard)
 // — wszystko poniżej pojawia się od razu, bez dodatkowego klikania (poza
 // samą edycją treści/tagów, co jest osobną, świadomą akcją).
@@ -273,6 +325,7 @@ export function ItemDetailsModal({ itemId, open, onClose }: ItemDetailsModalProp
                     Udostępnianie działa dla każdego typu (backend nie ogranicza). */}
                 {("file" === item.type || "photo" === item.type) && <DownloadButton item={item} />}
                 <ShareButton itemId={item.id} />
+                {undefined !== categories && <MoveItemButton item={item} categories={categories} />}
                 <DeleteButton item={item} onDeleted={onClose} />
               </div>
 

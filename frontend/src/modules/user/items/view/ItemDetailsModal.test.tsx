@@ -12,7 +12,10 @@ vi.mock("../../../../libs/httpMethods", () => ({
   httpMethods: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), del: vi.fn() },
 }));
 
-const CATEGORIES: Category[] = [{ id: 1, name: "Dokumenty", parentId: null, hasAccessKey: false }];
+const CATEGORIES: Category[] = [
+  { id: 1, name: "Dokumenty", parentId: null, hasAccessKey: false },
+  { id: 2, name: "Paragony", parentId: null, hasAccessKey: false },
+];
 
 function buildItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
   return {
@@ -115,5 +118,86 @@ describe("ItemDetailsModal", () => {
       expect(httpMethods.del).toHaveBeenCalledWith("/api/items/42", { params: undefined });
     });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("moves the item to another category", async () => {
+    mockGet(buildItem());
+    (httpMethods.patch as Mock).mockReturnValue(mockApiResponse(buildItem({ categoryId: 2 })));
+
+    renderWithProviders(<ItemDetailsModal itemId={42} open onClose={vi.fn()} />);
+    const user = userEvent.setup();
+
+    await screen.findByText("Moja notatka");
+    await user.click(screen.getByRole("button", { name: "Przenieś" }));
+
+    const select = await screen.findByLabelText("Nowa kategoria");
+    await user.selectOptions(select, "2");
+    await user.click(screen.getByRole("button", { name: "Przenieś" }));
+
+    await waitFor(() => {
+      expect(httpMethods.patch).toHaveBeenCalledWith("/api/items/42/move", { categoryId: 2 }, { params: undefined });
+    });
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Nowa kategoria")).not.toBeInTheDocument();
+    });
+  });
+
+  it("disables the move submit button while the target is unchanged", async () => {
+    mockGet(buildItem());
+
+    renderWithProviders(<ItemDetailsModal itemId={42} open onClose={vi.fn()} />);
+    const user = userEvent.setup();
+
+    await screen.findByText("Moja notatka");
+    await user.click(screen.getByRole("button", { name: "Przenieś" }));
+    await screen.findByLabelText("Nowa kategoria");
+
+    expect(screen.getByRole("button", { name: "Przenieś" })).toBeDisabled();
+    expect(httpMethods.patch).not.toHaveBeenCalled();
+  });
+
+  it("shows an error toast when the move fails", async () => {
+    mockGet(buildItem());
+    (httpMethods.patch as Mock).mockImplementation(() => mockApiError(404, {}));
+
+    renderWithProviders(<ItemDetailsModal itemId={42} open onClose={vi.fn()} />);
+    const user = userEvent.setup();
+
+    await screen.findByText("Moja notatka");
+    await user.click(screen.getByRole("button", { name: "Przenieś" }));
+
+    const select = await screen.findByLabelText("Nowa kategoria");
+    await user.selectOptions(select, "2");
+    await user.click(screen.getByRole("button", { name: "Przenieś" }));
+
+    expect(await screen.findByText("Nie udało się przenieść itemu.")).toBeInTheDocument();
+  });
+
+  it("saves an added tag through the tag editor", async () => {
+    mockGet(buildItem());
+    (httpMethods.put as Mock).mockReturnValue(mockApiResponse(buildItem({ tags: ["ważne"] })));
+
+    renderWithProviders(<ItemDetailsModal itemId={42} open onClose={vi.fn()} />);
+    const user = userEvent.setup();
+
+    await screen.findByText("Moja notatka");
+    await user.type(screen.getByPlaceholderText("Dodaj tag i naciśnij Enter"), "ważne{Enter}");
+
+    await waitFor(() => {
+      expect(httpMethods.put).toHaveBeenCalledWith("/api/items/42/tags", { tags: ["ważne"] }, { params: undefined });
+    });
+  });
+
+  it("shows an error message when saving a tag fails", async () => {
+    mockGet(buildItem());
+    (httpMethods.put as Mock).mockImplementation(() => mockApiError(500, {}));
+
+    renderWithProviders(<ItemDetailsModal itemId={42} open onClose={vi.fn()} />);
+    const user = userEvent.setup();
+
+    await screen.findByText("Moja notatka");
+    await user.type(screen.getByPlaceholderText("Dodaj tag i naciśnij Enter"), "ważne{Enter}");
+
+    expect(await screen.findByText("Nie udało się zapisać tagów.")).toBeInTheDocument();
   });
 });

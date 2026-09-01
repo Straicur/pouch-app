@@ -37,6 +37,27 @@ services:
             minio:
                 condition: service_healthy
 
+    # Runs `app:item:gc` on a loop (hourly — matches the finest TTL preset,
+    # 1h) — without this, expired items never move to trash and trashed
+    # items never get purged; the console command and the admin dashboard's
+    # "Run GC Now" both existed already, but neither runs on its own.
+    gc-scheduler:
+        build:
+            target: dev
+            context: ./backend
+            dockerfile: Dockerfile
+        image: pouch-app-php-fpm
+        container_name: pouch_gc_scheduler
+        restart: unless-stopped
+        command: sh -c "while true; do php bin/console app:item:gc --no-interaction; sleep 3600; done"
+        environment:
+            SERVER_NAME: ${SERVER_NAME:-localhost}
+        depends_on:
+            db:
+                condition: service_healthy
+            minio:
+                condition: service_healthy
+
     nginx:
         image: nginx:stable-alpine
         container_name: pouch_nginx

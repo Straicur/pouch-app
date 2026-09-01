@@ -16,6 +16,16 @@ interface CreateCategoryRequest {
   parentId: number | null;
 }
 
+interface RenameCategoryRequest {
+  id: number;
+  name: string;
+}
+
+interface MoveCategoryRequest {
+  id: number;
+  parentId: number | null;
+}
+
 export const categoryApi = createApi({
   reducerPath: "categoryApi",
   baseQuery: axiosBaseQuery(),
@@ -33,7 +43,21 @@ export const categoryApi = createApi({
       query: (body) => ({ url: ApiEndpoints.CATEGORIES, method: "POST", data: body }),
       invalidatesTags: ["Category"],
     }),
+    renameCategory: builder.mutation<Category, RenameCategoryRequest>({
+      query: ({ id, name }) => ({ url: ApiEndpoints.CATEGORY_RENAME(id), method: "PATCH", data: { name } }),
+      invalidatesTags: ["Category"],
+    }),
+    // parentId: null promotes the category to root. CategoryService::move()
+    // rejects (400) moving a category with its own children under a parent
+    // (would put grandchildren past the max-depth-2 limit) — surfaced to the
+    // user as a toast, not prevented client-side, since it depends on
+    // server-side knowledge of the whole subtree.
+    moveCategory: builder.mutation<Category, MoveCategoryRequest>({
+      query: ({ id, parentId }) => ({ url: ApiEndpoints.CATEGORY_MOVE(id), method: "PATCH", data: { parentId } }),
+      invalidatesTags: ["Category"],
+    }),
   }),
 });
 
-export const { useListCategoriesQuery, useCreateCategoryMutation } = categoryApi;
+export const { useListCategoriesQuery, useCreateCategoryMutation, useRenameCategoryMutation, useMoveCategoryMutation } =
+  categoryApi;

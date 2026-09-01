@@ -304,4 +304,24 @@ class ItemPouchIsolationTest extends WebTest
         self::assertResponseStatusCodeSame(Response::HTTP_NOT_FOUND);
         $this->responseTool->testNotFoundRequestResponseData($this->webClient);
     }
+
+    /**
+     * Moving your own item into another pouch's category must 404, same as
+     * every other lookup by id — the target category, not just the item
+     * itself, has to resolve through the current pouch's PouchFilter.
+     */
+    public function testMovingAnItemIntoAnotherPouchsCategoryReturnsNotFound(): void
+    {
+        $itemAId = $this->createNoteAs($this->userA, $this->categoryA, 'A note');
+
+        $this->authAs($this->userA);
+        $this->webClient->request(
+            method: Request::METHOD_PATCH,
+            uri: sprintf('/api/items/%d/move', $itemAId),
+            content: json_encode(['categoryId' => $this->categoryB->getId()]),
+        );
+
+        self::assertResponseStatusCodeSame(Response::HTTP_NOT_FOUND);
+        $this->responseTool->testNotFoundRequestResponseData($this->webClient);
+    }
 }

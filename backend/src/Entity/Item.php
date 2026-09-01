@@ -160,6 +160,13 @@ class Item implements PouchAware
         return $this->category;
     }
 
+    public function setCategory(Category $category): static
+    {
+        $this->category = $category;
+
+        return $this;
+    }
+
     #[Override]
     public function getPouch(): Pouch
     {

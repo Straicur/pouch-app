@@ -91,6 +91,13 @@ interface ItemServiceInterface
     public function updateNoteContent(int $id, string $content): Item;
 
     /**
+     * Move an item to a different category in the same pouch.
+     *
+     * @throws NotFoundException if the item or the target category doesn't exist
+     */
+    public function move(int $id, int $categoryId): Item;
+
+    /**
      * Scoped to the current pouch automatically for a normal,
      * session-authenticated request (PouchFilter — see PouchFilterListener);
      * unscoped for the signed-URL-only actions and for /api/admin, where

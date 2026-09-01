@@ -30,6 +30,80 @@ Przed realnym używaniem projektu do ważnych danych — backup bez regularnie s
 
 ---
 
+## Część 19 — Przegląd stanu projektu: co jeszcze brakuje
+
+Kolejny zewnętrzny przegląd, po Części 18 — wniosek: projekt wyszedł z fazy "dużo rzeczy jest
+fundamentalnie źle", jest teraz w fazie "kilka brakujących przepływów użytkownika i twarde
+przygotowanie do produkcji". Poniższe znaleziska zweryfikowane w kodzie przed wpisaniem tutaj.
+
+### Najważniejsze braki
+
+- [x] **Frontend nie udostępniał wszystkich czterech typów itemów — zrobione.** Backend
+      już miał `POST /api/items/photos`/`.../urls`, brakowało frontendu —
+      `itemApi.ts` dostał `createPhoto`/`createUrl`, `AddItemModal.tsx`'s `ItemKind`
+      rozszerzony o `"photo"`/`"url"` z własnymi polami formularza (`PhotoFields`/
+      `UrlFields`). Upload zdjęcia ma `capture="environment"` na inpucie —
+      podpowiada mobilnym przeglądarkom otwarcie aparatu wprost (desktop bez wsparcia po
+      prostu to ignoruje, zwykły file picker). Ani `createPhoto`, ani `createUrl` nie
+      przyjmują tagów przy tworzeniu (backendowe `ItemService::createPhoto()`/
+      `createUrl()` też nie) — dodanie tagów zostaje osobnym krokiem po utworzeniu,
+      przez `ItemDetailsModal`.
+- [x] **Zarządzanie strukturą jest niepełne na froncie — zrobione.** Kategorie: backend już
+      miał `rename()`/`move()`, brakowało UI — dodane `RenameCategoryForm.tsx`/
+      `MoveCategoryForm.tsx` + przyciski w `CategoryRow.tsx`. Itemy: przenoszenie **nie
+      istniało wcale** — nowy endpoint `PATCH /api/items/{id}/move`
+      (`ItemService::move()`, `Item::setCategory()`) + `MoveItemButton` w
+      `ItemDetailsModal.tsx`. Cel przenoszenia itemu ograniczony do własnego pouch przez
+      `CategoryService::getById()` (pouch-scoped), tak jak reszta lookupów. Testy:
+      `ItemControllerTest::testMoveItemToAnotherCategory`/`testMoveToMissingCategoryReturnsNotFound`,
+      `ItemPouchIsolationTest::testMovingAnItemIntoAnotherPouchsCategoryReturnsNotFound`.
+- [x] **Automatyczny GC nie był rzeczywiście zaplanowany — zrobione.** Nowy serwis
+      `gc-scheduler` w `docker-compose.yml`/`docker-compose.dev.yml` (ten sam wzorzec co
+      `messenger-worker`) — pętla `app:item:gc` co godzinę (najkrótszy preset TTL to 1h).
+- [x] **Dokumentacja produktu i roadmapa miejscami sobie przeczyły — rozstrzygnięte.**
+  - Domyślny TTL: `PRODUCT.md` zaktualizowany pod istniejące zachowanie kodu — domyślnie
+    "trzymaj na zawsze", nie 1 dzień (bezpieczniejsze, dane nie znikają przez przypadek).
+  - Zakładanie kont: `PRODUCT.md` zaktualizowany pod istniejący panel admina (`POST
+    /api/admin/users`) jako rzeczywisty mechanizm, zamiast opisu "zakładane w bazie".
+  - "Ostatnio dodane": uznane za wciąż aktualną część MVP — nowa `RecentPage`
+    (`/user/recent`, wpis w sidebarze), na wzór już istniejącej `FavoritesPage`: lista
+    itemów bez żadnych filtrów, backend i tak sortuje po `createdAt DESC` domyślnie.
+    Usunięte z `ROADMAP.md`'s "Produktowo" (nie jest już przyszłym pomysłem).
+- [x] **`ItemController` urósł do 1244 linii** — przekraczał limit 1000 linii z
+      `project-rules.md`. Rozdzielony na 4 kontrolery wg operacji: `ItemController`
+      (core CRUD: list/get/delete, 245 linii), `ItemCreateController` (createFile/
+      createPhoto/createUrl/createNote, 377 linii), `ItemEditController` (updateNote/
+      move/updateTags/markFavorite/unmarkFavorite/overwriteFile/versions, 343 linie),
+      `ItemDeliveryController` (download/thumbnail/versionDownload/publicView + ich
+      podpisane linki, 472 linie). Wspólna logika parsowania list rozdzielonych
+      przecinkami (tagi, id kategorii) wydzielona do nowego
+      `ParsesCommaSeparatedValuesTrait`, na wzór istniejącego `AuthorizesRequestsTrait`.
+      `make cs`/`make phpstan`/`make rector`/`make test-backend` przechodzą czysto
+      (283/283 testów).
+- [x] **Testy frontendu były nadal dość wąskie** — było 7 plików / 18 testów (patrz Część
+      18, punkt 3). Doszły `CategoryRow.test.tsx` (zmiana nazwy/przenoszenie kategorii,
+      sukces i błąd), `VersionHistory.test.tsx` (pusta historia, lista wersji + pobranie
+      konkretnej, nadpisanie nowym plikiem, błąd z treścią z backendu) i rozszerzony
+      `ItemDetailsModal.test.tsx` (przenoszenie itemu — sukces/błąd/przycisk zablokowany
+      przy niezmienionym celu, edycja tagów — sukces/błąd) i nowy `RecentPage.test.tsx`
+      (patrz "Ostatnio dodane" wyżej). Teraz 10 plików / 34 testy, `make lint`/tsc/
+      `make test-frontend` przechodzą czysto. Ekrany administracyjne i uprawnienia gościa
+      (nie ma osobnego UI — publiczny link jest podpisanym URL-em bez własnego ekranu)
+      zostają poza zakresem tej rundy.
+
+### Sugerowana kolejność
+
+- **Teraz**: domknąć bieżące zmiany (migracja, `ItemFilters.tsx` — patrz code review wyżej)
+  i pełny zestaw gate'ów.
+- **Przed uznaniem MVP za kompletne**: URL i zdjęcie w UI, operacje przenoszenia/zmiany
+  nazwy, ustalenie widoku "ostatnio dodane" i zachowania domyślnego TTL (decyzje produktowe
+  z punktu wyżej).
+- **Przed pierwszym użyciem z ważnymi danymi**: automatyczny GC (cron), produkcyjny obraz
+  backendu, automatyczny backup PostgreSQL/MinIO ze sprawdzonym restore (patrz "Poprawić
+  operacyjność" wyżej — backupów/restore'u/crona nie odkładać na czas po rozpoczęciu
+  realnego używania).
+---
+
 ## Opcjonalne do naprawy (niezależne od kolejności wyżej)
 
 Nie blokują żadnej części — zrobić przy okazji, kiedy akurat dotykamy powiązanego kodu, albo osobno gdy będzie chwila:
@@ -44,7 +118,6 @@ Nie blokują żadnej części — zrobić przy okazji, kiedy akurat dotykamy pow
 - [ ] Szybkie dodawanie materiałów z telefonu — PWA/share target.
 - [ ] Import z przeglądarki / rozszerzenie "zapisz do Pouch".
 - [ ] Kosz z możliwością ręcznego przywracania (dziś trash → GC jest jednokierunkowe do momentu `purgeTrash()`, ale nie ma UI do "przywróć z kosza" przed tym).
-- [ ] Widok ostatnich/nieprzeczytanych elementów.
 - [ ] Zapisane wyszukiwania lub inteligentne kolekcje.
 - [ ] Eksport i pełna przenośność danych (rozszerzenie eksportu kategorii na cały pouch).
 

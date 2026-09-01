@@ -23,6 +23,15 @@ services:
             - ./backend:/var/www/html
             - ./backend/docker/php/php.ini:/usr/local/etc/php/conf.d/99-opcache.ini:ro
 
+    gc-scheduler:
+        build:
+            target: dev
+        environment:
+            APP_ENV: dev
+        volumes:
+            - ./backend:/var/www/html
+            - ./backend/docker/php/php.ini:/usr/local/etc/php/conf.d/99-opcache.ini:ro
+
     frontend:
         build:
             target: dev

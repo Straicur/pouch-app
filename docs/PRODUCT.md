@@ -11,8 +11,9 @@ realną strukturę (kategorie, tagi, wyszukiwarka) zamiast robić porządek z ch
 nie chronologiczny strumień wiadomości, w którym trzeba pamiętać, kiedy się coś
 wrzuciło, żeby to znowu znaleźć.
 
-Bez rejestracji — użytkownicy są świadomie zakładani w bazie, aplikacja obsługuje samo
-logowanie. Kont będzie kilka, z różnymi uprawnieniami (patrz "Role i uprawnienia").
+Bez rejestracji — konta zakłada admin przez panel administracyjny (`POST
+/api/admin/users`), aplikacja obsługuje samo logowanie. Kont będzie kilka, z różnymi
+uprawnieniami (patrz "Role i uprawnienia").
 
 ## Model pojęciowy
 
@@ -37,9 +38,10 @@ logowanie. Kont będzie kilka, z różnymi uprawnieniami (patrz "Role i uprawnie
   sztywno zakładać, że są tylko te cztery.
 - **Tag** — niezależny od drzewa kategorii, przecina je w poprzek; do filtrowania w
   wyszukiwarce.
-- **Cykl życia** — każdy item ma TTL (domyślnie 1 dzień) albo flagę "trzymaj na zawsze".
-  Działa identycznie niezależnie od tego, gdzie item się pojawia w UI (tagi,
-  ulubione) — to właściwość samego itemu, nie widoku.
+- **Cykl życia** — każdy item ma TTL albo flagę "trzymaj na zawsze" (domyślnie
+  włączoną — nowy item nie znika przez przypadek, dopóki ktoś świadomie nie ustawi
+  wygaśnięcia). Działa identycznie niezależnie od tego, gdzie item się pojawia w UI
+  (tagi, ulubione) — to właściwość samego itemu, nie widoku.
 - **Klucz dostępu** — może chronić zarówno całą kategorię, jak i pojedynczy item z
   osobna (np. wrażliwy plik w ogólnodostępnej kategorii).
 
@@ -95,7 +97,8 @@ widzi X", ale i "guest NIE może zrobić Y", "user bez klucza NIE widzi Z".
   da się linkować pliku na stałe poza aplikacją.
 
 ### Cykl życia danych
-- Domyślny TTL: 1 dzień od dodania.
+- Domyślnie "trzymaj na zawsze" — bezpieczniejsze niż domyślne wygasanie, świadomie
+  wybrane zamiast pierwotnego założenia TTL = 1 dzień (patrz Część 19 w `ROADMAP.md`).
 - Przy dodawaniu: przełącznik "trzymaj na zawsze" + gotowe presety (1h / 7 dni /
   30 dni) + możliwość wpisania własnej daty wygaśnięcia.
 - Kosz — usunięcie nie kasuje danych od razu, item trafia do kosza na 7 dni zanim

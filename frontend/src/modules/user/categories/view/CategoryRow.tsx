@@ -14,6 +14,8 @@ import { Dialog, DialogTitle } from "../../../../ui/catalyst/dialog";
 import { triggerDownload } from "../../../../utils/triggerDownload";
 import { AccessKeyPanel } from "../../shared/AccessKeyPanel";
 import { CategoryForm } from "../forms/CategoryForm";
+import { MoveCategoryForm } from "../forms/MoveCategoryForm";
+import { RenameCategoryForm } from "../forms/RenameCategoryForm";
 
 interface CategoryRowProps {
   category: Category;
@@ -31,6 +33,8 @@ export function CategoryRow({ category, subcategories }: CategoryRowProps) {
   const [setCategoryKey] = useSetCategoryKeyMutation();
   const [getExportToken, { isLoading: isPreparingExport }] = useGetCategoryExportTokenMutation();
   const [isAddSubcategoryOpen, setIsAddSubcategoryOpen] = useState(false);
+  const [isRenameOpen, setIsRenameOpen] = useState(false);
+  const [isMoveOpen, setIsMoveOpen] = useState(false);
   const isRoot = undefined !== subcategories;
 
   // A plain navigation can't set the X-Pouch-Access-Grants header, so this
@@ -59,6 +63,12 @@ export function CategoryRow({ category, subcategories }: CategoryRowProps) {
             )}
             <Button variant="outline" size="small" onClick={handleExport} disabled={isPreparingExport}>
               {isPreparingExport ? t("categories.exportPreparing") : t("categories.exportButton")}
+            </Button>
+            <Button variant="outline" size="small" onClick={() => setIsRenameOpen(true)}>
+              {t("categories.renameButton")}
+            </Button>
+            <Button variant="outline" size="small" onClick={() => setIsMoveOpen(true)}>
+              {t("categories.moveButton")}
             </Button>
           </div>
         </div>
@@ -93,6 +103,16 @@ export function CategoryRow({ category, subcategories }: CategoryRowProps) {
           parentId={category.id}
           onSuccess={() => setIsAddSubcategoryOpen(false)}
         />
+      </Dialog>
+
+      <Dialog open={isRenameOpen} onClose={setIsRenameOpen}>
+        <DialogTitle>{t("categories.renameTitle", { name: category.name })}</DialogTitle>
+        <RenameCategoryForm key={String(isRenameOpen)} category={category} onSuccess={() => setIsRenameOpen(false)} />
+      </Dialog>
+
+      <Dialog open={isMoveOpen} onClose={setIsMoveOpen}>
+        <DialogTitle>{t("categories.moveTitle", { name: category.name })}</DialogTitle>
+        <MoveCategoryForm key={String(isMoveOpen)} category={category} onSuccess={() => setIsMoveOpen(false)} />
       </Dialog>
     </li>
   );
