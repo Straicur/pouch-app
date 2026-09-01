@@ -35,12 +35,14 @@ describe("ItemFilters — debounced search", () => {
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
-  it("doesn't fire a search below the minimum query length", async () => {
+  it("clears an active search once the query drops below the minimum length", async () => {
     const onChange = vi.fn();
-    renderWithProviders(<ItemFilters filters={{}} onChange={onChange} />);
+    renderWithProviders(<ItemFilters filters={{ q: "existing" }} onChange={onChange} />);
     const user = userEvent.setup();
+    const input = screen.getByPlaceholderText("Szukaj po nazwie, tagach, treści, OCR… (min. 2 znaki)");
 
-    await user.type(screen.getByPlaceholderText("Szukaj po nazwie, tagach, treści, OCR… (min. 2 znaki)"), "a");
+    await user.clear(input);
+    await user.type(input, "a");
 
     await waitFor(() => {
       expect(onChange).toHaveBeenCalledWith({ q: undefined });

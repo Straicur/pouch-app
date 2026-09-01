@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useListCategoriesQuery } from "../../../../store/api/categoryApi";
 import { useListTagsQuery } from "../../../../store/api/tagApi";
@@ -29,6 +29,14 @@ export function ItemFilters({ filters, onChange }: ItemFiltersProps) {
 
   const [draftQuery, setDraftQuery] = useState(filters.q ?? "");
 
+  // Latest filters.q without depending on it in the debounce effect below —
+  // see that effect's own comment for why it can't re-run on every unrelated
+  // filter change.
+  const currentQueryRef = useRef(filters.q);
+  useEffect(() => {
+    currentQueryRef.current = filters.q;
+  }, [filters.q]);
+
   // Search-as-you-type, but only once there's enough of a word to be a
   // meaningful prefix (see backend's buildPrefixTsQuery()) — debounced so
   // every keystroke doesn't fire its own request. `onChange` (ItemsPage's
@@ -37,10 +45,22 @@ export function ItemFilters({ filters, onChange }: ItemFiltersProps) {
   // here — reading `filters.q` in this effect would mean re-running the
   // debounce (and dropping in-flight keystrokes) on every unrelated filter
   // change too.
+  //
+  // This effect also runs once on mount (draftQuery starts out already
+  // matching filters.q), which would otherwise fire a no-op onChange 300ms
+  // after every mount — harmless in value, but ItemsPage's handleFiltersChange
+  // resets pagination back to page 1 on *any* onChange, so a stray call here
+  // would silently kick the user back to page 1 with nothing having changed.
+  // Skipping when the debounced value doesn't actually differ from what's
+  // already active avoids that.
   useEffect(() => {
     const trimmed = draftQuery.trim();
+    const nextQuery = trimmed.length >= MIN_QUERY_LENGTH ? trimmed : undefined;
+
     const timeoutId = window.setTimeout(() => {
-      onChange({ q: trimmed.length >= MIN_QUERY_LENGTH ? trimmed : undefined });
+      if (nextQuery !== currentQueryRef.current) {
+        onChange({ q: nextQuery });
+      }
     }, SEARCH_DEBOUNCE_MS);
 
     return () => window.clearTimeout(timeoutId);

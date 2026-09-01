@@ -55,6 +55,13 @@ final class Version20260901094931 extends AbstractMigration
     {
         $this->addSql('ALTER TABLE tag ADD pouch_id INT DEFAULT NULL');
 
+        // Must come before the split-insert below: that insert can add a
+        // second row with the same name (a different pouch's copy of a
+        // cross-pouch tag), which the still-global uniq_tag_name would
+        // reject outright. The real, narrower constraint (name, pouch_id) is
+        // only created once every row actually has its pouch_id, at the end.
+        $this->addSql('DROP INDEX uniq_tag_name');
+
         $this->addSql('DELETE FROM tag WHERE tag_id NOT IN (SELECT DISTINCT tag_id FROM item_tag)');
 
         // Every distinct (tag, pouch) combination a tag's items actually
@@ -120,7 +127,6 @@ final class Version20260901094931 extends AbstractMigration
 
         $this->addSql('ALTER TABLE tag ALTER pouch_id SET NOT NULL');
 
-        $this->addSql('DROP INDEX uniq_tag_name');
         $this->addSql('ALTER TABLE tag ADD CONSTRAINT FK_389B783566320D4 FOREIGN KEY (pouch_id) REFERENCES pouch (pouch_id) NOT DEFERRABLE');
         $this->addSql('CREATE INDEX IDX_389B783566320D4 ON tag (pouch_id)');
         $this->addSql('CREATE UNIQUE INDEX uniq_tag_name_pouch ON tag (name, pouch_id)');
