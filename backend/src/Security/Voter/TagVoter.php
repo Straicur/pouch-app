@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Security\Voter;
 
+use App\ControllerHelper\Enum\UserRole;
 use App\Entity\Tag;
 use Override;
 use Symfony\Bundle\SecurityBundle\Security;
@@ -52,8 +53,8 @@ final class TagVoter extends Voter
     protected function voteOnAttribute(string $attribute, mixed $subject, TokenInterface $token): bool
     {
         return match ($attribute) {
-            self::VIEW, self::CREATE, self::RENAME => $this->security->isGranted('ROLE_USER'),
-            self::DELETE => $this->security->isGranted('ROLE_ADMIN'),
+            self::VIEW, self::CREATE, self::RENAME => $this->security->isGranted(UserRole::USER->value),
+            self::DELETE => $this->security->isGranted(UserRole::ADMIN->value),
             default      => false,
         };
     }

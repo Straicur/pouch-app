@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace App\DataFixtures;
 
+use App\ControllerHelper\Enum\UserRole;
 use App\Entity\Category;
 use App\Entity\Pouch;
 use App\Entity\User;
@@ -69,15 +70,15 @@ class AppFixtures extends Fixture implements FixtureGroupInterface
         $user = $this->createUser('mosinskidamian11@gmail.com', 'zaq1@WSX', $pouch);
         $this->userRepository->saveUser(user: $user);
 
-        // One account per role (Part 2 of the roadmap), for manual ACL checks
-        // against Swagger (/api/doc) — same password for all three, for convenience.
+        // One account per role, for manual ACL checks against Swagger (/api/doc) —
+        // same password for all three, for convenience.
         $admin = $this->createUser('admin@pouch.test', 'zaq1@WSX', $pouch);
-        $admin->setRoles(['ROLE_ADMIN']);
+        $admin->setRoles([UserRole::ADMIN->value]);
 
         $this->userRepository->saveUser(user: $admin);
 
         $guest = $this->createUser('guest@pouch.test', 'zaq1@WSX', $pouch);
-        $guest->setRoles(['ROLE_GUEST']);
+        $guest->setRoles([UserRole::GUEST->value]);
 
         $this->userRepository->saveUser(user: $guest);
 

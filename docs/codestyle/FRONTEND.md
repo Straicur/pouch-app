@@ -234,7 +234,11 @@ realnego powodu wypisanego w komentarzu.
 
 ## Testy komponentów (Vitest + Testing Library)
 
-Współdzielone narzędzia w `src/testUtils/`:
+Testy żyją w osobnym, top-levelowym `frontend/tests/`, nie obok testowanego pliku w
+`src/` — nowy test zawsze idzie pod `tests/`, odzwierciedlając ścieżkę testowanego
+pliku w `src/` (np. `src/pages/LoginPage.tsx` → `tests/pages/LoginPage.test.tsx`).
+
+Współdzielone narzędzia w `tests/testUtils/`:
 
 - `renderWithProviders(ui)` — renderuje komponent owinięty świeżym (per-test) Reduxowym
   store'em (te same reducery/middleware co `store/store.ts`, ale nowa instancja, żeby cache
@@ -245,12 +249,12 @@ Współdzielone narzędzia w `src/testUtils/`:
 - `mockApiResponse(data)`/`mockApiError(status, body)` (`testUtils/mockHttp.ts`) — budują
   wartości zwracane przez zamockowany `httpMethods`.
 
-Każdy plik testujący komponent, który woła RTK Query, mockuje `../libs/httpMethods` (nie
+Każdy plik testujący komponent, który woła RTK Query, mockuje `src/libs/httpMethods` (nie
 `axios` ani `httpClient` bezpośrednio) — to jedyne miejsce, przez które `axiosBaseQuery`
 faktycznie robi request (patrz `store/api/baseQuery.ts`):
 
 ```ts
-vi.mock("../../../../libs/httpMethods", () => ({
+vi.mock("../../../../../src/libs/httpMethods", () => ({
   httpMethods: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), del: vi.fn() },
 }));
 ```
@@ -329,6 +333,12 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
 - Domyślnie `as const` (tak jak `ApiEndpoints`), nie TS `enum` — chyba że coś 1:1
   odzwierciedla enum z backendu (patrz "Error handling" niżej) i sama nazwa `enum`
   czyni to czytelniejszym.
+- Ten sam literal (string/number) powtórzony w więcej niż jednym miejscu dla tego
+  samego znaczenia (np. lista ról `["ROLE_GUEST", "ROLE_USER", "ROLE_ADMIN"]`) idzie
+  do jednej nazwanej stałej (`as const satisfies readonly T[]`, patrz `USER_ROLES`
+  w `roleLabels.ts`), a nie osobnego literału przy każdym użyciu (np. w `z.enum(...)`).
+  Dwie stałe, które przypadkiem mają tę samą wartość, ale znaczą co innego, zostają
+  osobne.
 
 ### Importy
 

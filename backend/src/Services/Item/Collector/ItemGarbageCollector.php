@@ -6,7 +6,7 @@ namespace App\Services\Item\Collector;
 
 use App\Entity\GcRunLog;
 use App\Entity\ItemVersion;
-use App\Exception\StorageException;
+use App\ExceptionManagement\Exceptions\Command\StorageException;
 use App\Repository\GcRunLogRepository;
 use App\Repository\ItemRepository;
 use App\Repository\ItemVersionRepository;

@@ -4,23 +4,23 @@ declare(strict_types = 1);
 
 namespace App\Controller\Api;
 
-use App\Security\CookieService;
+use App\ControllerHelper\Traits\BuildsLogoutResponseTrait;
 use App\Security\CookieServiceInterface;
-use App\Security\TokenServiceInterface;
+use App\Security\LogoutServiceInterface;
 use OpenApi\Attributes as OA;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
-use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
 
 #[OA\Tag(name: 'Auth')]
 final class LogoutController extends AbstractController
 {
+    use BuildsLogoutResponseTrait;
+
     public function __construct(
         private readonly CookieServiceInterface $cookieService,
-        private readonly TokenStorageInterface $tokenStorage,
-        private readonly TokenServiceInterface $tokenService,
+        private readonly LogoutServiceInterface $logoutService,
     ) {}
 
     #[Route('/api/logout', name: 'logout', methods: [Request::METHOD_POST])]
@@ -34,35 +34,10 @@ final class LogoutController extends AbstractController
             ),
         ]
     )]
-    public function logout(
-        Request $request,
-    ): Response {
-        $session = $request->getSession();
-        if ($session->isStarted()) {
-            $session->invalidate();
-        }
+    public function logout(Request $request): Response
+    {
+        $this->logoutService->logout($request);
 
-        $refreshToken = $request->cookies->get(CookieService::REFRESH_TOKEN);
-        if (null !== $refreshToken) {
-            // Otherwise the DB row outlives the cookie: a copy of the token
-            // captured before logout would still be accepted at /api/refresh.
-            $this->tokenService->revokeRefreshToken($refreshToken);
-        }
-
-        $this->tokenStorage->setToken(null);
-
-        $response = new Response();
-
-        $response->headers->setCookie(
-            $this->cookieService->prepareLogoutCookie(CookieService::ACCESS_TOKEN)
-        );
-
-        $response->headers->setCookie(
-            $this->cookieService->prepareLogoutCookie(CookieService::REFRESH_TOKEN)
-        );
-
-        $this->tokenStorage->setToken(null);
-
-        return $response;
+        return $this->logoutResponse(status: Response::HTTP_OK);
     }
 }

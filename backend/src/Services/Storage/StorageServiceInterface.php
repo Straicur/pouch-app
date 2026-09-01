@@ -4,7 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Services\Storage;
 
-use App\Exception\StorageException;
+use App\ExceptionManagement\Exceptions\Command\StorageException;
 
 interface StorageServiceInterface
 {

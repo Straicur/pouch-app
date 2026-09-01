@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Security\Voter;
 
+use App\ControllerHelper\Enum\UserRole;
 use App\Entity\Item;
 use Override;
 use Symfony\Bundle\SecurityBundle\Security;
@@ -57,8 +58,8 @@ final class ItemVoter extends Voter
     protected function voteOnAttribute(string $attribute, mixed $subject, TokenInterface $token): bool
     {
         return match ($attribute) {
-            self::VIEW, self::DOWNLOAD, self::UNLOCK => $this->security->isGranted('ROLE_GUEST'),
-            self::CREATE, self::EDIT, self::DELETE, self::MANAGE_KEY => $this->security->isGranted('ROLE_USER'),
+            self::VIEW, self::DOWNLOAD, self::UNLOCK => $this->security->isGranted(UserRole::GUEST->value),
+            self::CREATE, self::EDIT, self::DELETE, self::MANAGE_KEY => $this->security->isGranted(UserRole::USER->value),
             default => false,
         };
     }

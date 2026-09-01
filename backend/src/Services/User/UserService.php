@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Services\User;
 
+use App\ControllerHelper\Enum\UserRole;
 use App\Entity\Pouch;
 use App\Entity\User;
 use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadRequestException;
@@ -116,7 +117,7 @@ class UserService implements UserServiceInterface
     {
         $user = $this->getById($id);
 
-        if (in_array('ROLE_ADMIN', $user->getRoles(), true)) {
+        if (in_array(UserRole::ADMIN->value, $user->getRoles(), true)) {
             throw new BadRequestException(message: 'user.admin_cannot_delete_own_account');
         }
 

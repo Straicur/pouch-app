@@ -19,7 +19,7 @@ type PouchChoice = "existing" | "new";
 const createUserSchema = z
   .object({
     email: z.string().email(i18n.t("validation.invalidEmail")),
-    role: z.enum(["ROLE_GUEST", "ROLE_USER", "ROLE_ADMIN"]),
+    role: z.enum(USER_ROLES),
     pouchChoice: z.enum(["existing", "new"]),
     pouchId: z.coerce.number().int().positive().optional(),
     newPouchName: z.string().max(255, i18n.t("validation.maxLength255")).optional(),

@@ -119,15 +119,15 @@ przygotowanie do produkcji". Poniższe znaleziska zweryfikowane w kodzie przed w
 
 ### Sugerowana kolejność
 
-- **Teraz**: domknąć bieżące zmiany (migracja, `ItemFilters.tsx` — patrz code review wyżej)
-  i pełny zestaw gate'ów.
-- **Przed uznaniem MVP za kompletne**: URL i zdjęcie w UI, operacje przenoszenia/zmiany
-  nazwy, ustalenie widoku "ostatnio dodane" i zachowania domyślnego TTL (decyzje produktowe
-  z punktu wyżej).
-- **Przed pierwszym użyciem z ważnymi danymi**: automatyczny GC (cron), produkcyjny obraz
-  backendu, automatyczny backup PostgreSQL/MinIO ze sprawdzonym restore (patrz "Poprawić
-  operacyjność" wyżej — backupów/restore'u/crona nie odkładać na czas po rozpoczęciu
-  realnego używania).
+Wszystko z "Najważniejsze braki" wyżej (URL/zdjęcie w UI, przenoszenie/zmiana nazwy,
+automatyczny GC, "ostatnio dodane", ustalenie domyślnego TTL) jest już zrobione.
+Zostało, przed pierwszym użyciem z ważnymi danymi:
+
+- backup jako atomowy artefakt (`.partial` → rename po sukcesie — zrobione) plus test
+  odtworzenia, który realnie weryfikuje pliki MinIO, nie tylko liczniki wierszy w bazie,
+- obsługa błędu w `backup-scheduler` bez cichego 24h maskowania (zrobione — `|| exit 1`,
+  `restart: unless-stopped` dogrywa restart),
+- produkcyjny obraz backendu (patrz "Opcjonalne do naprawy" niżej).
 ---
 
 ## Opcjonalne do naprawy (niezależne od kolejności wyżej)
@@ -136,6 +136,20 @@ Nie blokują żadnej części — zrobić przy okazji, kiedy akurat dotykamy pow
 
 - [ ] **Cookie `secure: true` na sztywno** (`CookieService`) — działa dziś tylko dzięki wyjątkowi przeglądarek dla `http://localhost`. Do ogarnięcia przed pierwszym wdrożeniem pod realną domeną (HTTPS na reverse-proxy musi faktycznie działać end-to-end).
 - [ ] **Brak prod stage dla backendu** — `backend/Dockerfile` ma tylko `base`+`dev` (frontend ma `prod` z nginx, backend nie). Potrzebne przed pierwszym realnym wdrożeniem, nie wcześniej.
+- [ ] **Testy frontendu wciąż wąskie — 11 plików / 38 testów na 45 komponentów spoza `ui/catalyst`.**
+  Panel admina ma dziś 0% pokrycia mimo destrukcyjnych akcji (usuwanie/blokowanie kont,
+  ręczne odpalenie GC). Do domknięcia, per obszar:
+  - Panel admina: `UsersPage`/`UserRow`/`CreateUserForm` (tworzenie/rola/blokada/reset
+    hasła/usunięcie konta), `StoragePage`, `GcPage` (ręczny "Run GC Now"), `BackupPage`,
+    `AuditLogPage`, `ExpiringPage`, `AdminItemBrowser`, `PouchSwitcher`.
+  - Formularze kategorii/tagów: `CategoryForm`, `RenameCategoryForm`, `MoveCategoryForm`,
+    `TagForm`, `TagRow`.
+  - Współdzielone: `ConfirmDialog` (używany wszędzie do potwierdzania usunięcia — błąd tu
+    ma najszerszy promień rażenia), `AppSidebar`, `ThemeSwitch`, `ProtectedRoute`,
+    `ErrorBoundary`, `AccessKeyPanel`, `TagsInput`, `ShareButton`.
+  - Strony bez testów: `FavoritesPage`, `SettingsPage`, `CategoriesPage`, `HomePage`.
+  - `AddItemModal.test.tsx` pokrywa dziś tylko część `ItemKind`-ów — dopisać brakujące
+    warianty formularza (zdjęcie/URL/notatka) jeśli nie są objęte.
 
 ---
 

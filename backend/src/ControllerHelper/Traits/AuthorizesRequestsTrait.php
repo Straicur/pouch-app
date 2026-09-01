@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace App\ControllerHelper\Traits;
 
+use App\ControllerHelper\Enum\UserRole;
 use App\Entity\User;
 use App\ExceptionManagement\Exceptions\ApiException\ForbiddenException\ForbiddenException;
 use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\UnauthorizedException;
@@ -36,5 +37,14 @@ trait AuthorizesRequestsTrait
     protected function assertGranted(string $attribute, mixed $subject = null): User
     {
         return $this->authorizationService->assertGranted($attribute, $subject);
+    }
+
+    /**
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
+     */
+    protected function assertAdmin(): User
+    {
+        return $this->assertGranted(UserRole::ADMIN->value);
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Repository;
 
+use App\ControllerHelper\Enum\UserRole;
 use App\Entity\User;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
@@ -105,7 +106,7 @@ class UserRepository extends ServiceEntityRepository implements PasswordUpgrader
     {
         $count = 0;
         foreach ($this->findAllOrderedByEmail() as $user) {
-            if (in_array('ROLE_ADMIN', $user->getRoles(), true)) {
+            if (in_array(UserRole::ADMIN->value, $user->getRoles(), true)) {
                 ++$count;
             }
         }

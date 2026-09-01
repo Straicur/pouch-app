@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Controller\Api;
 
+use App\ControllerHelper\Enum\UserRole;
 use App\DTO\Response\WhoAmIResponseDTO;
 use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\UnauthorizedException;
 use App\ExceptionManagement\Exceptions\ApiException\UnauthorizedException\UnauthorizedExceptionModel;
@@ -56,7 +57,7 @@ final class WhoAmIController extends AbstractController
         // Pure UI label (which sidebar link to show) — every admin endpoint
         // still verifies ROLE_ADMIN itself server-side, this changes nothing
         // about what's actually enforced.
-        $response = new WhoAmIResponseDTO(email: $user->getEmail(), isAdmin: in_array('ROLE_ADMIN', $user->getRoles(), true));
+        $response = new WhoAmIResponseDTO(email: $user->getEmail(), isAdmin: in_array(UserRole::ADMIN->value, $user->getRoles(), true));
 
         return new Response($this->serializer->serialize(data: $response, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
     }

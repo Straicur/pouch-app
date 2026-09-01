@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Security\Voter;
 
+use App\ControllerHelper\Enum\UserRole;
 use App\Entity\Category;
 use Override;
 use Symfony\Bundle\SecurityBundle\Security;
@@ -64,9 +65,9 @@ final class CategoryVoter extends Voter
         // Delegated to isGranted() (not $token->getRoleNames()) so role_hierarchy
         // applies — an admin has ROLE_USER/ROLE_GUEST too, not just ROLE_ADMIN.
         return match ($attribute) {
-            self::VIEW, self::UNLOCK => $this->security->isGranted('ROLE_GUEST'),
-            self::CREATE, self::RENAME, self::MOVE, self::MANAGE_KEY => $this->security->isGranted('ROLE_USER'),
-            self::DELETE => $this->security->isGranted('ROLE_ADMIN'),
+            self::VIEW, self::UNLOCK => $this->security->isGranted(UserRole::GUEST->value),
+            self::CREATE, self::RENAME, self::MOVE, self::MANAGE_KEY => $this->security->isGranted(UserRole::USER->value),
+            self::DELETE => $this->security->isGranted(UserRole::ADMIN->value),
             default      => false,
         };
     }

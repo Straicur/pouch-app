@@ -14,4 +14,4 @@ export function roleLabelKey(role: UserRole): string {
   }
 }
 
-export const USER_ROLES: UserRole[] = ["ROLE_GUEST", "ROLE_USER", "ROLE_ADMIN"];
+export const USER_ROLES = ["ROLE_GUEST", "ROLE_USER", "ROLE_ADMIN"] as const satisfies readonly UserRole[];

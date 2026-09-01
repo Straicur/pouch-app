@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace App\DTO\Mapper;
 
+use App\ControllerHelper\Enum\UserRole;
 use App\DTO\Response\PouchOverviewResponseDTO;
 use App\DTO\Response\UserCreatedResponseDTO;
 use App\DTO\Response\UserResponseDTO;
@@ -23,7 +24,7 @@ final class UserMapper
         return new UserResponseDTO(
             id: $user->getId(),
             email: $user->getEmail(),
-            role: $user->getRoles()[0] ?? 'ROLE_USER',
+            role: $user->getRoles()[0] ?? UserRole::USER->value,
             enabled: $user->isEnabled(),
             pouchId: $user->getPouch()->getId(),
             pouchName: $user->getPouch()->getName(),

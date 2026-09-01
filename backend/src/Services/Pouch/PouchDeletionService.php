@@ -6,10 +6,10 @@ namespace App\Services\Pouch;
 
 use App\Entity\Item;
 use App\Entity\ItemVersion;
-use App\Exception\StorageException;
 use App\ExceptionManagement\Exceptions\ApiException\BadRequestException\BadRequestException;
 use App\ExceptionManagement\Exceptions\ApiException\ConflictException\ConflictException;
 use App\ExceptionManagement\Exceptions\ApiException\NotFoundException\NotFoundException;
+use App\ExceptionManagement\Exceptions\Command\StorageException;
 use App\Repository\CategoryRepository;
 use App\Repository\ItemRepository;
 use App\Repository\ItemVersionRepository;

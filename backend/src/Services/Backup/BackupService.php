@@ -4,7 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Services\Backup;
 
-use App\Exception\BackupException;
+use App\ExceptionManagement\Exceptions\Command\BackupException;
 use App\Services\Backup\ValueObject\BackupRestoreTestResult;
 use App\Services\Backup\ValueObject\BackupRunResult;
 use App\Services\Storage\StorageServiceInterface;
@@ -14,7 +14,9 @@ use Override;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Process\Process;
 
+use function array_filter;
 use function array_slice;
+use function array_values;
 use function bin2hex;
 use function count;
 use function dirname;
@@ -28,11 +30,14 @@ use function ltrim;
 use function mkdir;
 use function parse_url;
 use function random_bytes;
+use function rawurldecode;
 use function rawurlencode;
+use function rename;
 use function rmdir;
 use function scandir;
 use function sort;
 use function sprintf;
+use function str_ends_with;
 use function unlink;
 
 use const GLOB_ONLYDIR;
@@ -51,6 +56,8 @@ class BackupService implements BackupServiceInterface
 
     private const int PROCESS_TIMEOUT_SECONDS = 300;
 
+    private const string PARTIAL_SUFFIX = '.partial';
+
     public function __construct(
         private readonly StorageServiceInterface $storageService,
         #[Autowire(env: 'DATABASE_URL')]
@@ -64,10 +71,20 @@ class BackupService implements BackupServiceInterface
     #[Override]
     public function run(): BackupRunResult
     {
-        $backupDir = $this->backupRootDir . '/' . new DateTimeImmutable()->format('Y-m-d_His');
-        $this->ensureDirectory($backupDir);
+        $finalDir = $this->backupRootDir . '/' . new DateTimeImmutable()->format('Y-m-d_His');
+        $partialDir = $finalDir . self::PARTIAL_SUFFIX;
 
-        $dumpPath = $backupDir . '/database.dump';
+        // A dump/mirror interrupted mid-way (crash, OOM-kill) would otherwise
+        // leave a directory latestBackupDir() could still pick as if it were
+        // complete — build under .partial and only rename into place once
+        // every step below succeeded. Any `.partial` left by a previous,
+        // differently-timestamped interrupted run is stale too, so sweep all
+        // of them, not just one that would collide with $partialDir.
+        $this->removeStalePartialDirs();
+
+        $this->ensureDirectory($partialDir);
+
+        $dumpPath = $partialDir . '/database.dump';
         $this->runProcess(['pg_dump', '--format=custom', '--file=' . $dumpPath, $this->cliUrl()]);
 
         $databaseDumpBytes = filesize($dumpPath);
@@ -75,10 +92,14 @@ class BackupService implements BackupServiceInterface
             throw new BackupException(sprintf('Database dump was not written to "%s"', $dumpPath));
         }
 
-        [$storageFileCount, $storageBytes] = $this->mirrorStorage($backupDir . '/storage');
+        [$storageFileCount, $storageBytes] = $this->mirrorStorage($partialDir . '/storage');
+
+        if (!rename($partialDir, $finalDir)) {
+            throw new BackupException(sprintf('Could not finalize backup "%s"', $finalDir));
+        }
 
         return new BackupRunResult(
-            backupDir: $backupDir,
+            backupDir: $finalDir,
             databaseDumpBytes: $databaseDumpBytes,
             storageFileCount: $storageFileCount,
             storageBytes: $storageBytes,
@@ -173,16 +194,21 @@ class BackupService implements BackupServiceInterface
         }
     }
 
-    private function pruneOldBackups(): int
+    private function removeStalePartialDirs(): void
     {
-        $entries = glob($this->backupRootDir . '/*', GLOB_ONLYDIR);
+        $entries = glob($this->backupRootDir . '/*' . self::PARTIAL_SUFFIX, GLOB_ONLYDIR);
         if (false === $entries) {
-            return 0;
+            return;
         }
 
-        // Directory names are Y-m-d_His, so a lexical sort is also
-        // chronological — oldest first.
-        sort($entries);
+        foreach ($entries as $dir) {
+            $this->removeDirectory($dir);
+        }
+    }
+
+    private function pruneOldBackups(): int
+    {
+        $entries = $this->completedBackupDirs();
 
         $excess = count($entries) - $this->retentionCount;
         if (0 >= $excess) {
@@ -198,14 +224,29 @@ class BackupService implements BackupServiceInterface
 
     private function latestBackupDir(): ?string
     {
+        $entries = $this->completedBackupDirs();
+
+        return [] === $entries ? null : $entries[count($entries) - 1];
+    }
+
+    /**
+     * Backup directories, oldest first (names are Y-m-d_His, so a lexical
+     * sort is also chronological) — excludes a `.partial` one left behind by
+     * an interrupted run() that never made it to the atomic rename.
+     *
+     * @return list<string>
+     */
+    private function completedBackupDirs(): array
+    {
         $entries = glob($this->backupRootDir . '/*', GLOB_ONLYDIR);
-        if (false === $entries || [] === $entries) {
-            return null;
+        if (false === $entries) {
+            return [];
         }
 
+        $entries = array_values(array_filter($entries, static fn (string $dir): bool => !str_ends_with($dir, self::PARTIAL_SUFFIX)));
         sort($entries);
 
-        return $entries[count($entries) - 1];
+        return $entries;
     }
 
     private function ensureDirectory(string $dir): void
@@ -256,38 +297,53 @@ class BackupService implements BackupServiceInterface
      */
     private function cliUrl(?string $dbName = null): string
     {
-        $parts = parse_url($this->databaseUrl);
-        if (false === $parts || !isset($parts['host'], $parts['user'])) {
-            throw new BackupException('Could not parse DATABASE_URL');
-        }
+        $parts = $this->parsedDatabaseUrl();
 
-        $userInfo = rawurlencode($parts['user']) . (isset($parts['pass']) ? ':' . rawurlencode($parts['pass']) : '');
-        $port = $parts['port'] ?? 5432;
+        $userInfo = rawurlencode($parts['user']) . ('' !== $parts['pass'] ? ':' . rawurlencode($parts['pass']) : '');
 
-        return sprintf('postgresql://%s@%s:%d/%s', $userInfo, $parts['host'], $port, $dbName ?? ltrim($parts['path'] ?? '', '/'));
+        return sprintf('postgresql://%s@%s:%d/%s', $userInfo, $parts['host'], $parts['port'], $dbName ?? $parts['dbname']);
     }
 
     private function liveDbName(): string
     {
-        $parts = parse_url($this->databaseUrl);
-        if (false === $parts) {
-            throw new BackupException('Could not parse DATABASE_URL');
-        }
-
-        return ltrim($parts['path'] ?? '', '/');
+        return $this->parsedDatabaseUrl()['dbname'];
     }
 
     /**
      * DriverManager::getConnection() doesn't run a bare 'url' entry through
      * the same DSN-parsing Doctrine's own bundle config does — without an
      * explicit host/port/dbname it silently falls back to a local socket
-     * instead of DATABASE_URL's actual "db" host. Broken out from cliUrl()'s
-     * own parsing (same source, different shape) rather than round-tripping
-     * through a URL string a second time.
+     * instead of DATABASE_URL's actual "db" host.
      *
      * @return array{driver: 'pdo_pgsql', host: string, port: int, user: string, password: string, dbname: string}
      */
     private function dbalConnectionParams(string $dbName): array
+    {
+        $parts = $this->parsedDatabaseUrl();
+
+        return [
+            'driver'   => 'pdo_pgsql',
+            'host'     => $parts['host'],
+            'port'     => $parts['port'],
+            'user'     => $parts['user'],
+            'password' => $parts['pass'],
+            'dbname'   => $dbName,
+        ];
+    }
+
+    /**
+     * Single parse of DATABASE_URL, user/pass already percent-decoded to
+     * their literal values — parse_url() itself does not decode them, so
+     * callers that need a URL again (cliUrl()) must rawurlencode() this back
+     * exactly once. Getting that wrong previously double-encoded any
+     * password containing a percent-encoded character (parse_url()'s
+     * still-encoded value fed straight into another rawurlencode()), and
+     * separately fed the still-encoded value to DBAL, which wants the
+     * literal password, not a URL-encoded one.
+     *
+     * @return array{host: string, port: int, user: string, pass: string, dbname: string}
+     */
+    private function parsedDatabaseUrl(): array
     {
         $parts = parse_url($this->databaseUrl);
         if (false === $parts || !isset($parts['host'], $parts['user'])) {
@@ -295,12 +351,11 @@ class BackupService implements BackupServiceInterface
         }
 
         return [
-            'driver'   => 'pdo_pgsql',
-            'host'     => $parts['host'],
-            'port'     => $parts['port'] ?? 5432,
-            'user'     => $parts['user'],
-            'password' => $parts['pass'] ?? '',
-            'dbname'   => $dbName,
+            'host'   => $parts['host'],
+            'port'   => $parts['port'] ?? 5432,
+            'user'   => rawurldecode($parts['user']),
+            'pass'   => isset($parts['pass']) ? rawurldecode($parts['pass']) : '',
+            'dbname' => ltrim($parts['path'] ?? '', '/'),
         ];
     }
 

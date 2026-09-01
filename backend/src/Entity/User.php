@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Entity;
 
+use App\ControllerHelper\Enum\UserRole;
 use App\Repository\UserRepository;
 use Deprecated;
 use Doctrine\DBAL\Types\Types;
@@ -44,7 +45,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function __construct(string $email, string $password, Pouch $pouch)
     {
         $this->email = $email;
-        $this->roles = ['ROLE_USER'];
+        $this->roles = [UserRole::USER->value];
         $this->password = $password;
         $this->pouch = $pouch;
     }

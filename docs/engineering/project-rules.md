@@ -13,6 +13,8 @@ To projekt jednoosobowy (hobby/side project), więc reguły niżej są zwięzłe
 
 ## Zakres i jakość zmiany
 
+- Stosuj zasady SOLID. W praktyce najczęściej chodzi o SRP: klasa/trait/metoda ma jeden powód do zmiany — jak nazwa czegoś nie potrafi opisać jednym zdaniem, co ono robi, to zwykle robi za dużo i warto to rozdzielić (np. mutacja stanu i budowanie odpowiedzi HTTP to dwie różne odpowiedzialności, nie jedna).
+- Stosuj też KISS, DRY i YAGNI: najprostsze rozwiązanie, które realnie rozwiązuje problem (KISS); nie duplikuj logiki między miejscami, gdy da się ją bez wymuszania sztucznej abstrakcji wydzielić w jedno (DRY); nie buduj elastyczności/warstw pod przyszłe wymagania, których nikt jeszcze nie zgłosił (YAGNI) — to projekt hobbystyczny, nie infrastruktura pod nieznaną przyszłość.
 - Zanim zaczniesz pisać kod, przejrzyj istniejącą implementację w danym obszarze — nowy kod ma pasować do konwencji, które już tam są.
 - Najpierw dodaj/zaktualizuj zależność (`make composer ...`, `make npm install ...`), potem dopiero pisz kod, który jej używa.
 - Limit 1000 linii na plik kodu (wyjątek: SCSS). Plik już ponad limitem nie musi być dzielony przy okazji niezwiązanej zmiany, ale nie dokładaj mu objętości.

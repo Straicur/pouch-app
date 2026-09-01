@@ -19,16 +19,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # pg_dump/pg_restore/psql — BackupServiceInterface shells out to these directly over
 # the network (same "db" host/port as DATABASE_URL), not through the pdo_pgsql PHP
 # extension. Debian trixie's own postgresql-client defaults to v17, one major ahead of
-# the pinned server (POSTGRES_VERSION, docker-compose.yml) — a dump taken by a newer
-# client can embed session-setup GUCs (e.g. transaction_timeout, added in PG17) the
-# older server's own pg_restore/psql then reject, so the PGDG repo is added here to
-# pin an exact version match instead.
+# the default pinned server version — a dump taken by a newer client can embed
+# session-setup GUCs (e.g. transaction_timeout, added in PG17) the older server's own
+# pg_restore/psql then reject, so the PGDG repo is added here to pin an exact version
+# match instead. POSTGRES_VERSION must be passed as a build arg matching
+# docker-compose.yml's own POSTGRES_VERSION (server image tag) — the two drift silently
+# otherwise.
+ARG POSTGRES_VERSION=16
+
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
     && install -d /usr/share/postgresql-common/pgdg \
     && curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc \
     && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo "$VERSION_CODENAME")-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends postgresql-client-16 \
+    && apt-get install -y --no-install-recommends postgresql-client-${POSTGRES_VERSION} \
     && apt-get purge -y --auto-remove gnupg \
     && rm -rf /var/lib/apt/lists/*
 

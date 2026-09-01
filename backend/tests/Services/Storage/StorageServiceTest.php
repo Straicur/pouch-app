@@ -4,7 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Tests\Services\Storage;
 
-use App\Exception\StorageException;
+use App\ExceptionManagement\Exceptions\Command\StorageException;
 use App\Services\Storage\StorageService;
 use App\Tests\SystemKernelTestCase;
 use Symfony\Component\Uid\Uuid;

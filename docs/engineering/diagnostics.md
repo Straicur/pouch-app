@@ -83,7 +83,7 @@ make lint
 
 ### Do czego służy
 
-Testy jednostkowe/komponentowe frontendu (konfiguracja Vite/Vitest, `frontend/src/test-setup.ts`).
+Testy jednostkowe/komponentowe frontendu (konfiguracja Vite/Vitest, `frontend/tests/test-setup.ts`).
 
 ### Kiedy należy go użyć
 

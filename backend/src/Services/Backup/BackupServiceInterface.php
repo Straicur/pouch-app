@@ -4,7 +4,7 @@ declare(strict_types = 1);
 
 namespace App\Services\Backup;
 
-use App\Exception\BackupException;
+use App\ExceptionManagement\Exceptions\Command\BackupException;
 use App\Services\Backup\ValueObject\BackupRestoreTestResult;
 use App\Services\Backup\ValueObject\BackupRunResult;
 

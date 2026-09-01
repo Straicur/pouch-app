@@ -287,6 +287,11 @@ w code review.
   (`src/ExceptionManagement/Exceptions/ApiException/<Nazwa>/<Nazwa>Exception.php`
   + `<Nazwa>ExceptionModel.php`) — Model to serializowalny kształt JSON-a,
   Exception niesie kod HTTP i wiadomość.
+- **Wyjątki bez odpowiedzi HTTP idą do `ExceptionManagement/Exceptions/Command/`**,
+  nie wprost pod `src/Exception/`. To wyjątki opakowujące błędy procesów
+  infrastrukturalnych używane przez komendy konsolowe (np. `StorageException`,
+  `BackupException`) — nie potrzebują `*Model`, bo nikt ich nie serializuje do
+  odpowiedzi API.
 - **Każdy endpoint dokumentuje, co rzuca.** Kontroler ma `@throws` w
   PHPDoc nad metodą akcji dla każdego możliwego wyjątku API, i odpowiadający
   mu `#[OA\Response(...)]` na poziomie klasy/metody, żeby Swagger się
@@ -326,6 +331,16 @@ w code review.
   `ExceptionUuidEnum` — jeśli dojdzie nowy zamknięty zbiór wartości (statusy,
   typy), rób z niego `enum`, nie zestaw `public const`. Case'y enuma:
   `UPPER_CASE`.
+- **Ta sama stała (string albo int) powtórzona jako literal w więcej niż
+  jednym miejscu dla tego samego znaczenia** (np. nazwa roli `'ROLE_ADMIN'`,
+  domyślny/maksymalny rozmiar strony) **idzie do enuma**, nie zostaje
+  literałem/const w każdym miejscu osobno — `App\ControllerHelper\Enum\` dla
+  wartości należących do warstwy HTTP/kontrolerów (role, limity
+  paginacji), `App\Enum\` dla enumów domenowych (`ItemType`, `TtlPreset`).
+  Dotyczy tylko realnej duplikacji tego samego faktu — dwie stałe, które
+  przypadkiem mają tę samą wartość liczbową, ale znaczą co innego (np.
+  limit fuzzy-matcha i długość tagu), zostają osobnymi `const`, bo grupowanie
+  ich w jeden enum tworzyłoby fałszywe powiązanie.
 - **`match` zamiast `switch`**, gdziekolwiek to pasuje (brak fallthrough,
   wyrażenie zwraca wartość).
 - **Named arguments** tam, gdzie poprawiają czytelność wywołania — już tak
@@ -448,6 +463,15 @@ reszta sekcji "Konwencje projektowe".
   Message i jej handler są w tym samym namespace (`App\Messenger`) — handler
   **nie** importuje swojego message'a przez `use`, referencja jest
   bezpośrednia (ten sam namespace).
+- **`src/Controller/Api/` dzieli się wg roli, nie wg zasobu.** Nowy endpoint
+  trafia do `Controller/Api/Admin/` (wyłącznie ROLE_ADMIN, operacje
+  panelu administracyjnego na cudzych kontach/pouchach — np. `UserController`,
+  mimo nazwy, bo zarządza cudzymi kontami) albo `Controller/Api/User/`
+  (self-service, zawsze na zasobach *własnego* pouchu wywołującego,
+  niezależnie od tego, jaka rola może to wywołać — np. `AccountController`,
+  bo nawet usuwanie całego pouchu przez admina dotyczy jego własnego). Endpointy
+  bez żadnego sprawdzania roli (login/logout/whoami) zostają wprost w
+  `Controller/Api/`, bez podfolderu.
 - Foldery, które **nie** są modułami serwisów i zostają tam, gdzie są:
   `Controller`, `Entity`, `Repository`, `DTO`, `Enum`, `Event`, `Security`,
   `ExceptionManagement`, `Command`, `DataFixtures` — to już są sensowne,

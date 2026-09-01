@@ -4,6 +4,8 @@ services:
             target: dev
             context: ./backend
             dockerfile: Dockerfile
+            args:
+                POSTGRES_VERSION: ${POSTGRES_VERSION:-16}
         image: pouch-app-php-fpm
         container_name: pouch_app
         restart: unless-stopped
@@ -30,6 +32,8 @@ services:
             target: dev
             context: ./backend
             dockerfile: Dockerfile
+            args:
+                POSTGRES_VERSION: ${POSTGRES_VERSION:-16}
         image: pouch-app-php-fpm
         container_name: pouch_messenger_worker
         restart: unless-stopped
@@ -51,6 +55,8 @@ services:
             target: dev
             context: ./backend
             dockerfile: Dockerfile
+            args:
+                POSTGRES_VERSION: ${POSTGRES_VERSION:-16}
         image: pouch-app-php-fpm
         container_name: pouch_gc_scheduler
         restart: unless-stopped
@@ -71,10 +77,16 @@ services:
             target: dev
             context: ./backend
             dockerfile: Dockerfile
+            args:
+                POSTGRES_VERSION: ${POSTGRES_VERSION:-16}
         image: pouch-app-php-fpm
         container_name: pouch_backup_scheduler
         restart: unless-stopped
-        command: sh -c "while true; do php bin/console app:backup:run --no-interaction; sleep 86400; done"
+        # `|| exit 1` on a failed run, instead of sleeping through to the next
+        # attempt regardless — a silent failure would otherwise look "healthy"
+        # (container still up) for a full day. `restart: unless-stopped` picks
+        # the container back up and retries immediately after this exits.
+        command: sh -c "while true; do php bin/console app:backup:run --no-interaction || exit 1; sleep 86400; done"
         environment:
             SERVER_NAME: ${SERVER_NAME:-localhost}
             BACKUP_DIR: /var/backups/pouch
