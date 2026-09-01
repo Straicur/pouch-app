@@ -101,7 +101,11 @@ przygotowanie do produkcji". Poniższe znaleziska zweryfikowane w kodzie przed w
       przecinkami (tagi, id kategorii) wydzielona do nowego
       `ParsesCommaSeparatedValuesTrait`, na wzór istniejącego `AuthorizesRequestsTrait`.
       `make cs`/`make phpstan`/`make rector`/`make test-backend` przechodzą czysto
-      (283/283 testów).
+      (283/283 testów). **Post-review poprawka**: `extractUploadedFile()`/`fileSize()`
+      zostały przy pierwszym podziale skopiowane 1:1 do `ItemCreateController` i
+      `ItemEditController` zamiast wydzielone tak samo jak logika comma-separated —
+      wyłapane w code review, naprawione nowym `ExtractsUploadedFileTrait` (ten sam
+      wzorzec).
 - [x] **Testy frontendu były nadal dość wąskie** — było 7 plików / 18 testów (patrz Część
       18, punkt 3). Doszły `CategoryRow.test.tsx` (zmiana nazwy/przenoszenie kategorii,
       sukces i błąd), `VersionHistory.test.tsx` (pusta historia, lista wersji + pobranie

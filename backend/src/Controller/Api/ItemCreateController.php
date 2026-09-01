@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace App\Controller\Api;
 
 use App\ControllerHelper\Traits\AuthorizesRequestsTrait;
+use App\ControllerHelper\Traits\ExtractsUploadedFileTrait;
 use App\ControllerHelper\Traits\ParsesCommaSeparatedValuesTrait;
 use App\DTO\Mapper\ItemMapper;
 use App\DTO\Request\ItemCreateNoteRequestDTO;
@@ -37,7 +38,6 @@ use Exception;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
@@ -59,6 +59,7 @@ use Symfony\Component\Serializer\SerializerInterface;
 final class ItemCreateController extends AbstractController
 {
     use AuthorizesRequestsTrait;
+    use ExtractsUploadedFileTrait;
     use ParsesCommaSeparatedValuesTrait;
 
     public function __construct(
@@ -299,32 +300,6 @@ final class ItemCreateController extends AbstractController
         $responseDTO = ItemMapper::toResponseDTO($item);
 
         return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_CREATED);
-    }
-
-    /**
-     * @throws BadRequestException
-     */
-    private function extractUploadedFile(Request $request): UploadedFile
-    {
-        $file = $request->files->get('file');
-        if (false === $file instanceof UploadedFile || false === $file->isValid()) {
-            throw new BadRequestException(message: 'item.file_upload_missing');
-        }
-
-        return $file;
-    }
-
-    /**
-     * @throws BadRequestException
-     */
-    private function fileSize(UploadedFile $file): int
-    {
-        $size = $file->getSize();
-        if (false === $size) {
-            throw new BadRequestException(message: 'item.file_size_unknown');
-        }
-
-        return $size;
     }
 
     /**
