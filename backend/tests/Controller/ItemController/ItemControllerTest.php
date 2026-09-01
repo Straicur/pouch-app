@@ -268,6 +268,71 @@ class ItemControllerTest extends WebTest
         self::assertNotContains($item['id'], array_column($body['items'], 'id'));
     }
 
+    public function testRestoreBringsItemBackFromTrash(): void
+    {
+        $item = $this->uploadFile('content', 'to-restore.txt', ['ttlPreset' => '1h']);
+
+        $this->authAsUser();
+        $this->webClient->request(method: Request::METHOD_DELETE, uri: sprintf('/api/items/%d', $item['id']));
+        self::assertResponseStatusCodeSame(Response::HTTP_NO_CONTENT);
+
+        $this->authAsUser();
+        $this->webClient->request(method: Request::METHOD_PATCH, uri: sprintf('/api/items/%d/restore', $item['id']));
+
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+        $restored = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        self::assertNull($restored['trashedAt']);
+        // Always comes back kept-forever, regardless of the TTL it had
+        // before being trashed — see ItemServiceInterface::restore().
+        self::assertTrue($restored['keepForever']);
+        self::assertNull($restored['expiresAt']);
+
+        $this->webClient->request(method: Request::METHOD_GET, uri: sprintf('/api/items/%d', $item['id']));
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+
+        $this->webClient->request(method: Request::METHOD_GET, uri: '/api/items');
+        $body = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        self::assertContains($item['id'], array_column($body['items'], 'id'));
+    }
+
+    public function testRestoreOnNonTrashedItemReturnsNotFound(): void
+    {
+        $item = $this->uploadFile('content', 'not-trashed.txt');
+
+        $this->authAsUser();
+        $this->webClient->request(method: Request::METHOD_PATCH, uri: sprintf('/api/items/%d/restore', $item['id']));
+
+        self::assertResponseStatusCodeSame(Response::HTTP_NOT_FOUND);
+        $this->responseTool->testNotFoundRequestResponseData($this->webClient);
+    }
+
+    public function testRestoreOnMissingItemReturnsNotFound(): void
+    {
+        $this->authAsUser();
+        $this->webClient->request(method: Request::METHOD_PATCH, uri: '/api/items/999999/restore');
+
+        self::assertResponseStatusCodeSame(Response::HTTP_NOT_FOUND);
+        $this->responseTool->testNotFoundRequestResponseData($this->webClient);
+    }
+
+    public function testTrashListReturnsOnlyTrashedItems(): void
+    {
+        $keptItem = $this->uploadFile('kept content', 'kept.txt');
+        $trashedItem = $this->uploadFile('trashed content', 'trashed.txt');
+
+        $this->authAsUser();
+        $this->webClient->request(method: Request::METHOD_DELETE, uri: sprintf('/api/items/%d', $trashedItem['id']));
+        self::assertResponseStatusCodeSame(Response::HTTP_NO_CONTENT);
+
+        $this->authAsUser();
+        $this->webClient->request(method: Request::METHOD_GET, uri: '/api/items/trash');
+
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+        $body = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        self::assertContains($trashedItem['id'], array_column($body['items'], 'id'));
+        self::assertNotContains($keptItem['id'], array_column($body['items'], 'id'));
+    }
+
     public function testMoveItemToAnotherCategory(): void
     {
         $item = $this->uploadFile('content', 'to-move.txt');

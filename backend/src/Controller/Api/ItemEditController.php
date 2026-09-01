@@ -26,6 +26,7 @@ use App\ExceptionManagement\Exceptions\ApiException\UnprocessableContentExceptio
 use App\Security\AccessKey\AccessKeyGuardInterface;
 use App\Security\AuthorizationServiceInterface;
 use App\Security\Voter\ItemVoter;
+use App\Services\Category\CategoryServiceInterface;
 use App\Services\Item\ItemServiceInterface;
 use App\Services\Request\RequestServiceInterface;
 use Nelmio\ApiDocBundle\Attribute\Model;
@@ -56,6 +57,7 @@ final class ItemEditController extends AbstractController
         private readonly RequestServiceInterface $requestService,
         private readonly AuthorizationServiceInterface $authorizationService,
         private readonly ItemServiceInterface $itemService,
+        private readonly CategoryServiceInterface $categoryService,
         private readonly AccessKeyGuardInterface $accessKeyGuard,
         private readonly SerializerInterface $serializer,
     ) {}
@@ -130,6 +132,7 @@ final class ItemEditController extends AbstractController
 
         $moveRequestDTO = $this->requestService->getRequestBodyContent($request, ItemMoveRequestDTO::class);
         $this->accessKeyGuard->assertItemUnlocked($this->itemService->getById($id), $request);
+        $this->accessKeyGuard->assertCategoryUnlocked($this->categoryService->getById($moveRequestDTO->getCategoryId()), $request);
 
         $item = $this->itemService->move($id, $moveRequestDTO->getCategoryId());
 

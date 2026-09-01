@@ -12,6 +12,11 @@ services:
         environment:
             SERVER_NAME: ${SERVER_NAME:-localhost}
             PHP_INI_MEMORY_LIMIT: 512M
+            BACKUP_DIR: /var/backups/pouch
+        volumes:
+            # Read/inspect backups made by backup-scheduler, and run
+            # app:backup:run/app:backup:restore-test manually via `make console`.
+            - backup-data:/var/backups/pouch
         depends_on:
             db:
                 condition: service_healthy
@@ -52,6 +57,29 @@ services:
         command: sh -c "while true; do php bin/console app:item:gc --no-interaction; sleep 3600; done"
         environment:
             SERVER_NAME: ${SERVER_NAME:-localhost}
+        depends_on:
+            db:
+                condition: service_healthy
+            minio:
+                condition: service_healthy
+
+    # Runs `app:backup:run` on a loop (daily — a schema/storage-level backup
+    # doesn't need finer granularity than that) — without this, the only
+    # backup mechanism is AdminController's manual, on-demand ZIP export.
+    backup-scheduler:
+        build:
+            target: dev
+            context: ./backend
+            dockerfile: Dockerfile
+        image: pouch-app-php-fpm
+        container_name: pouch_backup_scheduler
+        restart: unless-stopped
+        command: sh -c "while true; do php bin/console app:backup:run --no-interaction; sleep 86400; done"
+        environment:
+            SERVER_NAME: ${SERVER_NAME:-localhost}
+            BACKUP_DIR: /var/backups/pouch
+        volumes:
+            - backup-data:/var/backups/pouch
         depends_on:
             db:
                 condition: service_healthy
@@ -147,3 +175,4 @@ services:
 volumes:
     db-data:
     minio-data:
+    backup-data:

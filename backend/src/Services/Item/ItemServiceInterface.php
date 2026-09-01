@@ -147,6 +147,33 @@ interface ItemServiceInterface
      */
     public function deleteAsAdmin(int $id): void;
 
+    /**
+     * Paginated counterpart of getTrashedById() — see ItemRepository::findTrashedPage().
+     *
+     * @param list<int> $excludedCategoryIds
+     *
+     * @return array{items: list<Item>, total: int}
+     */
+    public function listTrashedPage(int $offset, int $limit, array $excludedCategoryIds = []): array;
+
+    /**
+     * Counterpart of getById() for an item still sitting in the trash —
+     * getById() itself 404s on a trashed item, so ItemController's own
+     * pre-mutation access-key check ahead of restore() needs this instead.
+     *
+     * @throws NotFoundException if $id doesn't exist, isn't trashed, or (when scoped) belongs to another pouch
+     */
+    public function getTrashedById(int $id): Item;
+
+    /**
+     * Undoes delete()/GC's expireOverdueItems() — always comes back with
+     * keepForever forced to true, regardless of the lifecycle it had before
+     * being trashed, so it isn't immediately re-trashed by the next GC run.
+     *
+     * @throws NotFoundException if $id doesn't exist, isn't trashed, or belongs to another pouch
+     */
+    public function restore(int $id): Item;
+
     /** @throws NotFoundException */
     public function setFavorite(int $id, bool $favorite): Item;
 

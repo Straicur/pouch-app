@@ -72,10 +72,9 @@ final class ItemDeliveryController extends AbstractController
     private const int LINK_TTL_SECONDS = 900;
 
     /**
-     * Part 9: "np. 24h" per the product doc — much longer than the 15-minute
-     * private preview links above, since a public link is meant to be handed
-     * to someone else to use whenever they get to it, not fetched immediately
-     * by the app that just requested it.
+     * Much longer than the 15-minute private preview links above, since a
+     * public link is meant to be handed to someone else to use whenever they
+     * get to it, not fetched immediately by the app that just requested it.
      */
     private const int PUBLIC_LINK_TTL_SECONDS = 86_400;
 

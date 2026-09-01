@@ -20,8 +20,30 @@ Typy odpowiedzi, enumy i UUID-y błędów (`ExceptionUuid`/`ApiErrorBody` w `lib
 
 Przed realnym używaniem projektu do ważnych danych — backup bez regularnie sprawdzanego restore'u jest tylko nadzieją, nie zabezpieczeniem:
 
-- [ ] Automatyczny backup PostgreSQL i MinIO (dziś `BackupPage`/`AdminController` robi to ręcznie na żądanie, nie na harmonogramie).
-- [ ] Test odtwarzania backupu (nie tylko jego tworzenia).
+- [x] **Automatyczny backup PostgreSQL i MinIO oraz test odtwarzania — zrobione.**
+      Wcześniej: tylko ręczny, na żądanie ZIP z `AdminController`/`CategoryExportService`
+      (eksport app-level, odtworzony z encji) — nie prawdziwy dump bazy, nie obejmował
+      np. userów/audit logów/tagów. Nowy `BackupServiceInterface`/`BackupService`: pełny
+      `pg_dump` (format custom) + mirror całego bucketa MinIO (`StorageServiceInterface::
+      listAllKeys()`, nowa metoda) do jednego, znaczonego czasem katalogu, plus retencja
+      (domyślnie 14 ostatnich, `BACKUP_RETENTION_COUNT`). Nowy serwis `backup-scheduler`
+      w Dockerze (ten sam wzorzec co `gc-scheduler`) — `app:backup:run` co 24h, pisze do
+      nowego wolumenu `backup-data` (`/var/backups/pouch`, lokalny — S3/off-site to
+      świadomie osobny, późniejszy krok, patrz punkt niżej).
+      **Test odtwarzania**: `app:backup:restore-test` — restore ostatniego backupu do
+      świeżej, tymczasowej bazy w tym samym kontenerze Postgres (`CREATE DATABASE`/
+      `pg_restore`/porównanie liczby wierszy `pouch`/`user`/`category`/`item` z żywą bazą/
+      `DROP DATABASE ... WITH (FORCE)`) — udowadnia, że backup faktycznie się odtwarza, nie
+      tylko że plik istnieje. `BackupServiceTest` (2 testy, prawdziwy pg_dump/pg_restore/
+      MinIO, nie mocki) uruchamia to jako część `make test-backend`, więc regresja w
+      mechanizmie odtwarzania od teraz psuje testy, nie tylko ręczną kontrolę.
+      Techniczne: `backend/Dockerfile` dostał PGDG apt repo + `postgresql-client-16`
+      (dopasowana wersja klienta do serwera — domyślny klient Debiana to v17, którego
+      dumpy niosą ustawienia sesji, jakich serwer v16 nie zna, np. `transaction_timeout`).
+      `symfony/process` dodany jako bezpośrednia zależność (`composer.json`).
+  - [ ] **Nieodłożone na później**: backup ląduje dziś tylko na lokalnym wolumenie
+        Dockera — przeniesienie na zewnętrzny storage (S3-kompatybilny) przed pierwszym
+        realnym wdrożeniem, żeby backup fizycznie nie leżał na tym samym hoście co dane.
 - [ ] Health checks dla DB, MinIO i kolejki Messengera.
 - [ ] Monitoring failed messages / dead-letter queue (Messenger).
 - [ ] Retencja audit logów (dziś rosną bez limitu — patrz `AuditLogger`).
@@ -117,8 +139,24 @@ Nie blokują żadnej części — zrobić przy okazji, kiedy akurat dotykamy pow
 
 - [ ] Szybkie dodawanie materiałów z telefonu — PWA/share target.
 - [ ] Import z przeglądarki / rozszerzenie "zapisz do Pouch".
-- [ ] Kosz z możliwością ręcznego przywracania (dziś trash → GC jest jednokierunkowe do momentu `purgeTrash()`, ale nie ma UI do "przywróć z kosza" przed tym).
 - [ ] Zapisane wyszukiwania lub inteligentne kolekcje.
 - [ ] Eksport i pełna przenośność danych (rozszerzenie eksportu kategorii na cały pouch).
 
 **Nie blokuje** niczego z etapu stabilizacyjnego — to osobny, późniejszy wątek.
+
+### Zrobione: kosz z ręcznym przywracaniem
+
+Wcześniej trash → GC było jednokierunkowe do momentu `purgeTrash()` (7 dni), bez UI do
+"przywróć z kosza" przed tym. Backend: `Item::untrash()`, `ItemRepository::findTrashedPage()`,
+`ItemService::listTrashedPage()`/`getTrashedById()`/`restore()` (zawsze wraca z
+`keepForever = true`, żeby nie trafić z powrotem do kosza przy najbliższym przebiegu GC),
+nowe akcje w `ItemController`: `GET /api/items/trash` i `PATCH /api/items/{id}/restore`
+(ten sam wzorzec auth→voter→AccessKeyGuard co reszta kontrolera; `restore()` używa
+`ItemVoter::DELETE`, jak `delete()`). `AuditLoggerInterface::ACTION_RESTORE` — nowy wpis
+w dzienniku zdarzeń. Frontend: `TrashPage`/`TrashItemRow` (płaska tabela, nie
+`ItemGrid`/`ItemCard` — `GET /api/items/{id}` 404uje na skasowanym itemie, więc
+`ItemDetailsModal` tu nie działa), wpis w sidebarze. Testy: backendowe
+(`ItemControllerTest`: restore/trash-list, `ItemPouchIsolationTest`: izolacja obu nowych
+endpointów) i frontendowe (`TrashPage.test.tsx`, 4 testy). Pełna bramka (`make cs`/
+`phpstan`/`rector`/`test-backend` — 289/289, `make lint`/tsc/`test-frontend` — 38/38)
+przechodzi czysto.

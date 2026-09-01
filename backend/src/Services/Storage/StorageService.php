@@ -103,4 +103,19 @@ class StorageService implements StorageServiceInterface
             fclose($target);
         }
     }
+
+    #[Override]
+    public function listAllKeys(): iterable
+    {
+        try {
+            foreach ($this->itemStorage->listContents('', deep: true) as $attributes) {
+                if ($attributes->isFile()) {
+                    yield $attributes->path();
+                }
+            }
+        } catch (FilesystemException $exception) {
+            $this->logger->error($exception->getMessage());
+            throw new StorageException(message: 'Unable to list bucket contents', previous: $exception);
+        }
+    }
 }

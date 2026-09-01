@@ -45,6 +45,7 @@ const pl = {
     items: "Itemy",
     recent: "Ostatnio dodane",
     favorites: "Ulubione",
+    trash: "Kosz",
     categories: "Kategorie",
     tags: "Tagi",
     home: "Strona główna",
@@ -208,6 +209,16 @@ const pl = {
   recent: {
     empty: "Brak dodanych itemów.",
   },
+  trash: {
+    empty: "Kosz jest pusty.",
+    fetchError: "Nie udało się wczytać kosza.",
+    nameLabel: "Nazwa",
+    typeLabel: "Typ",
+    trashedAtLabel: "Skasowano",
+    restoreButton: "Przywróć",
+    restoring: "Przywracanie…",
+    restoreError: "Nie udało się przywrócić itemu.",
+  },
   settings: {
     title: "Ustawienia",
     dangerZoneTitle: "Strefa zagrożenia",
@@ -325,6 +336,7 @@ const pl = {
         delete: "usunięcie",
         keyChange: "zmiana klucza",
         purge: "trwałe usunięcie",
+        restore: "przywrócenie z kosza",
       },
       resourceLabel: {
         category: "kategoria",

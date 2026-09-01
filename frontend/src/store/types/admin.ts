@@ -30,7 +30,7 @@ export interface GcRunLog {
 
 export interface AuditLogEntry {
   id: number;
-  action: "view" | "download" | "delete" | "key_change" | "purge";
+  action: "view" | "download" | "delete" | "key_change" | "purge" | "restore";
   resourceType: "category" | "item" | "user";
   resourceId: number;
   userId: number | null;

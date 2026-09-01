@@ -64,6 +64,20 @@ export const itemApi = createApi({
       query: (id) => ({ url: ApiEndpoints.ITEM(id), method: "DELETE" }),
       invalidatesTags: ["Item"],
     }),
+    // No filters, unlike listItems — see ItemRepository::findTrashedPage().
+    listTrash: builder.query<ItemListResult, { page?: number; pageSize?: number } | undefined>({
+      query: (args) => ({
+        url: ApiEndpoints.ITEMS_TRASH,
+        method: "GET",
+        params: { page: args?.page, pageSize: args?.pageSize },
+      }),
+      providesTags: ["Item"],
+    }),
+    // Always comes back kept-forever — see ItemServiceInterface::restore().
+    restoreItem: builder.mutation<ItemDetail, number>({
+      query: (id) => ({ url: ApiEndpoints.ITEM_RESTORE(id), method: "PATCH" }),
+      invalidatesTags: ["Item"],
+    }),
     moveItem: builder.mutation<ItemDetail, MoveItemRequest>({
       query: ({ id, categoryId }) => ({ url: ApiEndpoints.ITEM_MOVE(id), method: "PATCH", data: { categoryId } }),
       invalidatesTags: ["Item"],
@@ -157,6 +171,8 @@ export const {
   useListItemsQuery,
   useGetItemQuery,
   useDeleteItemMutation,
+  useListTrashQuery,
+  useRestoreItemMutation,
   useMoveItemMutation,
   useGetItemThumbnailLinkMutation,
   useGetItemDownloadLinkMutation,

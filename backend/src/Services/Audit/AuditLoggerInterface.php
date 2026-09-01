@@ -20,6 +20,8 @@ interface AuditLoggerInterface
 
     public const string ACTION_PURGE = 'purge';
 
+    public const string ACTION_RESTORE = 'restore';
+
     public const string RESOURCE_CATEGORY = 'category';
 
     public const string RESOURCE_ITEM = 'item';

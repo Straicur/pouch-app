@@ -303,6 +303,43 @@ class ItemRepository extends ServiceEntityRepository
     }
 
     /**
+     * Newest-trashed-first — no filters (category/tags/favorite/search) here,
+     * unlike findFilteredPage(): the trash is a flat "what's about to be
+     * purged" view, not something worth narrowing further.
+     *
+     * @param list<int> $excludedCategoryIds
+     *
+     * @return array{items: list<Item>, total: int}
+     */
+    public function findTrashedPage(int $offset, int $limit, array $excludedCategoryIds = [], ?int $pouchId = null): array
+    {
+        $qb = $this->createQueryBuilder('i')
+            ->where('i.trashedAt IS NOT NULL');
+
+        if (null !== $pouchId) {
+            $qb->andWhere('i.pouch = :pouchId')
+                ->setParameter('pouchId', $pouchId);
+        }
+
+        if ([] !== $excludedCategoryIds) {
+            $qb->andWhere('i.category NOT IN (:excludedCategoryIds)')
+                ->setParameter('excludedCategoryIds', $excludedCategoryIds);
+        }
+
+        $total = (clone $qb)->select('COUNT(i.id)')->getQuery()->getSingleScalarResult();
+
+        /** @var list<Item> $items */
+        $items = $qb->orderBy('i.trashedAt', 'DESC')
+            ->addOrderBy('i.id', 'DESC')
+            ->setFirstResult($offset)
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+
+        return ['items' => $items, 'total' => is_numeric($total) ? (int) $total : 0];
+    }
+
+    /**
      * A short excerpt per item, matched fragment wrapped in
      * SNIPPET_HIGHLIGHT_START/END, for whichever of $itemIds actually got a
      * *text* match — computed only for a page's worth of ids (the caller's

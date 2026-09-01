@@ -41,7 +41,7 @@ use function min;
 use function trim;
 
 /**
- * The item resource's core CRUD (list/get/delete) — creation lives in
+ * The item resource's core CRUD (list/get/delete/trash/restore) — creation lives in
  * ItemCreateController, editing (note/tags/favorite/move/overwrite/versions)
  * in ItemEditController, and downloads/signed links/public sharing in
  * ItemDeliveryController. Split along those lines once this file passed
@@ -150,10 +150,7 @@ final class ItemController extends AbstractController
         // construction — this is a cheap defense-in-depth double-check, not
         // the primary mechanism anymore (see above). Own-key locks are
         // handled separately below, not filtered out here.
-        $visibleItems = array_values(array_filter(
-            $result['items'],
-            fn (Item $item): bool => $this->accessKeyGuard->isCategoryUnlocked($item->getCategory(), $request),
-        ));
+        $visibleItems = $this->filterCategoryUnlocked($result['items'], $request);
 
         // Only for a page's worth of ids, and only when a free-text query is
         // actually active — see ItemService::getSearchSnippets()'s own comment.
@@ -161,16 +158,7 @@ final class ItemController extends AbstractController
             ? $this->itemService->getSearchSnippets(array_map(static fn (Item $item): int => $item->getId(), $visibleItems), $filter->query)
             : [];
 
-        // An item locked only by its own key no longer disappears from the
-        // list entirely — it appears redacted to a name-only summary, so the
-        // frontend can offer an inline unlock instead of requiring the id to
-        // already be known some other way.
-        $summaries = array_map(
-            fn (Item $item): ItemSummaryResponseDTO => $this->accessKeyGuard->isItemOwnKeyUnlocked($item, $request)
-                ? ItemMapper::toSummaryResponseDTO($item, $snippets[$item->getId()] ?? null)
-                : ItemMapper::toLockedSummaryResponseDTO($item),
-            $visibleItems,
-        );
+        $summaries = $this->toSummaries($visibleItems, $request, $snippets);
 
         $responseDTO = new ItemListResponseDTO(
             items: $summaries,
@@ -178,6 +166,88 @@ final class ItemController extends AbstractController
             page: $page,
             pageSize: $pageSize,
         );
+
+        return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
+    }
+
+    /**
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
+     * @throws SerializerExceptionInterface
+     */
+    #[Route('/api/items/trash', name: 'item_trash_list', methods: [Request::METHOD_GET])]
+    #[OA\Get(
+        description: 'Paginated list of trashed items — deleted itself, or expired past their TTL — newest-trashed-first, '
+            . 'no filters. Purged for good after 7 days by app:item:gc unless restored first.',
+        parameters: [
+            new OA\Parameter(name: 'page', description: '1-based, defaults to 1', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
+            new OA\Parameter(name: 'pageSize', description: 'Defaults to 24, capped at 200', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Success',
+                content: new Model(type: ItemListResponseDTO::class),
+            ),
+        ]
+    )]
+    public function trash(Request $request): Response
+    {
+        $this->assertGranted(ItemVoter::VIEW);
+
+        $page = max(1, $request->query->getInt('page', 1));
+        $pageSize = min(self::MAX_PAGE_SIZE, max(1, $request->query->getInt('pageSize', self::DEFAULT_PAGE_SIZE)));
+
+        $excludedCategoryIds = $this->accessKeyGuard->lockedCategoryIds($request);
+
+        $result = $this->itemService->listTrashedPage(
+            offset: ($page - 1) * $pageSize,
+            limit: $pageSize,
+            excludedCategoryIds: $excludedCategoryIds,
+        );
+
+        $visibleItems = $this->filterCategoryUnlocked($result['items'], $request);
+        $summaries = $this->toSummaries($visibleItems, $request);
+
+        $responseDTO = new ItemListResponseDTO(
+            items: $summaries,
+            total: $result['total'],
+            page: $page,
+            pageSize: $pageSize,
+        );
+
+        return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
+    }
+
+    /**
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
+     * @throws NotFoundException
+     * @throws SerializerExceptionInterface
+     */
+    #[Route('/api/items/{id}/restore', name: 'item_restore', requirements: ['id' => '\d+'], methods: [Request::METHOD_PATCH])]
+    #[OA\Patch(
+        description: 'Restore a trashed item — undoes delete() or an expired-TTL auto-trash. Always comes back with '
+            . '"keep forever" forced on, so it is not immediately re-trashed by the next GC run.',
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Success',
+                content: new Model(type: ItemResponseDTO::class),
+            ),
+        ]
+    )]
+    #[OA\Response(response: 404, description: 'Item not found, or not trashed', content: new Model(type: NotFoundExceptionModel::class))]
+    public function restore(Request $request, int $id): Response
+    {
+        $user = $this->assertGranted(ItemVoter::DELETE);
+
+        $this->accessKeyGuard->assertItemUnlocked($this->itemService->getTrashedById($id), $request);
+
+        $item = $this->itemService->restore($id);
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_RESTORE, AuditLoggerInterface::RESOURCE_ITEM, $id, $user, $request, $item->getPouch());
+
+        $responseDTO = ItemMapper::toResponseDTO($item);
 
         return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
     }
@@ -224,7 +294,8 @@ final class ItemController extends AbstractController
      */
     #[Route('/api/items/{id}', name: 'item_delete', requirements: ['id' => '\d+'], methods: [Request::METHOD_DELETE])]
     #[OA\Delete(
-        description: 'Move an item to the trash (permanently deleted after 7 days by app:item:gc)',
+        description: 'Move an item to the trash (permanently deleted after 7 days by app:item:gc, unless restored '
+            . 'first via PATCH /api/items/{id}/restore)',
         responses: [
             new OA\Response(response: 204, description: 'Trashed'),
         ]
@@ -241,5 +312,45 @@ final class ItemController extends AbstractController
         $this->auditLogger->log(AuditLoggerInterface::ACTION_DELETE, AuditLoggerInterface::RESOURCE_ITEM, $id, $user, $request, $item->getPouch());
 
         return new Response(status: Response::HTTP_NO_CONTENT);
+    }
+
+    /**
+     * Shared by list() and trash() — every returned item's *category* is
+     * already ACL-clean by construction (both pass $excludedCategoryIds into
+     * the query itself), so this is a cheap defense-in-depth double-check,
+     * not the primary mechanism. Own-key locks are handled separately by
+     * toSummaries(), not filtered out here.
+     *
+     * @param list<Item> $items
+     *
+     * @return list<Item>
+     */
+    private function filterCategoryUnlocked(array $items, Request $request): array
+    {
+        return array_values(array_filter(
+            $items,
+            fn (Item $item): bool => $this->accessKeyGuard->isCategoryUnlocked($item->getCategory(), $request),
+        ));
+    }
+
+    /**
+     * Shared by list() and trash(). An item locked only by its own key
+     * doesn't disappear from the list entirely — it appears redacted to a
+     * name-only summary, so the frontend can offer an inline unlock instead
+     * of requiring the id to already be known some other way.
+     *
+     * @param list<Item>         $items
+     * @param array<int, string> $snippets keyed by item id — see ItemService::getSearchSnippets()
+     *
+     * @return list<ItemSummaryResponseDTO>
+     */
+    private function toSummaries(array $items, Request $request, array $snippets = []): array
+    {
+        return array_map(
+            fn (Item $item): ItemSummaryResponseDTO => $this->accessKeyGuard->isItemOwnKeyUnlocked($item, $request)
+                ? ItemMapper::toSummaryResponseDTO($item, $snippets[$item->getId()] ?? null)
+                : ItemMapper::toLockedSummaryResponseDTO($item),
+            $items,
+        );
     }
 }

@@ -306,6 +306,47 @@ class ItemPouchIsolationTest extends WebTest
     }
 
     /**
+     * getTrashedById() — used by both trash() and restore() — is a separate
+     * lookup from getById(), so needs its own isolation check.
+     */
+    public function testRestoringAnotherPouchsItemReturnsNotFound(): void
+    {
+        $itemBId = $this->createNoteAs($this->userB, $this->categoryB, 'B note');
+
+        $this->authAs($this->userB);
+        $this->webClient->request(method: Request::METHOD_DELETE, uri: sprintf('/api/items/%d', $itemBId));
+        self::assertResponseStatusCodeSame(Response::HTTP_NO_CONTENT);
+
+        $this->authAs($this->userA);
+        $this->webClient->request(method: Request::METHOD_PATCH, uri: sprintf('/api/items/%d/restore', $itemBId));
+
+        self::assertResponseStatusCodeSame(Response::HTTP_NOT_FOUND);
+        $this->responseTool->testNotFoundRequestResponseData($this->webClient);
+    }
+
+    public function testTrashListDoesNotIncludeAnotherPouchsItems(): void
+    {
+        $itemAId = $this->createNoteAs($this->userA, $this->categoryA, 'A note');
+        $itemBId = $this->createNoteAs($this->userB, $this->categoryB, 'B note');
+
+        $this->authAs($this->userA);
+        $this->webClient->request(method: Request::METHOD_DELETE, uri: sprintf('/api/items/%d', $itemAId));
+        self::assertResponseStatusCodeSame(Response::HTTP_NO_CONTENT);
+
+        $this->authAs($this->userB);
+        $this->webClient->request(method: Request::METHOD_DELETE, uri: sprintf('/api/items/%d', $itemBId));
+        self::assertResponseStatusCodeSame(Response::HTTP_NO_CONTENT);
+
+        $this->authAs($this->userA);
+        $this->webClient->request(method: Request::METHOD_GET, uri: '/api/items/trash');
+        self::assertResponseStatusCodeSame(Response::HTTP_OK);
+
+        $body = json_decode((string) $this->webClient->getResponse()->getContent(), true);
+        self::assertCount(1, $body['items']);
+        self::assertSame($itemAId, $body['items'][0]['id']);
+    }
+
+    /**
      * Moving your own item into another pouch's category must 404, same as
      * every other lookup by id — the target category, not just the item
      * itself, has to resolve through the current pouch's PouchFilter.

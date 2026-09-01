@@ -23,6 +23,16 @@ import { LifecycleFieldsInput, lifecycleFieldsSchema, toLifecyclePayload } from 
 
 type ItemKind = "file" | "photo" | "url" | "note";
 
+function requireCustomExpiresAt(data: { lifecycleMode?: string; customExpiresAt?: string }, ctx: z.RefinementCtx) {
+  if ("custom" === data.lifecycleMode && (undefined === data.customExpiresAt || "" === data.customExpiresAt)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["customExpiresAt"],
+      message: i18n.t("validation.expiresAtRequired"),
+    });
+  }
+}
+
 // Jeden modal zamiast dwóch osobnych, zawsze widocznych formularzy
 // (NoteForm/FileUploadForm) — przełącznik typu na górze pokazuje tylko pola
 // właściwe dla wybranego typu. Domyślny wybór lifecycle ("default") to teraz
@@ -35,15 +45,7 @@ const noteSchema = z
     content: z.string().min(1, i18n.t("validation.noteContentRequired")),
     ...lifecycleFieldsSchema,
   })
-  .superRefine((data, ctx) => {
-    if ("custom" === data.lifecycleMode && (undefined === data.customExpiresAt || "" === data.customExpiresAt)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["customExpiresAt"],
-        message: i18n.t("validation.expiresAtRequired"),
-      });
-    }
-  });
+  .superRefine(requireCustomExpiresAt);
 
 const fileSchema = z
   .object({
@@ -52,15 +54,7 @@ const fileSchema = z
     content: z.string().optional(),
     ...lifecycleFieldsSchema,
   })
-  .superRefine((data, ctx) => {
-    if ("custom" === data.lifecycleMode && (undefined === data.customExpiresAt || "" === data.customExpiresAt)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["customExpiresAt"],
-        message: i18n.t("validation.expiresAtRequired"),
-      });
-    }
-  });
+  .superRefine(requireCustomExpiresAt);
 
 const fileFieldSchema = z.instanceof(File, { message: i18n.t("validation.selectFile") });
 
@@ -72,15 +66,7 @@ const photoSchema = z
     name: z.string().max(255, i18n.t("validation.maxLength255")).optional(),
     ...lifecycleFieldsSchema,
   })
-  .superRefine((data, ctx) => {
-    if ("custom" === data.lifecycleMode && (undefined === data.customExpiresAt || "" === data.customExpiresAt)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["customExpiresAt"],
-        message: i18n.t("validation.expiresAtRequired"),
-      });
-    }
-  });
+  .superRefine(requireCustomExpiresAt);
 
 const urlSchema = z
   .object({
@@ -93,15 +79,7 @@ const urlSchema = z
     name: z.string().max(255, i18n.t("validation.maxLength255")).optional(),
     ...lifecycleFieldsSchema,
   })
-  .superRefine((data, ctx) => {
-    if ("custom" === data.lifecycleMode && (undefined === data.customExpiresAt || "" === data.customExpiresAt)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["customExpiresAt"],
-        message: i18n.t("validation.expiresAtRequired"),
-      });
-    }
-  });
+  .superRefine(requireCustomExpiresAt);
 
 type NoteFormInput = z.input<typeof noteSchema>;
 type NoteFormValues = z.output<typeof noteSchema>;

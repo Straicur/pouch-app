@@ -396,6 +396,13 @@ class Item implements PouchAware
         return $this;
     }
 
+    public function untrash(): static
+    {
+        $this->trashedAt = null;
+
+        return $this;
+    }
+
     public function getCreatedAt(): DateTimeImmutable
     {
         return $this->createdAt;

@@ -49,4 +49,16 @@ interface StorageServiceInterface
      * @throws StorageException
      */
     public function downloadToPath(string $key, string $localPath): void;
+
+    /**
+     * Every object key in the bucket, deep (all "directories") — used by
+     * BackupServiceInterface to mirror the whole bucket, not derived from any
+     * one entity's own storage_key columns, so it also catches anything
+     * orphaned from a failed cleanup.
+     *
+     * @return iterable<string>
+     *
+     * @throws StorageException
+     */
+    public function listAllKeys(): iterable;
 }

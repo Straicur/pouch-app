@@ -307,6 +307,36 @@ class ItemService implements ItemServiceInterface
     }
 
     #[Override]
+    public function listTrashedPage(int $offset, int $limit, array $excludedCategoryIds = []): array
+    {
+        return $this->itemRepository->findTrashedPage($offset, $limit, $excludedCategoryIds, $this->currentPouchResolver->resolve()->getId());
+    }
+
+    #[Override]
+    public function getTrashedById(int $id): Item
+    {
+        $item = $this->itemRepository->findOneBy(['id' => $id]);
+
+        if (null === $item || !$item->isTrashed()) {
+            throw new NotFoundException(message: 'item.not_found');
+        }
+
+        return $item;
+    }
+
+    #[Override]
+    public function restore(int $id): Item
+    {
+        $item = $this->getTrashedById($id);
+        $item->setLifecycle(true, null);
+        $item->untrash();
+
+        $this->itemRepository->save($item);
+
+        return $item;
+    }
+
+    #[Override]
     public function setFavorite(int $id, bool $favorite): Item
     {
         $item = $this->getById($id);

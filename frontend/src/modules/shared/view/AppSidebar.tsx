@@ -63,6 +63,9 @@ export function AppSidebar() {
           <SidebarItem href="/user/tags" current={pathname.startsWith("/user/tags")}>
             <SidebarLabel>{t("nav.tags")}</SidebarLabel>
           </SidebarItem>
+          <SidebarItem href="/user/trash" current={pathname.startsWith("/user/trash")}>
+            <SidebarLabel>{t("nav.trash")}</SidebarLabel>
+          </SidebarItem>
         </SidebarSection>
 
         {/* "Panel Admina" jest samym opisem (nieklikalny), nie linkiem —

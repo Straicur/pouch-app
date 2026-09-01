@@ -16,11 +16,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && docker-php-ext-install -j$(nproc) intl pdo_mysql pdo_pgsql pgsql zip curl gmp gd \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# pg_dump/pg_restore/psql — BackupServiceInterface shells out to these directly over
+# the network (same "db" host/port as DATABASE_URL), not through the pdo_pgsql PHP
+# extension. Debian trixie's own postgresql-client defaults to v17, one major ahead of
+# the pinned server (POSTGRES_VERSION, docker-compose.yml) — a dump taken by a newer
+# client can embed session-setup GUCs (e.g. transaction_timeout, added in PG17) the
+# older server's own pg_restore/psql then reject, so the PGDG repo is added here to
+# pin an exact version match instead.
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo "$VERSION_CODENAME")-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client-16 \
+    && apt-get purge -y --auto-remove gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN echo "date.timezone = UTC" > /usr/local/etc/php/conf.d/timezone.ini
 COPY docker/php/php.ini /usr/local/etc/php/conf.d/php.ini
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 RUN usermod -u 1000 www-data
+
+# Pre-created and owned by www-data so a fresh (root-owned by default) named
+# volume mounted here inherits this ownership on its first use — otherwise
+# BackupServiceInterface (running as www-data, see USER below) can't mkdir
+# into it.
+RUN mkdir -p /var/backups/pouch && chown www-data:www-data /var/backups/pouch
 
 # Install Xdebug (PECL) and enable it
 RUN apt-get update \
