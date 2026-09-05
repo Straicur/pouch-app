@@ -54,7 +54,7 @@ Od Części 12: pełny podział na `pages/` (routing) i `modules/` (implementacj
 plus wydzielone `libs/`/`utils/`/`providers/`/`store/types/`. Zasada nadrzędna: jeden
 katalog na konkretny, samodzielny kawałek funkcjonalności, nie jeden płaski worek na
 wszystko (tak jak kiedyś `pages/`/`components/` mieszały wszystko, np. jeden
-`AdminPage.tsx` na pięć niepowiązanych sekcji — patrz historia w `ROADMAP.md`, Część 11
+`AdminPage.tsx` na pięć niepowiązanych sekcji — patrz historia w `CHANGELOG.md`, Część 11
 zaczęła ten podział przez `modules/`, Część 12 dociąga go do końca). Nazwy katalogów: liczba
 mnoga, mała litera (`libs/`, `utils/`, `pages/`, `modules/`, `providers/`, `types/` —
 nie `lib/`, `Utils/` itd.).
@@ -234,6 +234,15 @@ realnego powodu wypisanego w komentarzu.
 
 ## Testy komponentów (Vitest + Testing Library)
 
+Nowe lub zmieniane zachowanie wymagające weryfikacji dostaje testy w tej samej zmianie.
+Dotyczy to zwłaszcza formularzy i walidacji, uprawnień i tras, mutacji API,
+operacji destrukcyjnych oraz współdzielonych komponentów sterujących tymi przepływami.
+Testuj zachowanie widoczne dla użytkownika: sukces, istotne błędy, a przy usuwaniu
+również potwierdzenie i anulowanie. Poprawka błędu zachowania powinna mieć test regresji.
+Nie odkładaj testów nowej funkcji do etapu uzupełniania starszych braków z roadmapy.
+Zmiany wyłącznie wizualne lub statyczna treść nie wymagają sztucznych testów
+odwzorowujących implementację; sprawdź je odpowiednio ręcznie.
+
 Testy żyją w osobnym, top-levelowym `frontend/tests/`, nie obok testowanego pliku w
 `src/` — nowy test zawsze idzie pod `tests/`, odzwierciedlając ścieżkę testowanego
 pliku w `src/` (np. `src/pages/LoginPage.tsx` → `tests/pages/LoginPage.test.tsx`).
@@ -320,7 +329,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
 - Dodatkowe sprawdzenie specyficzne dla obszaru (np. `AdminLayout`'owe "czy to admin",
   wykryte po `403`/`ExceptionUuid.FORBIDDEN`) idzie **po** `ProtectedRoute`, nie przed
   ani zamiast — inaczej brak sesji w ogóle (`401`) nie zostanie złapany przez logikę
-  liczącą tylko na `403` (to był realny błąd w `AdminLayout`, patrz `ROADMAP.md`
+  liczącą tylko na `403` (to był realny błąd w `AdminLayout`, patrz `CHANGELOG.md`
   Część 11).
 - `ProtectedRoute` przekierowuje na `/login` przy błędzie sesji; `HomePage` ma własne,
   nieco inne zachowanie (chwilowe wyrenderowanie przed przekierowaniem) — nie

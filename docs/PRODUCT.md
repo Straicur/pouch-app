@@ -12,13 +12,17 @@ nie chronologiczny strumień wiadomości, w którym trzeba pamiętać, kiedy si�
 wrzuciło, żeby to znowu znaleźć.
 
 Bez rejestracji — konta zakłada admin przez panel administracyjny (`POST
-/api/admin/users`), aplikacja obsługuje samo logowanie. Kont będzie kilka, z różnymi
-uprawnieniami (patrz "Role i uprawnienia").
+/api/admin/users`), aplikacja obsługuje dziś samo logowanie. Docelowo użytkownik
+ustawia i resetuje hasło przez e-mail, z logowania lub ustawień; admin nie resetuje hasła. Zmiana hasła
+unieważnia dotychczasowe sesje/tokeny — prace zaplanowane w P0 [roadmapy](ROADMAP.md).
+Kont będzie kilka, z różnymi uprawnieniami (patrz "Role i uprawnienia").
 
 ## Model pojęciowy
 
-- **Drzewo kategorii** — kategorie mogą się zagnieżdżać, item zawsze należy do
-  dokładnie jednej kategorii. **Jeden model, nie dwa** — świadomie zrezygnowaliśmy z
+- **Kategorie i podkategorie** — świadomie dokładnie dwa poziomy: kategoria
+  główna i jedna warstwa podkategorii, bez dalszego zagnieżdżania. Item zawsze należy
+  do dokładnie jednej kategorii. To decyzja upraszczająca produkt, nie brak funkcji.
+  **Jeden model, nie dwa** — świadomie zrezygnowaliśmy z
   osobnego bytu "folder" (zbiorcze trzymanie plików bez pełnej ceremonii kategorii):
   podkategoria robi dokładnie to samo, bez dokładania drugiego równoległego drzewa,
   które trzeba by osobno przenosić/przeszukiwać/zabezpieczać. Klucz dostępu na
@@ -69,8 +73,8 @@ widzi X", ale i "guest NIE może zrobić Y", "user bez klucza NIE widzi Z".
 ## Funkcjonalności użytkownika (User)
 
 ### Organizacja i nawigacja
-- Drzewo kategorii — przeglądanie, dodawanie, **zmiana nazwy, przenoszenie kategorii w
-  drzewie**.
+- Kategorie i podkategorie — przeglądanie, dodawanie, **zmiana nazwy i przenoszenie**
+  z zachowaniem limitu dwóch poziomów.
 - Dodawanie itemów w 4 typach (plik / URL / zdjęcie / notatka) do wybranej kategorii,
   **przenoszenie itemu do innej kategorii, edycja notatki po fakcie**.
 - Walidacja przy dodawaniu: jawna lista dozwolonych rozszerzeń/MIME per typ itemu i
@@ -98,7 +102,7 @@ widzi X", ale i "guest NIE może zrobić Y", "user bez klucza NIE widzi Z".
 
 ### Cykl życia danych
 - Domyślnie "trzymaj na zawsze" — bezpieczniejsze niż domyślne wygasanie, świadomie
-  wybrane zamiast pierwotnego założenia TTL = 1 dzień (patrz Część 19 w `ROADMAP.md`).
+  wybrane zamiast pierwotnego założenia TTL = 1 dzień (patrz `CHANGELOG.md`).
 - Przy dodawaniu: przełącznik "trzymaj na zawsze" + gotowe presety (1h / 7 dni /
   30 dni) + możliwość wpisania własnej daty wygaśnięcia.
 - Kosz — usunięcie nie kasuje danych od razu, item trafia do kosza na 7 dni zanim
@@ -118,7 +122,9 @@ widzi X", ale i "guest NIE może zrobić Y", "user bez klucza NIE widzi Z".
   domyślnie). Naturalne rozszerzenie mechanizmu podpisanych URL-i, który i tak
   budujemy pod streaming — tu tylko dłuższy TTL podpisu i świadome kliknięcie
   "udostępnij", zamiast automatycznego 15-minutowego linku do własnego podglądu.
-- (Later, świadomie odłożone) odzyskiwanie klucza przez SMS.
+- **Przyszły zakres: odzyskiwanie klucza dostępu przez SMS** — przyjęte do roadmapy;
+  szczegóły weryfikacji numeru i przepływu wymagają projektu. Dotyczy kluczy kategorii/
+  itemów, a nie hasła konta (reset hasła będzie e-mailowy).
 
 ### Metadane
 - URL — automatyczne pobranie miniatury/tytułu/opisu (OpenGraph).

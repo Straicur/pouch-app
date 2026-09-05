@@ -1,222 +1,212 @@
 # Pouch — plan pracy
 
-Wyłącznie przyszła/bieżąca praca. Zakończone etapy są w [`CHANGELOG.md`](CHANGELOG.md); aktualny model domenowy (nie historia jego powstawania) w [`engineering/architecture.md`](engineering/architecture.md).
+Wyłącznie przyszła/bieżąca praca. Zakończone etapy są w
+[`CHANGELOG.md`](CHANGELOG.md), model produktu w [`PRODUCT.md`](PRODUCT.md),
+a aktualna architektura w [`engineering/architecture.md`](engineering/architecture.md).
 
-Punkt kończy się, gdy: kod + testy kodowe + (jeśli dotyczy) ręczne sprawdzenie są zrobione i `make cs`/`make phpstan`/`make test-backend`/`make lint`/`npm test` przechodzą.
+Aktualizacja 2026-09-05: konsolidacja przeglądu i decyzji właściciela produktu.
+Największe braki dotyczą obsługi kont, codziennego UX i widoczności operacyjnej.
+P0 blokuje wpuszczenie realnych użytkowników/danych; P1–P3 określają dalsze priorytety.
+Opisy problemów są punktem wyjścia do prac, nie wynikiem nowego pełnego audytu produkcji.
+Przed implementacją trzeba sprawdzić aktualny kod i konfigurację wdrożenia.
 
----
+Punkt kończy się po implementacji, odpowiednich testach, wymaganych kontrolach jakości
+z [zasad projektu](engineering/project-rules.md) i, jeśli dotyczy, sprawdzeniu ręcznym.
+Testy nowych funkcji powstają razem z funkcją, niezależnie od priorytetu uzupełniania
+starszych braków testowych.
 
-## Etap stabilizacyjny (Część 18)
+## P0 — konta i gotowość produkcyjna
 
-Zewnętrzny przegląd całego projektu ocenił fundamenty jako solidne jak na projekt hobbystyczny — największy problem to nie brak funkcji, tylko rozjazd między deklarowaną jakością a faktycznym domknięciem niektórych mechanizmów. Punkty 1 (izolacja Pouch), 2 (dokumentacja/kod), 3 (testy frontendu) i 4 (testy bezpieczeństwa) zrobione — patrz `CHANGELOG.md`. Zostają:
+### Hasło ustawiane i odzyskiwane przez użytkownika
 
-### Generować kontrakt frontendu z OpenAPI
+Obecny przepływ tworzenia konta wydaje hasło tymczasowe, a panel admina umożliwia jego
+reset. Brakuje samodzielnego ustawienia własnego hasła i unieważnienia sesji po resecie.
+Docelowo reset hasła wymaga e-maila i odbywa się przez e-mail; admin nie resetuje hasła.
 
-Typy odpowiedzi, enumy i UUID-y błędów (`ExceptionUuid`/`ApiErrorBody` w `libs/apiError.ts` — patrz `FRONTEND.md`'s "Error handling", ostatni punkt, gdzie to już jest zapisane jako świadomy dług) są dziś częściowo przepisywane ręcznie z backendowego `ExceptionUuidEnum`. Coraz bardziej podatne na rozjazdy przy każdej zmianie backendu.
+- [ ] Dodać „Nie pamiętam hasła” na logowaniu oraz zmianę/reset własnego hasła
+  w ustawieniach po zalogowaniu, przez przepływ e-mailowy.
+- [ ] Zapewnić wysyłkę wiadomości oraz jednorazowe, wygasające linki pozwalające
+  użytkownikowi ustawić nowe hasło; obsłużyć link zużyty, wygasły i błąd dostarczenia.
+- [ ] Usunąć reset hasła z panelu admina i administracyjnego API. Admin nadal tworzy
+  konta, ale użytkownik sam ustawia hasło. Zaprojektować pierwsze ustawienie hasła
+  przez e-mail; dotychczasowe hasła tymczasowe nie mogą pozostać stałym dostępem
+  bez wymuszenia ustawienia własnego hasła.
+- [ ] Po skutecznej zmianie/resecie unieważnić dotychczasowe sesje oraz access/refresh
+  tokeny danego użytkownika, także na innych urządzeniach, i wymagać ponownego logowania.
+- [ ] Pokryć przepływ testami backendu i frontendu, w tym limitami żądań resetu,
+  odpowiedzią nieujawniającą istnienia konta i odrzuceniem starych tokenów.
 
-- [ ] Wygenerowany klient albo przynajmniej typy wprost z `nelmio/api-doc-bundle`'owego `/api/doc.json` — jeden kontrakt backend–frontend, mniej ręcznego utrzymania, wcześniejsze wykrycie breaking changes (np. w CI).
+### Twarde blokery wdrożenia
 
-### Poprawić operacyjność
+- [ ] **Sekrety produkcyjne Symfony:** domknąć inicjalizację `config/secrets/prod/`
+  i dostarczenie `JWT_PASSPHRASE`/`JWT_PRIVATE_TOKEN`/`JWT_PUBLIC_TOKEN`.
+  Opisać i zweryfikować setup (`secrets:generate-keys --env=prod`, ustawienie sekretów)
+  oraz start czystej instalacji bez `EnvNotFoundException`/500. Sama generacja kluczy
+  vaultu nie zastępuje ustawienia wartości sekretów.
+- [ ] **Cookie i HTTPS:** zastąpić sztywne `secure: true` w `CookieService`
+  konfiguracją odpowiednią dla środowiska; produkcja wymaga secure cookies i HTTPS.
+  Sprawdzić reverse-proxy oraz poprawne rozpoznanie HTTPS, bez polegania na localhost.
+- [ ] **Backup poza hostem:** wynosić backup PostgreSQL i MinIO do zewnętrznego,
+  S3-kompatybilnego storage'u przed pierwszym realnym użyciem. Lokalny wolumen
+  `backup-data` nie wystarcza. Ustalić retencję i sygnalizowanie błędów kopii zewnętrznej.
+- [ ] **Odtwarzanie:** rozszerzyć istniejący test restore o rzeczywistą weryfikację
+  plików MinIO, a nie tylko liczników tabel; sprawdzić odtworzenie kopii off-site
+  i zapisać procedurę oraz wynik ostatniego testu.
+- [ ] **Health checks:** DB, MinIO oraz Messenger — sprawność transportu i działanie
+  workera; awaria zależności musi być widoczna operacyjnie.
+- [ ] **Kolejka:** monitoring failed messages/dead-letter queue, powiadomienie o awarii
+  oraz procedura diagnozy i ponawiania wiadomości.
+- [ ] **Audit log:** konfigurowalna retencja i cykliczne usuwanie przeterminowanych wpisów.
+- [ ] **Rate limiting poza logowaniem i access key:** przeanalizować podział między
+  nginx a Symfony. Uwzględnić limity ogólnego ruchu/IP na proxy oraz operacji/konta
+  w aplikacji, szczególnie reset e-mailowy, upload, eksport i publiczne linki.
+  Wynikiem ma być decyzja, konfiguracja i testy limitów, nie samo porównanie narzędzi.
+- [ ] **Rotacja JWT i sekretów:** podpiąć istniejące `jwt-rotate-prod` do cyklicznego
+  harmonogramu (plan: co miesiąc), monitorować wykonanie i opisać procedurę rotacji
+  sekretów. Uwzględnić, że obecna wymiana keypairu wylogowuje wszystkie sesje.
+- [ ] **CSP i HSTS:** ustalić produkcyjne originy i rzeczywistą ścieżkę dostarczania
+  plików, skonfigurować CSP oraz HSTS przy działającym HTTPS na reverse-proxy;
+  zweryfikować podgląd, pobieranie i udostępnianie plików.
 
-Przed realnym używaniem projektu do ważnych danych — backup bez regularnie sprawdzanego restore'u jest tylko nadzieją, nie zabezpieczeniem:
+## P1 — UX kont i uprawnień
 
-- [x] **Automatyczny backup PostgreSQL i MinIO oraz test odtwarzania — zrobione.**
-      Wcześniej: tylko ręczny, na żądanie ZIP z `AdminController`/`CategoryExportService`
-      (eksport app-level, odtworzony z encji) — nie prawdziwy dump bazy, nie obejmował
-      np. userów/audit logów/tagów. Nowy `BackupServiceInterface`/`BackupService`: pełny
-      `pg_dump` (format custom) + mirror całego bucketa MinIO (`StorageServiceInterface::
-      listAllKeys()`, nowa metoda) do jednego, znaczonego czasem katalogu, plus retencja
-      (domyślnie 14 ostatnich, `BACKUP_RETENTION_COUNT`). Nowy serwis `backup-scheduler`
-      w Dockerze (ten sam wzorzec co `gc-scheduler`) — `app:backup:run` co 24h, pisze do
-      nowego wolumenu `backup-data` (`/var/backups/pouch`, lokalny — S3/off-site to
-      świadomie osobny, późniejszy krok, patrz punkt niżej).
-      **Test odtwarzania**: `app:backup:restore-test` — restore ostatniego backupu do
-      świeżej, tymczasowej bazy w tym samym kontenerze Postgres (`CREATE DATABASE`/
-      `pg_restore`/porównanie liczby wierszy `pouch`/`user`/`category`/`item` z żywą bazą/
-      `DROP DATABASE ... WITH (FORCE)`) — udowadnia, że backup faktycznie się odtwarza, nie
-      tylko że plik istnieje. `BackupServiceTest` (2 testy, prawdziwy pg_dump/pg_restore/
-      MinIO, nie mocki) uruchamia to jako część `make test-backend`, więc regresja w
-      mechanizmie odtwarzania od teraz psuje testy, nie tylko ręczną kontrolę.
-      Techniczne: `backend/Dockerfile` dostał PGDG apt repo + `postgresql-client-16`
-      (dopasowana wersja klienta do serwera — domyślny klient Debiana to v17, którego
-      dumpy niosą ustawienia sesji, jakich serwer v16 nie zna, np. `transaction_timeout`).
-      `symfony/process` dodany jako bezpośrednia zależność (`composer.json`).
-  - [ ] **Nieodłożone na później**: backup ląduje dziś tylko na lokalnym wolumenie
-        Dockera — przeniesienie na zewnętrzny storage (S3-kompatybilny) przed pierwszym
-        realnym wdrożeniem, żeby backup fizycznie nie leżał na tym samym hoście co dane.
-- [ ] Health checks dla DB, MinIO i kolejki Messengera.
-- [ ] Monitoring failed messages / dead-letter queue (Messenger).
-- [ ] Retencja audit logów (dziś rosną bez limitu — patrz `AuditLogger`).
-- [ ] Limity liczby requestów też poza logowaniem/access key (dziś rate limiting jest tylko na `LoginRateLimiter`/`AccessKeyRateLimiter`).
-- [ ] Procedura rotacji kluczy JWT i sekretów (`JWT_PASSPHRASE`/`JWT_PRIVATE_TOKEN`/`JWT_PUBLIC_TOKEN` — patrz `BACKEND.md`'s "Pułapki tego projektu").
+- [ ] Rozszerzyć `whoami`/`WhoAmIResponse` o role lub efektywne uprawnienia;
+  obecne `email` i `isAdmin` nie odróżniają gościa od użytkownika.
+- [ ] Dodać spójny tryb tylko do odczytu dla `ROLE_GUEST`: ukryć niedostępne dodawanie,
+  edycję, przenoszenie/usuwanie, ulubione i zarządzanie kategoriami/tagami/kluczami.
+  Zachować dozwolone przeglądanie, wyszukiwanie i odblokowywanie zasobów znanym kluczem.
+- [ ] Sprawdzić nawigację, bezpośrednie wejścia na trasy oraz konta z wieloma rolami;
+  oprzeć UI na efektywnych uprawnieniach. Votery backendu pozostają źródłem autoryzacji.
+- [ ] Dodać testy macierzy guest/user/admin: dostępne akcje działają, niedozwolone
+  nie są oferowane; błędy uprawnień nadal mają czytelną obsługę.
 
----
+## P2 — codzienne użytkowanie
 
-## Część 19 — Przegląd stanu projektu: co jeszcze brakuje
+### Edycja itemu i ponawianie przetwarzania
 
-Kolejny zewnętrzny przegląd, po Części 18 — wniosek: projekt wyszedł z fazy "dużo rzeczy jest
-fundamentalnie źle", jest teraz w fazie "kilka brakujących przepływów użytkownika i twarde
-przygotowanie do produkcji". Poniższe znaleziska zweryfikowane w kodzie przed wpisaniem tutaj.
+- [ ] Edycja nazwy itemu i opisu pliku.
+- [ ] Edycja adresu URL z ponownym pobraniem metadanych/snapshotu.
+- [ ] Zmiana TTL oraz „trzymaj na zawsze” przez właściciela itemu, bez panelu admina.
+- [ ] Ponowienie OCR/scrapingu po statusie `failed`, z widocznym stanem operacji
+  i zabezpieczeniem przed wielokrotnym zleceniem tego samego przetwarzania.
 
-### Najważniejsze braki
+### Upload strumieniowy do backendu
 
-- [x] **Frontend nie udostępniał wszystkich czterech typów itemów — zrobione.** Backend
-      już miał `POST /api/items/photos`/`.../urls`, brakowało frontendu —
-      `itemApi.ts` dostał `createPhoto`/`createUrl`, `AddItemModal.tsx`'s `ItemKind`
-      rozszerzony o `"photo"`/`"url"` z własnymi polami formularza (`PhotoFields`/
-      `UrlFields`). Upload zdjęcia ma `capture="environment"` na inpucie —
-      podpowiada mobilnym przeglądarkom otwarcie aparatu wprost (desktop bez wsparcia po
-      prostu to ignoruje, zwykły file picker). Ani `createPhoto`, ani `createUrl` nie
-      przyjmują tagów przy tworzeniu (backendowe `ItemService::createPhoto()`/
-      `createUrl()` też nie) — dodanie tagów zostaje osobnym krokiem po utworzeniu,
-      przez `ItemDetailsModal`.
-- [x] **Zarządzanie strukturą jest niepełne na froncie — zrobione.** Kategorie: backend już
-      miał `rename()`/`move()`, brakowało UI — dodane `RenameCategoryForm.tsx`/
-      `MoveCategoryForm.tsx` + przyciski w `CategoryRow.tsx`. Itemy: przenoszenie **nie
-      istniało wcale** — nowy endpoint `PATCH /api/items/{id}/move`
-      (`ItemService::move()`, `Item::setCategory()`) + `MoveItemButton` w
-      `ItemDetailsModal.tsx`. Cel przenoszenia itemu ograniczony do własnego pouch przez
-      `CategoryService::getById()` (pouch-scoped), tak jak reszta lookupów. Testy:
-      `ItemControllerTest::testMoveItemToAnotherCategory`/`testMoveToMissingCategoryReturnsNotFound`,
-      `ItemPouchIsolationTest::testMovingAnItemIntoAnotherPouchsCategoryReturnsNotFound`.
-- [x] **Automatyczny GC nie był rzeczywiście zaplanowany — zrobione.** Nowy serwis
-      `gc-scheduler` w `docker-compose.yml`/`docker-compose.dev.yml` (ten sam wzorzec co
-      `messenger-worker`) — pętla `app:item:gc` co godzinę (najkrótszy preset TTL to 1h).
-- [x] **Dokumentacja produktu i roadmapa miejscami sobie przeczyły — rozstrzygnięte.**
-  - Domyślny TTL: `PRODUCT.md` zaktualizowany pod istniejące zachowanie kodu — domyślnie
-    "trzymaj na zawsze", nie 1 dzień (bezpieczniejsze, dane nie znikają przez przypadek).
-  - Zakładanie kont: `PRODUCT.md` zaktualizowany pod istniejący panel admina (`POST
-    /api/admin/users`) jako rzeczywisty mechanizm, zamiast opisu "zakładane w bazie".
-  - "Ostatnio dodane": uznane za wciąż aktualną część MVP — nowa `RecentPage`
-    (`/user/recent`, wpis w sidebarze), na wzór już istniejącej `FavoritesPage`: lista
-    itemów bez żadnych filtrów, backend i tak sortuje po `createdAt DESC` domyślnie.
-    Usunięte z `ROADMAP.md`'s "Produktowo" (nie jest już przyszłym pomysłem).
-- [x] **`ItemController` urósł do 1244 linii** — przekraczał limit 1000 linii z
-      `project-rules.md`. Rozdzielony na 4 kontrolery wg operacji: `ItemController`
-      (core CRUD: list/get/delete, 245 linii), `ItemCreateController` (createFile/
-      createPhoto/createUrl/createNote, 377 linii), `ItemEditController` (updateNote/
-      move/updateTags/markFavorite/unmarkFavorite/overwriteFile/versions, 343 linie),
-      `ItemDeliveryController` (download/thumbnail/versionDownload/publicView + ich
-      podpisane linki, 472 linie). Wspólna logika parsowania list rozdzielonych
-      przecinkami (tagi, id kategorii) wydzielona do nowego
-      `ParsesCommaSeparatedValuesTrait`, na wzór istniejącego `AuthorizesRequestsTrait`.
-      `make cs`/`make phpstan`/`make rector`/`make test-backend` przechodzą czysto
-      (283/283 testów). **Post-review poprawka**: `extractUploadedFile()`/`fileSize()`
-      zostały przy pierwszym podziale skopiowane 1:1 do `ItemCreateController` i
-      `ItemEditController` zamiast wydzielone tak samo jak logika comma-separated —
-      wyłapane w code review, naprawione nowym `ExtractsUploadedFileTrait` (ten sam
-      wzorzec).
-- [x] **Testy frontendu były nadal dość wąskie** — było 7 plików / 18 testów (patrz Część
-      18, punkt 3). Doszły `CategoryRow.test.tsx` (zmiana nazwy/przenoszenie kategorii,
-      sukces i błąd), `VersionHistory.test.tsx` (pusta historia, lista wersji + pobranie
-      konkretnej, nadpisanie nowym plikiem, błąd z treścią z backendu) i rozszerzony
-      `ItemDetailsModal.test.tsx` (przenoszenie itemu — sukces/błąd/przycisk zablokowany
-      przy niezmienionym celu, edycja tagów — sukces/błąd) i nowy `RecentPage.test.tsx`
-      (patrz "Ostatnio dodane" wyżej). Teraz 10 plików / 34 testy, `make lint`/tsc/
-      `make test-frontend` przechodzą czysto. Ekrany administracyjne i uprawnienia gościa
-      (nie ma osobnego UI — publiczny link jest podpisanym URL-em bez własnego ekranu)
-      zostają poza zakresem tej rundy.
+- [ ] Wiele plików naraz, drag & drop oraz kolejka z wynikiem dla każdego pliku.
+- [ ] Postęp, anulowanie i ponowienie uploadu; kolejka działająca podczas nawigacji
+  w aplikacji oraz wznowienie po zerwaniu połączenia.
+- [ ] Zaprojektować przesyłanie strumieniowe do backendu i dalej do storage'u,
+  bez ładowania całego pliku do pamięci PHP. Sprawdzić buforowanie proxy i limity.
+  Sam streaming nie zapewnia wznowienia — potrzebny jest osobny mechanizm sesji/części
+  uploadu, z kontrolą kompletności i sprzątaniem niedokończonych transferów.
+- [ ] Zweryfikować pliki do 100 MB na słabym łączu mobilnym: postęp, zerwanie,
+  wznowienie, anulowanie oraz limity miejsca i duplikaty przy wielu plikach.
 
-### Sugerowana kolejność
+### Telefon, PWA i „Udostępnij → Pouch”
 
-Wszystko z "Najważniejsze braki" wyżej (URL/zdjęcie w UI, przenoszenie/zmiana nazwy,
-automatyczny GC, "ostatnio dodane", ustalenie domyślnego TTL) jest już zrobione.
-Zostało, przed pierwszym użyciem z ważnymi danymi:
+- [ ] Przeprowadzić audyt mobilny: małe ekrany, menu, modale, formularze, kategorie,
+  klawiatura ekranowa, dotyk, upload z aparatu i podgląd/pobieranie.
+- [ ] Dodać instalowalną PWA i możliwie krótką ścieżkę zapisu tekstu, URL-a lub pliku
+  z telefonu, z ograniczeniem liczby kroków i wygodnym wyborem kategorii.
+- [ ] Zbadać i wdrożyć share target na Androidzie/iOS w zakresie obsługiwanym przez
+  docelowe platformy; przetestować „Udostępnij → Pouch” na urządzeniach i zapewnić
+  ścieżkę zastępczą tam, gdzie integracja nie działa. Nie zakładać zgodności platform.
+- [ ] W dalszym etapie: rozszerzenie przeglądarkowe „Zapisz do Pouch”.
 
-- backup jako atomowy artefakt (`.partial` → rename po sukcesie — zrobione) plus test
-  odtworzenia, który realnie weryfikuje pliki MinIO, nie tylko liczniki wierszy w bazie,
-- obsługa błędu w `backup-scheduler` bez cichego 24h maskowania (zrobione — `|| exit 1`,
-  `restart: unless-stopped` dogrywa restart),
-- produkcyjny obraz backendu (patrz "Opcjonalne do naprawy" niżej).
----
+### Zarządzalne publiczne linki
 
-## Opcjonalne do naprawy (niezależne od kolejności wyżej)
+- [ ] Wybór czasu ważności w szerszym zakresie godzin zamiast sztywnych 24h;
+  ustalić presety i granice, pokazywać dokładną datę wygaśnięcia.
+- [ ] Lista linków użytkownika z itemem, statusem i terminem ważności oraz ręczne
+  unieważnianie ze skutkiem dla kolejnych prób dostępu.
+- [ ] Licznik użyć i informacja o ostatnim użyciu; zdefiniować, co liczy się jako
+  użycie, podgląd i pobranie (w tym żądania zakresowe i ponowienia).
+- [ ] Opcjonalne hasło i limit pobrań, egzekwowane także przy równoległych żądaniach.
+- [ ] Zaprojektować stan linków potrzebny do unieważniania i limitów — obecny
+  bezstanowy podpisany URL nie wystarczy. Zachować rozdzielenie linków publicznych
+  i krótkotrwałych URL-i do własnego podglądu/pobrania.
 
-Nie blokują żadnej części — zrobić przy okazji, kiedy akurat dotykamy powiązanego kodu, albo osobno gdy będzie chwila:
+## P3 — jakość, panel admina i przenośność
 
-- [ ] **Cookie `secure: true` na sztywno** (`CookieService`) — działa dziś tylko dzięki wyjątkowi przeglądarek dla `http://localhost`. Do ogarnięcia przed pierwszym wdrożeniem pod realną domeną (HTTPS na reverse-proxy musi faktycznie działać end-to-end).
-- [x] **Prod stage dla backendu i `docker-compose.prod.yml` — zrobione.** `backend/Dockerfile`:
-      `dev` (Xdebug, bind-mount ./backend) i `prod` (kod + `composer install --no-dev` wpieczone w
-      obraz, bez Xdebug wcale, nie tylko wyłączony) to teraz osobne ścieżki od `base`; nowy
-      `nginx-prod` stage kopiuje `public/` (w tym `assets:install`-owane assety
-      NelmioApiDocBundle) z `prod` zamiast bind-mountować `./backend` z hosta.
-      `docker-compose.prod.yml` (nakładka na bazowy plik, na wzór `.dev.yml`): wszystkie
-      backendowe serwisy + `frontend` na `target: prod`, publicznie wystawiony tylko
-      `frontend` (port 80) — `db`/`minio`/backendowy `nginx` (8111, `/api/doc`) na
-      `127.0.0.1` (SSH tunel dla admina, nie internet; thumbnaile/pobieranie i tak idą przez
-      podpisane linki backendu, nigdy bezpośrednio z MinIO). Osobne tagi obrazów
-      (`pouch-app-php-fpm-prod`/`pouch-app-frontend-prod`) — bazowy plik taguje `dev`/`prod`
-      tym samym `image:`, więc zbudowanie jednego nadpisywało lokalny cache drugiego.
-      Zweryfikowane end-to-end (build + up całego stacku, nie tylko `config`): backend realnie
-      wstaje, serwuje `/api/doc` z assetami, `SecurityHeadersListener`'owe nagłówki lecą nawet
-      na 500, porty faktycznie bindują się tylko na `127.0.0.1`. **Zablokowane na realnym
-      wdrożeniu do czasu ręcznego, jednorazowego setupu na serwerze** (nieodłożone dalej, tylko
-      poza zakresem samej infry):
-  - [x] **Monolog handler dla `prod` — zrobione.** Nowy `when@prod` w `monolog.yaml`:
-        `fingers_crossed` (próg `error`, wyklucza 404/405) flushuje bufor requestu do
-        `nested` — `stream` na `php://stderr`, nie plik (`docker logs`/journald i tak to
-        łapią i trzymają, obraz prod nie ma żadnej rotacji pliku pod `var/log`). Plus
-        `console` (kolorowane logi dla `bin/console` w prod, np. `migrate-prod` niżej) i
-        `deprecation` (osobny stream). Zweryfikowane: wymuszony błąd w kernelu (`env=prod`)
-        realnie wypisał `app.ERROR: ...` na stderr — wcześniej (puste `handlers:`) znikał
-        bez śladu.
-  - [x] **`make migrate-prod`/`jwt-keypair-prod`/`jwt-rotate-prod` — zrobione.** Nowa sekcja
-        w `Makefile` (`PROD_COMPOSE`/`EXEC_APP_PROD`, na wzór istniejącego `COMPOSE`/
-        `EXEC_APP`) — zakłada stack już odpalony przez `docker-compose.prod.yml`, nie
-        startuje/zatrzymuje go. `jwt-keypair-prod` używa `--skip-if-exists` (jak dev,
-        ale przez natywną flagę komendy zamiast `test -f` w Makefile). `jwt-rotate-prod`
-        (nowe, nie miało dev-owego odpowiednika) używa `--overwrite -n` — celowo
-        nieinteraktywne pod przyszłego crona; **unieważnia każdy wydany access/refresh
-        token** (oba podpisane tym keypairem), więc każda zalogowana sesja loguje się
-        od nowa przy najbliższym requeście — to punkt rotacji, nie efekt uboczny.
-  - [ ] **Prod vault sekretów Symfony nigdy nie zainicjalizowany** — `config/secrets/dev/`
-        jest, `config/secrets/prod/` nie istnieje. `JWT_PASSPHRASE`/`JWT_PRIVATE_TOKEN`/
-        `JWT_PUBLIC_TOKEN` (patrz `lexik_jwt_authentication.yaml`) idą przez
-        `secrets:generate-keys --env=prod` + `secrets:set ... --env=prod`, nie przez `.env`.
-        Bez tego `app` 500-uje na każdym requeście (`EnvNotFoundException`) — teraz
-        przynajmniej widoczne w logu (patrz punkt wyżej), wcześniej znikało bez śladu.
-  - [ ] Cron dla `jwt-rotate-prod` (comiesięczna rotacja kluczy JWT) — świadomie osobny,
-        późniejszy krok; komenda wyżej jest gotowa, samego harmonogramu jeszcze nie ma.
-- [ ] **CSP i HSTS nagłówki** — `SecurityHeadersListener`/nginx dziś ustawiają tylko `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy` (środowiskowo-neutralne). `Content-Security-Policy` czeka na publiczny origin storage'u (`img-src` musi wskazywać na produkcyjny `STORAGE_ENDPOINT`, dziś nieznany), `Strict-Transport-Security` czeka na realny HTTPS na reverse-proxy — oba do dodania razem z wdrożeniem produkcyjnym.
-- [ ] **Testy frontendu wciąż wąskie — 11 plików / 38 testów na 45 komponentów spoza `ui/catalyst`.**
-  Panel admina ma dziś 0% pokrycia mimo destrukcyjnych akcji (usuwanie/blokowanie kont,
-  ręczne odpalenie GC). Do domknięcia, per obszar:
-  - Panel admina: `UsersPage`/`UserRow`/`CreateUserForm` (tworzenie/rola/blokada/reset
-    hasła/usunięcie konta), `StoragePage`, `GcPage` (ręczny "Run GC Now"), `BackupPage`,
-    `AuditLogPage`, `ExpiringPage`, `AdminItemBrowser`, `PouchSwitcher`.
-  - Formularze kategorii/tagów: `CategoryForm`, `RenameCategoryForm`, `MoveCategoryForm`,
-    `TagForm`, `TagRow`.
-  - Współdzielone: `ConfirmDialog` (używany wszędzie do potwierdzania usunięcia — błąd tu
-    ma najszerszy promień rażenia), `AppSidebar`, `ThemeSwitch`, `ProtectedRoute`,
-    `ErrorBoundary`, `AccessKeyPanel`, `TagsInput`, `ShareButton`.
-  - Strony bez testów: `FavoritesPage`, `SettingsPage`, `CategoriesPage`, `HomePage`.
-  - `AddItemModal.test.tsx` pokrywa dziś tylko część `ItemKind`-ów — dopisać brakujące
-    warianty formularza (zdjęcie/URL/notatka) jeśli nie są objęte.
+### Kontrakt API
 
----
+- [ ] Generować klienta lub co najmniej typy odpowiedzi, enumy i błędy z
+  `/api/doc.json` (Nelmio/OpenAPI), zamiast ręcznej synchronizacji
+  `ExceptionUuid`/`ApiErrorBody` z `ExceptionUuidEnum`.
+- [ ] Dodać kontrolę aktualności wygenerowanego kontraktu w CI.
 
-## Produktowo (pomysły na kolejne funkcje, po etapie stabilizacyjnym)
+### Brakujące testy frontendu
 
-- [ ] Szybkie dodawanie materiałów z telefonu — PWA/share target.
-- [ ] Import z przeglądarki / rozszerzenie "zapisz do Pouch".
-- [ ] Zapisane wyszukiwania lub inteligentne kolekcje.
-- [ ] Eksport i pełna przenośność danych (rozszerzenie eksportu kategorii na cały pouch).
+Liczby z przeglądu (11 plików / 38 testów / 45 komponentów) są historycznym punktem
+odniesienia, nie aktualnym pomiarem pokrycia. Priorytet mają zachowania i ryzyko.
+Zasada testowania nowych funkcji obowiązuje już w
+[`codestyle/FRONTEND.md`](codestyle/FRONTEND.md#testy-komponentów-vitest--testing-library).
 
-**Nie blokuje** niczego z etapu stabilizacyjnego — to osobny, późniejszy wątek.
+- [ ] Panel admina: `UsersPage`, `UserRow`, `CreateUserForm` — tworzenie, role,
+  blokowanie i usuwanie kont; uwzględnić usunięcie resetu hasła zgodnie z P0.
+- [ ] `StoragePage`, `GcPage`, `BackupPage`, `AuditLogPage`, `ExpiringPage`,
+  `AdminItemBrowser`, `PouchSwitcher` — szczególnie destrukcyjne akcje, potwierdzenia,
+  sukces/błąd API i izolacja kontekstu pouch.
+- [ ] `ConfirmDialog` — potwierdzenie wykonuje akcję raz, anulowanie jej nie wykonuje;
+  przetestować zachowanie podczas trwającej operacji i po błędzie.
+- [ ] Formularze kategorii/tagów: `CategoryForm`, `RenameCategoryForm`,
+  `MoveCategoryForm`, `TagForm`, `TagRow` — walidacja i sukces/błąd API.
+- [ ] Strony: `FavoritesPage`, `SettingsPage`, `CategoriesPage`, `HomePage`.
+- [ ] Pozostałe istotne zachowania: `AppSidebar`, `ThemeSwitch`, `ProtectedRoute`,
+  `ErrorBoundary`, `AccessKeyPanel`, `TagsInput`, `ShareButton` oraz brakujące warianty
+  zdjęcie/URL/notatka w `AddItemModal`; najpierw sprawdzić istniejące testy.
 
-### Zrobione: kosz z ręcznym przywracaniem
+### Widoczność operacyjna w panelu admina
 
-Wcześniej trash → GC było jednokierunkowe do momentu `purgeTrash()` (7 dni), bez UI do
-"przywróć z kosza" przed tym. Backend: `Item::untrash()`, `ItemRepository::findTrashedPage()`,
-`ItemService::listTrashedPage()`/`getTrashedById()`/`restore()` (zawsze wraca z
-`keepForever = true`, żeby nie trafić z powrotem do kosza przy najbliższym przebiegu GC),
-nowe akcje w `ItemController`: `GET /api/items/trash` i `PATCH /api/items/{id}/restore`
-(ten sam wzorzec auth→voter→AccessKeyGuard co reszta kontrolera; `restore()` używa
-`ItemVoter::DELETE`, jak `delete()`). `AuditLoggerInterface::ACTION_RESTORE` — nowy wpis
-w dzienniku zdarzeń. Frontend: `TrashPage`/`TrashItemRow` (płaska tabela, nie
-`ItemGrid`/`ItemCard` — `GET /api/items/{id}` 404uje na skasowanym itemie, więc
-`ItemDetailsModal` tu nie działa), wpis w sidebarze. Testy: backendowe
-(`ItemControllerTest`: restore/trash-list, `ItemPouchIsolationTest`: izolacja obu nowych
-endpointów) i frontendowe (`TrashPage.test.tsx`, 4 testy). Pełna bramka (`make cs`/
-`phpstan`/`rector`/`test-backend` — 289/289, `make lint`/tsc/`test-frontend` — 38/38)
-przechodzi czysto.
+- [ ] Wyszukiwanie, filtry i paginacja audit logu oraz szczegóły zdarzenia czytelniejsze
+  niż sam typ i ID zasobu.
+- [ ] Status backupów, kopii off-site i wynik/data ostatniego testu restore.
+- [ ] Status workera i failed messages, z możliwością przejścia do diagnozy.
+- [ ] Dashboard zdrowia systemu oparty na mechanizmach P0, ze wskazaniem awarii
+  i nieaktualnych pomiarów.
+- [ ] Historia zużycia storage'u, poza bieżącymi wartościami.
+
+### Pełny eksport/import pouch
+
+- [ ] Eksport całego pouch użytkownika, obejmujący pliki i ich wersje, notatki,
+  URL-e/snapshoty oraz strukturę kategorii i podkategorii.
+- [ ] Wersjonowany manifest: tagi, TTL/„trzymaj na zawsze”, metadane i powiązania
+  zasobów; określić obsługę kosza i zasobów chronionych kluczem.
+- [ ] Import do świeżej instalacji z walidacją manifestu, kompletności plików
+  i limitów miejsca, bez naruszania izolacji pouch.
+- [ ] Test eksport → import potwierdzający odtworzenie treści, wersji i metadanych.
+  Backup administracyjny chroni serwer; ten przepływ zapewnia przenośność użytkownika.
+
+## Ustalone decyzje i przyszły zakres
+
+**Kategorie:** świadomie dwa poziomy — kategorie i jedna warstwa podkategorii.
+Nie planujemy dowolnie głębokiego drzewa. Decyzja jest zapisana w `PRODUCT.md`;
+nie jest to brak funkcji wymagający rozszerzenia modelu.
+
+- [ ] **Odzyskiwanie klucza dostępu przez SMS:** przyjęte do przyszłego zakresu.
+  Osobno ustalić weryfikację numeru, dostawcę, koszty, limity prób i procedurę
+  odzyskania/resetu klucza kategorii/itemu. To nie jest reset hasła konta — ten idzie
+  przez e-mail zgodnie z P0.
+- [ ] **Zapisane wyszukiwania / inteligentne kolekcje:** zachować jako pomysł na później,
+  bez zobowiązania do MVP.
+- [ ] **Trzymanie diety:** zachować pomysł z `PRODUCT.md`; doprecyzować osobno,
+  czy wystarczą istniejące kategorie, notatki i pliki.
+
+Odnośniki między itemami w stylu Obsidiana (graf i parsowanie odwołań) oraz realtime
+collaborative editing pozostają świadomie poza zakresem. Wracać do nich dopiero po
+nowej decyzji produktowej.
+
+## Sugerowana kolejność realizacji
+
+1. E-mailowe ustawianie/reset własnego hasła, usunięcie resetu admina i unieważnianie sesji.
+2. Blokery operacyjne P0, w tym off-site backup i sprawdzone odtwarzanie.
+3. Spójny interfejs tylko do odczytu dla gościa.
+4. Edycja metadanych/TTL itemu i ponawianie OCR/scrapingu.
+5. Audyt mobilny, PWA i share target.
+6. Upload strumieniowy: wiele plików, postęp, anulowanie i wznowienie.
+7. Zarządzalne publiczne linki.
+8. Pełny eksport/import pouch.
+9. Rozbudowa panelu admina i uzupełnienie istniejących luk testów frontendu.
+
+Generowanie kontraktu API można prowadzić jako osobny etap P3. Testy nowych zachowań
+należą do każdego punktu, a operacyjny monitoring P0 nie czeka na dashboard z punktu 9.
