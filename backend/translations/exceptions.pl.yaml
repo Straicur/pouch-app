@@ -15,6 +15,7 @@ method_not_allowed: "Ta metoda HTTP nie jest dozwolona dla tego adresu."
 conflict: "Konflikt z istniejącymi danymi."
 unprocessable_content: "Przesłane dane są nieprawidłowe."
 too_many_requests: "Zbyt wiele prób. Spróbuj ponownie później."
+technical_break: "Trwa przerwa techniczna. Spróbuj ponownie później."
 internal_server_error: "Wystąpił błąd wewnętrzny serwera."
 csrf.origin_not_allowed: "Żądanie odrzucone — nieprawidłowe źródło (Origin/Referer)."
 

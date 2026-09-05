@@ -4,6 +4,11 @@ COMPOSE := docker compose -f docker-compose.yml -f docker-compose.dev.yml
 EXEC_APP := $(COMPOSE) exec app
 EXEC_FRONTEND := $(COMPOSE) exec frontend
 
+# Prod stack (docker-compose.prod.yml) — assumed already up via that compose file
+# directly; these targets don't start/stop it, only run one-off commands against it.
+PROD_COMPOSE := docker compose -f docker-compose.yml -f docker-compose.prod.yml
+EXEC_APP_PROD := $(PROD_COMPOSE) exec app
+
 # Override e.g. `make db-cli DB_NAME=other_db`.
 DB_CONTAINER := pouch_db
 DB_USER      := app
@@ -49,6 +54,10 @@ help:
 	@echo '    db-dump         - pg_dump to a timestamped .sql file in the repo root'
 	@echo '    db-restore <f>  - drop, recreate and restore db from a .sql file'
 	@echo '    admin <email>   - grant ROLE_ADMIN to an existing user'
+	@echo '  --- production (docker-compose.prod.yml, assumed already up) ---'
+	@echo '    migrate-prod      - migrate the production database'
+	@echo '    jwt-keypair-prod  - generate the prod JWT keypair, only if missing'
+	@echo '    jwt-rotate-prod   - force-regenerate the prod JWT keypair (logs out every session)'
 
 ## --- stack ---
 
@@ -181,6 +190,22 @@ db-restore:
 	docker exec -i $(DB_CONTAINER) psql -U $(DB_USER) $(DB_NAME) < $(FILE)
 	@echo "Restored $(DB_NAME) from $(FILE)"
 
+## --- production (proxied into the prod app container) ---
+migrate-prod:
+	$(EXEC_APP_PROD) php bin/console doctrine:migrations:migrate -n
+
+# Safe to re-run — skip-if-exists, so it never clobbers a key already in use.
+jwt-keypair-prod:
+	$(EXEC_APP_PROD) php bin/console lexik:jwt:generate-keypair --skip-if-exists -n
+
+# Invalidates every currently-issued access/refresh token (both are signed with
+# this keypair) — every logged-in session has to log in again on its next request.
+# That's the point for periodic rotation, not a bug; just don't run it expecting
+# existing sessions to survive. Non-interactive on purpose — meant to run unattended
+# from a cron eventually, not just by hand.
+jwt-rotate-prod:
+	$(EXEC_APP_PROD) php bin/console lexik:jwt:generate-keypair --overwrite -n
+
 # Grants ROLE_ADMIN to an existing user by email: make admin someone@example.com
 admin:
 	$(eval EMAIL := $(filter-out $@,$(MAKECMDGOALS)))
@@ -191,7 +216,7 @@ admin:
 		"UPDATE \"user\" SET roles = '[\"ROLE_ADMIN\"]' WHERE email = '$(EMAIL)';"
 	@echo "Done: $(EMAIL) now has ROLE_ADMIN."
 
-.PHONY: help start env-setup composer-install jwt-keypair migrate-dev branch up down logs ps bash console composer cc migration migrate entity test-backend fixtures rector rector-fix cs cs-fix phpstan install npm test-frontend lint lint-fix test db-cli db-dump db-restore admin
+.PHONY: help start env-setup composer-install jwt-keypair migrate-dev branch up down logs ps bash console composer cc migration migrate entity test-backend fixtures rector rector-fix cs cs-fix phpstan install npm test-frontend lint lint-fix test db-cli db-dump db-restore admin migrate-prod jwt-keypair-prod jwt-rotate-prod
 
 # catch-all so trailing args (branch/email/filename) don't error as unknown targets
 %:

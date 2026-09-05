@@ -65,7 +65,10 @@ final readonly class OriginCheckListener
 
         $origin = $request->headers->get('Origin') ?? $this->originFromReferer($request);
 
-        if (null === $origin || 1 !== preg_match('#' . $this->allowedOriginPattern . '#', $origin)) {
+        // Anchored here regardless of CORS_ALLOW_ORIGIN's own ^/$ — an unanchored
+        // pattern would let preg_match match a substring (e.g. an attacker's
+        // "our-app.com.evil.com" origin) instead of the full origin.
+        if (null === $origin || 1 !== preg_match('#^(?:' . $this->allowedOriginPattern . ')$#', $origin)) {
             throw new ForbiddenException(message: 'csrf.origin_not_allowed');
         }
     }

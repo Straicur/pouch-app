@@ -35,6 +35,10 @@ const pl = {
   home: {
     connectionError: "Nie udało się połączyć z backendem.",
   },
+  technicalBreak: {
+    title: "Przerwa techniczna",
+    defaultMessage: "Trwa przerwa techniczna. Spróbuj ponownie później.",
+  },
   // Nawigacja wewnątrz UserLayout/AdminLayout (zagnieżdżone widoki
   // User/Admin, moduł na konkretny obszar) — osobna sekcja od per-modułowych
   // nagłówków (np. `admin.storage.title`), bo to samo "Zużycie storage" musi
@@ -55,6 +59,7 @@ const pl = {
     adminExpiring: "Wygasające",
     adminBackup: "Backup",
     adminUsers: "Konta",
+    adminTechnicalBreak: "Przerwa techniczna",
     settings: "Ustawienia",
   },
   items: {
@@ -321,6 +326,26 @@ const pl = {
       expiredCount: "Do kosza",
       purgedCount: "Usunięte",
     },
+    technicalBreak: {
+      title: "Przerwa techniczna",
+      explanation:
+        "Kiedy przerwa jest aktywna, każdy zalogowany user (poza administratorami) dostaje błąd 503 na każdym żądaniu i zostaje przekierowany na osobną stronę z Twoją wiadomością. Administratorzy nigdy nie są blokowani — mogą swobodnie korzystać z aplikacji i w każdej chwili wyłączyć przerwę.",
+      statusActive: "Przerwa jest aktywna od {{since}}.",
+      statusInactive: "Przerwa nie jest aktywna.",
+      messageLabel: "Wiadomość dla userów (opcjonalnie)",
+      messagePlaceholder: "Np. Wracamy o 20:00",
+      enableButton: "Włącz przerwę",
+      enabling: "Włączanie…",
+      enableSuccess: "Przerwa techniczna włączona.",
+      enableError: "Nie udało się włączyć przerwy technicznej.",
+      confirmEnableTitle: "Włączyć przerwę techniczną?",
+      confirmEnableDescription:
+        "Każdy zalogowany user (poza administratorami) straci dostęp do aplikacji, dopóki jej nie wyłączysz.",
+      disableButton: "Wyłącz przerwę",
+      disabling: "Wyłączanie…",
+      disableSuccess: "Przerwa techniczna wyłączona.",
+      disableError: "Nie udało się wyłączyć przerwy technicznej.",
+    },
     auditLog: {
       title: "Dziennik zdarzeń",
       when: "Kiedy",
@@ -337,11 +362,14 @@ const pl = {
         keyChange: "zmiana klucza",
         purge: "trwałe usunięcie",
         restore: "przywrócenie z kosza",
+        enable: "włączenie",
+        disable: "wyłączenie",
       },
       resourceLabel: {
         category: "kategoria",
         item: "item",
         user: "konto",
+        technicalBreak: "przerwa techniczna",
       },
     },
     expiringSoon: {

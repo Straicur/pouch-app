@@ -1,0 +1,107 @@
+services:
+    # DATABASE_URL/STORAGE_*/APP_SECRET etc. reach dev's app container by Symfony's
+    # dotenv reading .env.local straight off the bind-mounted ./backend — prod's app
+    # doesn't bind-mount the repo (code is baked into the image, see backend/Dockerfile's
+    # prod stage), so those same values have to come in as real container env vars
+    # instead. Same env_file db already uses below; .env.local is still the gitignored,
+    # host-only file with real secrets, just read via env_file: here instead of Dotenv.
+    app:
+        build:
+            target: prod
+        # Base compose.yml tags every target as the same "pouch-app-php-fpm" — fine
+        # while only one target is ever built locally, but building prod would
+        # silently clobber the cached dev image (and vice versa) under one shared
+        # tag. Distinct tag per target avoids that.
+        image: pouch-app-php-fpm-prod
+        env_file:
+            - ./backend/.env
+            - ./backend/.env.local
+        # .env's own APP_ENV=dev default (used by every dev service) would otherwise
+        # win over the image's `ENV APP_ENV=prod` — env_file-sourced vars still count
+        # as "explicitly set", so Dockerfile's ENV doesn't get a chance to apply.
+        environment:
+            APP_ENV: prod
+            APP_DEBUG: "0"
+        # private.pem/public.pem are gitignored and .dockerignore'd on purpose — a
+        # private key doesn't belong baked into a built image. Generate once on the
+        # host (`make console lexik:jwt:generate-keypair` against this compose file)
+        # and bind-mount it in read-only, same file dev sees via its full ./backend mount.
+        volumes:
+            - ./backend/config/jwt:/var/www/html/config/jwt:ro
+
+    # Same image/target as app — see docker-compose.yml's own comment on why
+    # this needs its own service.
+    messenger-worker:
+        build:
+            target: prod
+        image: pouch-app-php-fpm-prod
+        env_file:
+            - ./backend/.env
+            - ./backend/.env.local
+        environment:
+            APP_ENV: prod
+            APP_DEBUG: "0"
+
+    gc-scheduler:
+        build:
+            target: prod
+        image: pouch-app-php-fpm-prod
+        env_file:
+            - ./backend/.env
+            - ./backend/.env.local
+        environment:
+            APP_ENV: prod
+            APP_DEBUG: "0"
+
+    backup-scheduler:
+        build:
+            target: prod
+        image: pouch-app-php-fpm-prod
+        env_file:
+            - ./backend/.env
+            - ./backend/.env.local
+        environment:
+            APP_ENV: prod
+            APP_DEBUG: "0"
+
+    # Bakes public/ (index.php + NelmioApiDocBundle's assets) from the backend's own
+    # `prod` build stage instead of bind-mounting ./backend from the host — see
+    # backend/Dockerfile's nginx-prod stage comment.
+    nginx:
+        build:
+            context: ./backend
+            dockerfile: Dockerfile
+            target: nginx-prod
+        image: pouch-app-nginx
+        volumes: !reset []
+        # 127.0.0.1 only — this is the API's own nginx (also serves /api/doc). The
+        # only publicly reachable service is `frontend`, which proxies /api to this
+        # one over the internal Docker network regardless of host port publishing.
+        # Bound to localhost (not dropped) so an admin can still reach it over an
+        # SSH tunnel without editing compose again later.
+        ports: !override
+            - "127.0.0.1:8111:80"
+
+    db:
+        ports: !override
+            - "127.0.0.1:5433:5432"
+
+    # S3 API (9000) doesn't need to be public either — thumbnails/downloads are
+    # streamed through the backend's own signed-URL endpoints (ItemDeliveryController),
+    # never fetched by the browser directly from MinIO. Console (9001) is an admin
+    # tool, same "SSH tunnel only" reasoning as db/nginx above.
+    minio:
+        ports: !override
+            - "127.0.0.1:9000:9000"
+            - "127.0.0.1:9001:9001"
+
+    # The one public entrypoint: serves the SPA and proxies /api to nginx above
+    # (frontend/docker/nginx.conf) — see the answered questions this file is based on.
+    frontend:
+        build:
+            target: prod
+        # Same tag-collision reasoning as app above — frontend/Dockerfile's dev and
+        # prod targets both build under base's "pouch-app-frontend" otherwise.
+        image: pouch-app-frontend-prod
+        ports: !override
+            - "80:80"

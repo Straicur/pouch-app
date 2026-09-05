@@ -26,4 +26,6 @@ enum ExceptionUuidEnum: string
     case TOO_MANY_REQUESTS = 'a2b3c4d5-6e7f-4890-8123-fedcba987654';
 
     case INTERNAL_SERVER = 'f0e1d2c3-b4a5-4f6e-8123-112233445566';
+
+    case TECHNICAL_BREAK = 'b5c6d7e8-9f0a-4b1c-8123-a1b2c3d4e5f7';
 }

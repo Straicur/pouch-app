@@ -30,8 +30,8 @@ export interface GcRunLog {
 
 export interface AuditLogEntry {
   id: number;
-  action: "view" | "download" | "delete" | "key_change" | "purge" | "restore";
-  resourceType: "category" | "item" | "user";
+  action: "view" | "download" | "delete" | "key_change" | "purge" | "restore" | "enable" | "disable";
+  resourceType: "category" | "item" | "user" | "technical_break";
   resourceId: number;
   userId: number | null;
   userEmail: string | null;
@@ -43,9 +43,15 @@ export interface AuditLogEntry {
 
 export interface AuditLogParams {
   limit?: number;
-  resourceType?: "category" | "item" | "user";
+  resourceType?: AuditLogEntry["resourceType"];
   action?: AuditLogEntry["action"];
   pouchId?: number | null;
+}
+
+export interface TechnicalBreakStatus {
+  active: boolean;
+  message: string | null;
+  since: string | null;
 }
 
 export interface ExtendExpiryRequest {

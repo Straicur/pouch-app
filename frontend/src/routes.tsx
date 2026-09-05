@@ -5,10 +5,12 @@ import { BackupPage } from "./pages/admin/backup/BackupPage";
 import { ExpiringPage } from "./pages/admin/expiring/ExpiringPage";
 import { GcPage } from "./pages/admin/gc/GcPage";
 import { StoragePage } from "./pages/admin/storage/StoragePage";
+import { TechnicalBreakAdminPage } from "./pages/admin/technicalBreak/TechnicalBreakAdminPage";
 import { UsersPage } from "./pages/admin/users/UsersPage";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { RootLayout } from "./pages/RootLayout";
+import { TechnicalBreakPage } from "./pages/TechnicalBreakPage";
 import { CategoriesPage } from "./pages/user/categories/CategoriesPage";
 import { FavoritesPage } from "./pages/user/favorites/FavoritesPage";
 import { ItemsPage } from "./pages/user/items/ItemsPage";
@@ -27,6 +29,7 @@ export const router = createBrowserRouter([
     children: [
       { path: "/", element: <HomePage /> },
       { path: "/login", element: <LoginPage /> },
+      { path: "/technical-break", element: <TechnicalBreakPage /> },
       {
         path: "/user",
         element: <UserLayout />,
@@ -52,6 +55,7 @@ export const router = createBrowserRouter([
           { path: "expiring", element: <ExpiringPage /> },
           { path: "backup", element: <BackupPage /> },
           { path: "users", element: <UsersPage /> },
+          { path: "technical-break", element: <TechnicalBreakAdminPage /> },
         ],
       },
     ],

@@ -54,6 +54,7 @@ export const ApiEndpoints = {
   ADMIN_POUCHES: "/api/admin/pouches",
   ADMIN_ITEMS: "/api/admin/items",
   ADMIN_ITEM: (id: number) => `/api/admin/items/${id}`,
+  ADMIN_TECHNICAL_BREAK: "/api/admin/technical-break",
 } as const;
 
 // A 401 here must not trigger a refresh-and-retry (wrong credentials / dead refresh token).

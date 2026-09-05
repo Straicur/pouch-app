@@ -78,6 +78,17 @@ class TestTool extends TestCase
         $this->assertSame($responseContent['context']['uuid'], ExceptionUuidEnum::INTERNAL_SERVER->value);
     }
 
+    public function testTechnicalBreakRequestResponseData(KernelBrowser $webClient): void
+    {
+        $responseContent= $this->assertAndGetResponseContent(
+            $webClient->getResponse()->getContent()
+        );
+
+        $this->assertResponseContentHasRequiredKeys($responseContent);
+        $this->assertSame(Response::HTTP_SERVICE_UNAVAILABLE, $responseContent['status']);
+        $this->assertSame($responseContent['context']['uuid'], ExceptionUuidEnum::TECHNICAL_BREAK->value);
+    }
+
     private function assertAndGetResponseContent(false|string $responseContent): array
     {
         $this->assertIsString($responseContent);

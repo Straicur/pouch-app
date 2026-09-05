@@ -1,6 +1,9 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { accessGrants, GRANTS_HEADER } from "../utils/accessGrants";
 import { ApiEndpoints, NO_REFRESH_ENDPOINTS } from "./apiEndpoints";
+import { ExceptionUuid, getApiErrorBody, getApiErrorUuid } from "./apiError";
+import { navigationUtil } from "./navigationUtil";
+import { RedirectEndpoints } from "./redirectEndpoints";
 
 // Auth is cookie-based (httpOnly, see App\Security\CookieService) — no token touches JS.
 export const httpClient = axios.create({
@@ -49,6 +52,19 @@ httpClient.interceptors.response.use(
     const originalRequest = config as RetryableConfig | undefined;
 
     if (undefined === response || undefined === originalRequest) {
+      return Promise.reject(error);
+    }
+
+    // Admins are never sent this error (see TechnicalBreakListener) — any request
+    // that gets it is from a blocked, logged-in non-admin, on whatever endpoint they
+    // happened to be calling. Message comes along as router state so the page can
+    // show the admin's own text instead of a generic fallback.
+    if (ExceptionUuid.TECHNICAL_BREAK === getApiErrorUuid(response)) {
+      navigationUtil.navigate(RedirectEndpoints.TECHNICAL_BREAK, {
+        replace: true,
+        state: { message: getApiErrorBody(response)?.detail },
+      });
+
       return Promise.reject(error);
     }
 

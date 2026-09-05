@@ -2,4 +2,5 @@
 export const RedirectEndpoints = {
   HOME: "/",
   LOGIN: "/login",
+  TECHNICAL_BREAK: "/technical-break",
 } as const;

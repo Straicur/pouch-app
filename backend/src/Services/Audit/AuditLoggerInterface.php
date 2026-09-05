@@ -22,6 +22,10 @@ interface AuditLoggerInterface
 
     public const string ACTION_RESTORE = 'restore';
 
+    public const string ACTION_ENABLE = 'enable';
+
+    public const string ACTION_DISABLE = 'disable';
+
     public const string RESOURCE_CATEGORY = 'category';
 
     public const string RESOURCE_ITEM = 'item';
@@ -29,6 +33,8 @@ interface AuditLoggerInterface
     public const string RESOURCE_USER = 'user';
 
     public const string RESOURCE_TAG = 'tag';
+
+    public const string RESOURCE_TECHNICAL_BREAK = 'technical_break';
 
     /**
      * Fire-and-forget — a failure to write an audit row is logged (see the

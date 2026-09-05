@@ -1,0 +1,8 @@
+.git
+var/
+vendor/
+config/jwt/*.pem
+.env.local
+.env.local.php
+.env.*.local
+.idea

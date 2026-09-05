@@ -1,6 +1,13 @@
 import { createApi } from "@reduxjs/toolkit/query/react";
 import { ApiEndpoints } from "../../libs/apiEndpoints";
-import type { AuditLogEntry, AuditLogParams, ExtendExpiryRequest, GcRunLog, StorageReport } from "../types/admin";
+import type {
+  AuditLogEntry,
+  AuditLogParams,
+  ExtendExpiryRequest,
+  GcRunLog,
+  StorageReport,
+  TechnicalBreakStatus,
+} from "../types/admin";
 import type { ItemDetail, ItemListResult } from "../types/item";
 import { axiosBaseQuery } from "./baseQuery";
 
@@ -18,7 +25,7 @@ import { axiosBaseQuery } from "./baseQuery";
 export const adminApi = createApi({
   reducerPath: "adminApi",
   baseQuery: axiosBaseQuery(),
-  tagTypes: ["Storage", "GcRuns", "AuditLog", "ExpiringSoon", "AdminItems"],
+  tagTypes: ["Storage", "GcRuns", "AuditLog", "ExpiringSoon", "AdminItems", "TechnicalBreak"],
   endpoints: (builder) => ({
     getStorageReport: builder.query<StorageReport, number | null | undefined>({
       query: (pouchId) => ({
@@ -89,6 +96,18 @@ export const adminApi = createApi({
       query: (id) => ({ url: ApiEndpoints.ADMIN_ITEM(id), method: "DELETE" }),
       invalidatesTags: ["AdminItems", "Storage"],
     }),
+    getTechnicalBreakStatus: builder.query<TechnicalBreakStatus, void>({
+      query: () => ({ url: ApiEndpoints.ADMIN_TECHNICAL_BREAK, method: "GET" }),
+      providesTags: ["TechnicalBreak"],
+    }),
+    enableTechnicalBreak: builder.mutation<TechnicalBreakStatus, { message?: string }>({
+      query: (body) => ({ url: ApiEndpoints.ADMIN_TECHNICAL_BREAK, method: "POST", data: body }),
+      invalidatesTags: ["TechnicalBreak"],
+    }),
+    disableTechnicalBreak: builder.mutation<void, void>({
+      query: () => ({ url: ApiEndpoints.ADMIN_TECHNICAL_BREAK, method: "DELETE" }),
+      invalidatesTags: ["TechnicalBreak"],
+    }),
   }),
 });
 
@@ -102,4 +121,7 @@ export const {
   useExtendExpiryMutation,
   useListAdminItemsQuery,
   useDeleteAdminItemMutation,
+  useGetTechnicalBreakStatusQuery,
+  useEnableTechnicalBreakMutation,
+  useDisableTechnicalBreakMutation,
 } = adminApi;

@@ -87,4 +87,16 @@ final class OriginCheckListenerTest extends TestCase
 
         $this->listener(enabled: false)->onKernelRequest($this->requestEvent($request));
     }
+
+    public function testRejectsASubstringMatchEvenWithAnUnanchoredPattern(): void
+    {
+        $request = Request::create('/api/admin/gc', 'POST');
+        $request->headers->set('Origin', 'https://localhost.evil.example');
+
+        $listener = new OriginCheckListener(enabled: true, allowedOriginPattern: 'https?://localhost(:[0-9]+)?');
+
+        $this->expectException(ForbiddenException::class);
+
+        $listener->onKernelRequest($this->requestEvent($request));
+    }
 }

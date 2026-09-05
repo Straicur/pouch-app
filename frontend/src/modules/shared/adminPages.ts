@@ -8,4 +8,5 @@ export const ADMIN_PAGES: { path: string; labelKey: string }[] = [
   { path: "/admin/expiring", labelKey: "nav.adminExpiring" },
   { path: "/admin/backup", labelKey: "nav.adminBackup" },
   { path: "/admin/users", labelKey: "nav.adminUsers" },
+  { path: "/admin/technical-break", labelKey: "nav.adminTechnicalBreak" },
 ];

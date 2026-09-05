@@ -12,11 +12,13 @@ use App\DTO\Mapper\AdminMapper;
 use App\DTO\Mapper\ItemMapper;
 use App\DTO\Request\AdminExtendExpiryRequestDTO;
 use App\DTO\Request\StorageLimitSetRequestDTO;
+use App\DTO\Request\TechnicalBreakEnableRequestDTO;
 use App\DTO\Response\AuditLogResponseDTO;
 use App\DTO\Response\GcRunLogResponseDTO;
 use App\DTO\Response\ItemListResponseDTO;
 use App\DTO\Response\ItemResponseDTO;
 use App\DTO\Response\StorageReportResponseDTO;
+use App\DTO\Response\TechnicalBreakResponseDTO;
 use App\Entity\GcRunLog;
 use App\Enum\ItemType;
 use App\Enum\TtlPreset;
@@ -35,6 +37,7 @@ use App\Repository\GcRunLogRepository;
 use App\Repository\ItemRepository;
 use App\Repository\ItemVersionRepository;
 use App\Security\AuthorizationServiceInterface;
+use App\Services\Admin\TechnicalBreakServiceInterface;
 use App\Services\Audit\AuditLoggerInterface;
 use App\Services\Category\CategoryExportServiceInterface;
 use App\Services\Item\Collector\ItemGarbageCollectorInterface;
@@ -86,6 +89,7 @@ final class AdminController extends AbstractController
         private readonly GcRunLogRepository $gcRunLogRepository,
         private readonly AuditLogRepository $auditLogRepository,
         private readonly StorageLimitServiceInterface $storageLimitService,
+        private readonly TechnicalBreakServiceInterface $technicalBreakService,
         private readonly ItemGarbageCollectorInterface $itemGarbageCollector,
         private readonly ItemServiceInterface $itemService,
         private readonly CategoryExportServiceInterface $categoryExportService,
@@ -413,5 +417,72 @@ final class AdminController extends AbstractController
             downloadName: 'pouch-backup-' . new DateTimeImmutable()->format('Y-m-d') . '.zip',
             contentType: 'application/zip',
         );
+    }
+
+    /**
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
+     * @throws SerializerExceptionInterface
+     */
+    #[Route('/api/admin/technical-break', name: 'admin_technical_break_status', methods: [Request::METHOD_GET])]
+    #[OA\Get(
+        description: 'Current technical-break state — see TechnicalBreakListener for what an active break does to non-admin requests.',
+        responses: [new OA\Response(response: 200, description: 'Success', content: new Model(type: TechnicalBreakResponseDTO::class))],
+    )]
+    public function technicalBreakStatus(): Response
+    {
+        $this->assertAdmin();
+
+        $responseDTO = AdminMapper::toTechnicalBreakResponseDTO($this->technicalBreakService->getActive());
+
+        return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
+    }
+
+    /**
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
+     * @throws SerializerExceptionInterface
+     * @throws UnprocessableContentException
+     */
+    #[Route('/api/admin/technical-break', name: 'admin_technical_break_enable', methods: [Request::METHOD_POST])]
+    #[OA\Post(
+        description: 'Enables the technical break — every logged-in non-admin request gets 503 (TechnicalBreakException) '
+            . "until it's disabled again. Admins are never blocked, on any endpoint, including this one.",
+        requestBody: new OA\RequestBody(content: new OA\JsonContent(ref: new Model(type: TechnicalBreakEnableRequestDTO::class), type: 'object')),
+        responses: [new OA\Response(response: 200, description: 'Success', content: new Model(type: TechnicalBreakResponseDTO::class))],
+    )]
+    #[OA\Response(response: 422, description: 'Unprocessable Content', content: new Model(type: UnprocessableContentExceptionModel::class))]
+    public function enableTechnicalBreak(Request $request): Response
+    {
+        $user = $this->assertAdmin();
+
+        $enableRequestDTO = $this->requestService->getRequestBodyContent($request, TechnicalBreakEnableRequestDTO::class);
+        $technicalBreak = $this->technicalBreakService->enable($enableRequestDTO->getMessage());
+        $this->auditLogger->log(AuditLoggerInterface::ACTION_ENABLE, AuditLoggerInterface::RESOURCE_TECHNICAL_BREAK, $technicalBreak->getId(), $user, $request);
+
+        $responseDTO = AdminMapper::toTechnicalBreakResponseDTO($technicalBreak);
+
+        return new Response($this->serializer->serialize(data: $responseDTO, format: JsonEncoder::FORMAT), status: Response::HTTP_OK);
+    }
+
+    /**
+     * @throws UnauthorizedException
+     * @throws ForbiddenException
+     */
+    #[Route('/api/admin/technical-break', name: 'admin_technical_break_disable', methods: [Request::METHOD_DELETE])]
+    #[OA\Delete(
+        description: 'Disables the technical break, if one is active. A no-op (no audit entry) if none is.',
+        responses: [new OA\Response(response: 204, description: 'Success')],
+    )]
+    public function disableTechnicalBreak(Request $request): Response
+    {
+        $user = $this->assertAdmin();
+
+        $technicalBreak = $this->technicalBreakService->disable();
+        if (null !== $technicalBreak) {
+            $this->auditLogger->log(AuditLoggerInterface::ACTION_DISABLE, AuditLoggerInterface::RESOURCE_TECHNICAL_BREAK, $technicalBreak->getId(), $user, $request);
+        }
+
+        return new Response(status: Response::HTTP_NO_CONTENT);
     }
 }

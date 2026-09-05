@@ -135,7 +135,49 @@ Zostało, przed pierwszym użyciem z ważnymi danymi:
 Nie blokują żadnej części — zrobić przy okazji, kiedy akurat dotykamy powiązanego kodu, albo osobno gdy będzie chwila:
 
 - [ ] **Cookie `secure: true` na sztywno** (`CookieService`) — działa dziś tylko dzięki wyjątkowi przeglądarek dla `http://localhost`. Do ogarnięcia przed pierwszym wdrożeniem pod realną domeną (HTTPS na reverse-proxy musi faktycznie działać end-to-end).
-- [ ] **Brak prod stage dla backendu** — `backend/Dockerfile` ma tylko `base`+`dev` (frontend ma `prod` z nginx, backend nie). Potrzebne przed pierwszym realnym wdrożeniem, nie wcześniej.
+- [x] **Prod stage dla backendu i `docker-compose.prod.yml` — zrobione.** `backend/Dockerfile`:
+      `dev` (Xdebug, bind-mount ./backend) i `prod` (kod + `composer install --no-dev` wpieczone w
+      obraz, bez Xdebug wcale, nie tylko wyłączony) to teraz osobne ścieżki od `base`; nowy
+      `nginx-prod` stage kopiuje `public/` (w tym `assets:install`-owane assety
+      NelmioApiDocBundle) z `prod` zamiast bind-mountować `./backend` z hosta.
+      `docker-compose.prod.yml` (nakładka na bazowy plik, na wzór `.dev.yml`): wszystkie
+      backendowe serwisy + `frontend` na `target: prod`, publicznie wystawiony tylko
+      `frontend` (port 80) — `db`/`minio`/backendowy `nginx` (8111, `/api/doc`) na
+      `127.0.0.1` (SSH tunel dla admina, nie internet; thumbnaile/pobieranie i tak idą przez
+      podpisane linki backendu, nigdy bezpośrednio z MinIO). Osobne tagi obrazów
+      (`pouch-app-php-fpm-prod`/`pouch-app-frontend-prod`) — bazowy plik taguje `dev`/`prod`
+      tym samym `image:`, więc zbudowanie jednego nadpisywało lokalny cache drugiego.
+      Zweryfikowane end-to-end (build + up całego stacku, nie tylko `config`): backend realnie
+      wstaje, serwuje `/api/doc` z assetami, `SecurityHeadersListener`'owe nagłówki lecą nawet
+      na 500, porty faktycznie bindują się tylko na `127.0.0.1`. **Zablokowane na realnym
+      wdrożeniu do czasu ręcznego, jednorazowego setupu na serwerze** (nieodłożone dalej, tylko
+      poza zakresem samej infry):
+  - [x] **Monolog handler dla `prod` — zrobione.** Nowy `when@prod` w `monolog.yaml`:
+        `fingers_crossed` (próg `error`, wyklucza 404/405) flushuje bufor requestu do
+        `nested` — `stream` na `php://stderr`, nie plik (`docker logs`/journald i tak to
+        łapią i trzymają, obraz prod nie ma żadnej rotacji pliku pod `var/log`). Plus
+        `console` (kolorowane logi dla `bin/console` w prod, np. `migrate-prod` niżej) i
+        `deprecation` (osobny stream). Zweryfikowane: wymuszony błąd w kernelu (`env=prod`)
+        realnie wypisał `app.ERROR: ...` na stderr — wcześniej (puste `handlers:`) znikał
+        bez śladu.
+  - [x] **`make migrate-prod`/`jwt-keypair-prod`/`jwt-rotate-prod` — zrobione.** Nowa sekcja
+        w `Makefile` (`PROD_COMPOSE`/`EXEC_APP_PROD`, na wzór istniejącego `COMPOSE`/
+        `EXEC_APP`) — zakłada stack już odpalony przez `docker-compose.prod.yml`, nie
+        startuje/zatrzymuje go. `jwt-keypair-prod` używa `--skip-if-exists` (jak dev,
+        ale przez natywną flagę komendy zamiast `test -f` w Makefile). `jwt-rotate-prod`
+        (nowe, nie miało dev-owego odpowiednika) używa `--overwrite -n` — celowo
+        nieinteraktywne pod przyszłego crona; **unieważnia każdy wydany access/refresh
+        token** (oba podpisane tym keypairem), więc każda zalogowana sesja loguje się
+        od nowa przy najbliższym requeście — to punkt rotacji, nie efekt uboczny.
+  - [ ] **Prod vault sekretów Symfony nigdy nie zainicjalizowany** — `config/secrets/dev/`
+        jest, `config/secrets/prod/` nie istnieje. `JWT_PASSPHRASE`/`JWT_PRIVATE_TOKEN`/
+        `JWT_PUBLIC_TOKEN` (patrz `lexik_jwt_authentication.yaml`) idą przez
+        `secrets:generate-keys --env=prod` + `secrets:set ... --env=prod`, nie przez `.env`.
+        Bez tego `app` 500-uje na każdym requeście (`EnvNotFoundException`) — teraz
+        przynajmniej widoczne w logu (patrz punkt wyżej), wcześniej znikało bez śladu.
+  - [ ] Cron dla `jwt-rotate-prod` (comiesięczna rotacja kluczy JWT) — świadomie osobny,
+        późniejszy krok; komenda wyżej jest gotowa, samego harmonogramu jeszcze nie ma.
+- [ ] **CSP i HSTS nagłówki** — `SecurityHeadersListener`/nginx dziś ustawiają tylko `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy` (środowiskowo-neutralne). `Content-Security-Policy` czeka na publiczny origin storage'u (`img-src` musi wskazywać na produkcyjny `STORAGE_ENDPOINT`, dziś nieznany), `Strict-Transport-Security` czeka na realny HTTPS na reverse-proxy — oba do dodania razem z wdrożeniem produkcyjnym.
 - [ ] **Testy frontendu wciąż wąskie — 11 plików / 38 testów na 45 komponentów spoza `ui/catalyst`.**
   Panel admina ma dziś 0% pokrycia mimo destrukcyjnych akcji (usuwanie/blokowanie kont,
   ręczne odpalenie GC). Do domknięcia, per obszar:

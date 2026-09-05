@@ -44,12 +44,13 @@ class ExceptionSubscriber implements EventSubscriberInterface
      * @var array<int, array{key: string, uuid: ExceptionUuidEnum}>
      */
     private const array HTTP_EXCEPTION_MAP = [
-        Response::HTTP_BAD_REQUEST        => ['key' => 'bad_request', 'uuid' => ExceptionUuidEnum::BAD_REQUEST],
-        Response::HTTP_UNAUTHORIZED       => ['key' => 'unauthorized', 'uuid' => ExceptionUuidEnum::UNAUTHORIZED],
-        Response::HTTP_FORBIDDEN          => ['key' => 'forbidden', 'uuid' => ExceptionUuidEnum::FORBIDDEN],
-        Response::HTTP_NOT_FOUND          => ['key' => 'not_found', 'uuid' => ExceptionUuidEnum::NOT_FOUND],
-        Response::HTTP_METHOD_NOT_ALLOWED => ['key' => 'method_not_allowed', 'uuid' => ExceptionUuidEnum::METHOD_NOT_ALLOWED],
-        Response::HTTP_TOO_MANY_REQUESTS  => ['key' => 'too_many_requests', 'uuid' => ExceptionUuidEnum::TOO_MANY_REQUESTS],
+        Response::HTTP_BAD_REQUEST         => ['key' => 'bad_request', 'uuid' => ExceptionUuidEnum::BAD_REQUEST],
+        Response::HTTP_UNAUTHORIZED        => ['key' => 'unauthorized', 'uuid' => ExceptionUuidEnum::UNAUTHORIZED],
+        Response::HTTP_FORBIDDEN           => ['key' => 'forbidden', 'uuid' => ExceptionUuidEnum::FORBIDDEN],
+        Response::HTTP_NOT_FOUND           => ['key' => 'not_found', 'uuid' => ExceptionUuidEnum::NOT_FOUND],
+        Response::HTTP_METHOD_NOT_ALLOWED  => ['key' => 'method_not_allowed', 'uuid' => ExceptionUuidEnum::METHOD_NOT_ALLOWED],
+        Response::HTTP_TOO_MANY_REQUESTS   => ['key' => 'too_many_requests', 'uuid' => ExceptionUuidEnum::TOO_MANY_REQUESTS],
+        Response::HTTP_SERVICE_UNAVAILABLE => ['key' => 'technical_break', 'uuid' => ExceptionUuidEnum::TECHNICAL_BREAK],
     ];
 
     public function __construct(

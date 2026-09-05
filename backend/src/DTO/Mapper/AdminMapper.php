@@ -8,8 +8,10 @@ use App\DTO\Response\AuditLogResponseDTO;
 use App\DTO\Response\GcRunLogResponseDTO;
 use App\DTO\Response\StorageLimitResponseDTO;
 use App\DTO\Response\StorageUsageByTypeResponseDTO;
+use App\DTO\Response\TechnicalBreakResponseDTO;
 use App\Entity\AuditLog;
 use App\Entity\GcRunLog;
+use App\Entity\TechnicalBreak;
 use DateTimeInterface;
 
 use function array_map;
@@ -91,5 +93,14 @@ final class AdminMapper
         }
 
         return $usage;
+    }
+
+    public static function toTechnicalBreakResponseDTO(?TechnicalBreak $technicalBreak): TechnicalBreakResponseDTO
+    {
+        return new TechnicalBreakResponseDTO(
+            active: $technicalBreak?->isActive() ?? false,
+            message: $technicalBreak?->getMessage(),
+            since: $technicalBreak?->getCreatedAt()->format(DateTimeInterface::ATOM),
+        );
     }
 }
